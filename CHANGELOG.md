@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.14] - 2026-03-06
+
+- Add `--wide` / `-W` global flag to show all table columns without truncation
+- Add `--desc` and `--asc` sort direction flags for `--order-by` on alerts and events commands
+- Auto-enable quiet mode (`-q`) when stdout is not a TTY (piped output), suppressing spinners automatically
+- Add `config setup` one-step wizard combining profile creation, tenant, and token setup
+- Fix pre-existing test failures in `test_status_cmd.py` (mock signature mismatch)
+
 ## [0.2.13] - 2026-03-06
 
 - Add `completion` command for shell completion installation (bash, zsh, fish, PowerShell)

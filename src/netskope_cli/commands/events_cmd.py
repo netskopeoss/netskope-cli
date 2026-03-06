@@ -71,10 +71,12 @@ _HELP_GROUP_BY = (
     "Omit for ungrouped results."
 )
 _HELP_ORDER_BY = (
-    "Sort field and optional direction for ordering results. Format: 'field_name ASC' or "
-    "'field_name DESC'. For example: 'timestamp DESC' to get newest events first. "
-    "Omit to use the API default sort order."
+    "Field name to sort results by. Combine with --desc or --asc to control direction. "
+    "For example: '--order-by timestamp --desc' to get newest events first. "
+    "You can also pass 'field_name DESC' directly. Omit to use the API default sort order."
 )
+_HELP_DESC = "Sort in descending order (newest/highest first). Use with --order-by."
+_HELP_ASC = "Sort in ascending order (oldest/lowest first). Use with --order-by."
 
 
 # ---------------------------------------------------------------------------
@@ -107,6 +109,17 @@ def _parse_time_params(
             suggestion=("Use a Unix timestamp or relative offset " "(e.g. 24h, 7d)."),
         ) from exc
     return {"starttime": unix_start, "endtime": unix_end}
+
+
+def _apply_sort_direction(order_by: str | None, descending: bool, ascending: bool) -> str | None:
+    """Append sort direction to order_by if flags are set."""
+    if order_by is None:
+        return None
+    if descending:
+        return f"{order_by} DESC"
+    if ascending:
+        return f"{order_by} ASC"
+    return order_by
 
 
 def _run_event_query(
@@ -166,10 +179,7 @@ def _run_event_query(
         params["fields"] = ",".join(selected_fields)
 
     # -- Execute request ---------------------------------------------------
-    if not quiet:
-        with spinner("Querying events...", no_color=no_color):
-            data = client.request("GET", endpoint, params=params)
-    else:
+    with spinner("Querying events...", no_color=no_color, quiet=quiet):
         data = client.request("GET", endpoint, params=params)
 
     # -- Process and render ------------------------------------------------
@@ -232,10 +242,7 @@ def _run_audit_query(
     # -- Execute request ---------------------------------------------------
     endpoint = "/api/v2/events/data/audit"
 
-    if not quiet:
-        with spinner("Querying audit events...", no_color=no_color):
-            data = client.request("GET", endpoint, params=params)
-    else:
+    with spinner("Querying audit events...", no_color=no_color, quiet=quiet):
         data = client.request("GET", endpoint, params=params)
 
     # -- Process and render ------------------------------------------------
@@ -382,6 +389,8 @@ def events_list(
     limit: int = typer.Option(25, "--limit", "-l", help=_HELP_LIMIT),
     group_by: Optional[str] = typer.Option(None, "--group-by", help=_HELP_GROUP_BY),
     order_by: Optional[str] = typer.Option(None, "--order-by", help=_HELP_ORDER_BY),
+    descending: bool = typer.Option(False, "--desc", help=_HELP_DESC),
+    ascending: bool = typer.Option(False, "--asc", help=_HELP_ASC),
     count: bool = typer.Option(False, "--count", help="Print only the total count of matching records."),
 ) -> None:
     """Query events by type using a unified interface.
@@ -406,7 +415,7 @@ def events_list(
             end=end,
             limit=limit,
             group_by=group_by,
-            order_by=order_by,
+            order_by=_apply_sort_direction(order_by, descending, ascending),
         )
         return
 
@@ -432,7 +441,7 @@ def events_list(
         end=end,
         limit=limit,
         group_by=group_by,
-        order_by=order_by,
+        order_by=_apply_sort_direction(order_by, descending, ascending),
         title=title,
         default_fields=default_fields,
     )
@@ -459,10 +468,7 @@ def _run_event_query_with_count(
         params["query"] = query
     params.update(_parse_time_params(start, end))
 
-    if not quiet:
-        with spinner("Counting events...", no_color=no_color):
-            data = client.request("GET", endpoint, params=params)
-    else:
+    with spinner("Counting events...", no_color=no_color, quiet=quiet):
         data = client.request("GET", endpoint, params=params)
 
     if isinstance(data, dict):
@@ -523,6 +529,8 @@ def alerts(
         "--order-by",
         help=_HELP_ORDER_BY,
     ),
+    descending: bool = typer.Option(False, "--desc", help=_HELP_DESC),
+    ascending: bool = typer.Option(False, "--asc", help=_HELP_ASC),
 ) -> None:
     """Query alert events from the Netskope platform.
 
@@ -547,7 +555,7 @@ def alerts(
         end=end,
         limit=limit,
         group_by=group_by,
-        order_by=order_by,
+        order_by=_apply_sort_direction(order_by, descending, ascending),
         title="Alert Events",
         default_fields=["alert_name", "alert_type", "severity", "user", "app", "timestamp"],
     )
@@ -595,6 +603,8 @@ def application(
         "--order-by",
         help=_HELP_ORDER_BY,
     ),
+    descending: bool = typer.Option(False, "--desc", help=_HELP_DESC),
+    ascending: bool = typer.Option(False, "--asc", help=_HELP_ASC),
 ) -> None:
     """Query application events from the Netskope platform.
 
@@ -616,7 +626,7 @@ def application(
         end=end,
         limit=limit,
         group_by=group_by,
-        order_by=order_by,
+        order_by=_apply_sort_direction(order_by, descending, ascending),
         title="Application Events",
         default_fields=["_id", "user", "app", "action", "type", "timestamp"],
     )
@@ -664,6 +674,8 @@ def network(
         "--order-by",
         help=_HELP_ORDER_BY,
     ),
+    descending: bool = typer.Option(False, "--desc", help=_HELP_DESC),
+    ascending: bool = typer.Option(False, "--asc", help=_HELP_ASC),
 ) -> None:
     """Query network events from the Netskope platform.
 
@@ -686,7 +698,7 @@ def network(
         end=end,
         limit=limit,
         group_by=group_by,
-        order_by=order_by,
+        order_by=_apply_sort_direction(order_by, descending, ascending),
         title="Network Events",
         default_fields=["_id", "srcip", "dstip", "dstport", "action", "app", "user", "timestamp"],
     )
@@ -734,6 +746,8 @@ def page(
         "--order-by",
         help=_HELP_ORDER_BY,
     ),
+    descending: bool = typer.Option(False, "--desc", help=_HELP_DESC),
+    ascending: bool = typer.Option(False, "--asc", help=_HELP_ASC),
 ) -> None:
     """Query page events from the Netskope platform.
 
@@ -756,7 +770,7 @@ def page(
         end=end,
         limit=limit,
         group_by=group_by,
-        order_by=order_by,
+        order_by=_apply_sort_direction(order_by, descending, ascending),
         title="Page Events",
         default_fields=["_id", "user", "url", "category", "action", "app", "timestamp"],
     )
@@ -804,6 +818,8 @@ def incident(
         "--order-by",
         help=_HELP_ORDER_BY,
     ),
+    descending: bool = typer.Option(False, "--desc", help=_HELP_DESC),
+    ascending: bool = typer.Option(False, "--asc", help=_HELP_ASC),
 ) -> None:
     """Query incident events from the Netskope platform.
 
@@ -826,7 +842,7 @@ def incident(
         end=end,
         limit=limit,
         group_by=group_by,
-        order_by=order_by,
+        order_by=_apply_sort_direction(order_by, descending, ascending),
         title="Incident Events",
         default_fields=["_id", "incident_id", "user", "severity", "status", "timestamp"],
     )
@@ -879,6 +895,8 @@ def audit(
         "--order-by",
         help=_HELP_ORDER_BY,
     ),
+    descending: bool = typer.Option(False, "--desc", help=_HELP_DESC),
+    ascending: bool = typer.Option(False, "--asc", help=_HELP_ASC),
 ) -> None:
     """Query audit trail events from the Netskope platform.
 
@@ -900,7 +918,7 @@ def audit(
         end=end,
         limit=limit,
         group_by=group_by,
-        order_by=order_by,
+        order_by=_apply_sort_direction(order_by, descending, ascending),
     )
 
 
@@ -946,6 +964,8 @@ def infrastructure(
         "--order-by",
         help=_HELP_ORDER_BY,
     ),
+    descending: bool = typer.Option(False, "--desc", help=_HELP_DESC),
+    ascending: bool = typer.Option(False, "--asc", help=_HELP_ASC),
 ) -> None:
     """Query infrastructure events from the Netskope platform.
 
@@ -968,7 +988,7 @@ def infrastructure(
         end=end,
         limit=limit,
         group_by=group_by,
-        order_by=order_by,
+        order_by=_apply_sort_direction(order_by, descending, ascending),
         title="Infrastructure Events",
         default_fields=["_id", "name", "status", "type", "timestamp"],
     )
@@ -1016,6 +1036,8 @@ def client_status(
         "--order-by",
         help=_HELP_ORDER_BY,
     ),
+    descending: bool = typer.Option(False, "--desc", help=_HELP_DESC),
+    ascending: bool = typer.Option(False, "--asc", help=_HELP_ASC),
 ) -> None:
     """Query Netskope Client status events.
 
@@ -1038,7 +1060,7 @@ def client_status(
         end=end,
         limit=limit,
         group_by=group_by,
-        order_by=order_by,
+        order_by=_apply_sort_direction(order_by, descending, ascending),
         title="Client Status Events",
         default_fields=["_id", "device_id", "client_version", "hostname", "os", "user", "status", "timestamp"],
     )
@@ -1086,6 +1108,8 @@ def epdlp(
         "--order-by",
         help=_HELP_ORDER_BY,
     ),
+    descending: bool = typer.Option(False, "--desc", help=_HELP_DESC),
+    ascending: bool = typer.Option(False, "--asc", help=_HELP_ASC),
 ) -> None:
     """Query endpoint DLP (Data Loss Prevention) events.
 
@@ -1108,7 +1132,7 @@ def epdlp(
         end=end,
         limit=limit,
         group_by=group_by,
-        order_by=order_by,
+        order_by=_apply_sort_direction(order_by, descending, ascending),
         title="Endpoint DLP Events",
         default_fields=["_id", "user", "file_name", "action", "dlp_rule", "timestamp"],
     )
@@ -1156,6 +1180,8 @@ def transaction(
         "--order-by",
         help=_HELP_ORDER_BY,
     ),
+    descending: bool = typer.Option(False, "--desc", help=_HELP_DESC),
+    ascending: bool = typer.Option(False, "--asc", help=_HELP_ASC),
 ) -> None:
     """Query transaction event metrics from the Netskope platform.
 
@@ -1178,7 +1204,7 @@ def transaction(
         end=end,
         limit=limit,
         group_by=group_by,
-        order_by=order_by,
+        order_by=_apply_sort_direction(order_by, descending, ascending),
         title="Transaction Event Metrics",
         default_fields=[],
     )

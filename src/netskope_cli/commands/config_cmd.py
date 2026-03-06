@@ -544,6 +544,103 @@ def create_profile(
         console.print(f"  Tenant: [bold]{tenant}[/bold]")
 
 
+@config_app.command("setup")
+def setup(
+    ctx: typer.Context,
+    profile_name: Optional[str] = typer.Option(
+        None,
+        "--profile",
+        "-p",
+        help="Profile name to create or configure. Defaults to 'default'.",
+    ),
+    tenant: Optional[str] = typer.Option(
+        None,
+        "--tenant",
+        "-t",
+        help="Tenant hostname. If not provided, you will be prompted.",
+    ),
+    token: Optional[str] = typer.Option(
+        None,
+        "--token",
+        help="API token. If not provided, you will be prompted interactively.",
+    ),
+) -> None:
+    """Interactive setup wizard — configure tenant, token, and profile in one step.
+
+    Guides you through creating a profile, setting the tenant hostname, and
+    storing the API token. Replaces the need to run create-profile, set-tenant,
+    and set-token as separate commands.
+
+    \b
+    Examples:
+        netskope config setup
+        netskope config setup --tenant mytenant.goskope.com
+        netskope config setup --profile production --tenant prod.goskope.com
+        echo "$TOKEN" | netskope config setup --tenant mytenant.goskope.com
+    """
+    console = _get_console(ctx)
+    cfg = _load_config()
+
+    # 1. Profile
+    profile = profile_name or _resolve_profile(ctx)
+    all_profiles = cfg.setdefault("profiles", {})
+    if profile not in all_profiles:
+        all_profiles[profile] = {}
+        console.print(f"[green]Created profile[/green] [bold]'{profile}'[/bold].")
+    else:
+        console.print(f"Using existing profile [bold]'{profile}'[/bold].")
+
+    if "active_profile" not in cfg:
+        cfg["active_profile"] = profile
+
+    section = _get_profile_section(cfg, profile)
+
+    # 2. Tenant
+    if tenant is None:
+        existing = section.get("tenant")
+        prompt_msg = "Tenant hostname"
+        if existing:
+            prompt_msg += f" [{existing}]"
+        prompt_msg += ": "
+        tenant_input = input(prompt_msg).strip()
+        if tenant_input:
+            tenant = tenant_input
+        elif existing:
+            tenant = existing
+        else:
+            console.print("[red]Tenant hostname is required.[/red]")
+            raise typer.Exit(code=1)
+
+    section["tenant"] = tenant
+    _save_config(cfg)
+    console.print(f"[green]Tenant set to[/green] [bold]{tenant}[/bold].")
+
+    # 3. Token
+    if token is None and not sys.stdin.isatty():
+        token = sys.stdin.read().strip()
+    if token is None:
+        console.print()
+        console.print("Set your API token (from Settings > Tools > REST API v2).")
+        token = getpass.getpass("API token: ")
+
+    if not token or not token.strip():
+        console.print("[yellow]No token provided — skipping token setup.[/yellow]")
+        console.print("[dim]Run 'netskope config set-token' later to add credentials.[/dim]")
+    else:
+        token = token.strip()
+        used_keyring = _store_token(profile, token, console=console)
+        storage = "keyring" if used_keyring else "config"
+        console.print(f"[green]Token stored ({storage}) for profile[/green] [bold]'{profile}'[/bold].")
+
+    # 4. Summary
+    console.print()
+    console.print("[bold green]Setup complete![/bold green]")
+    console.print(f"  Profile: [bold]{profile}[/bold]")
+    console.print(f"  Tenant:  [bold]{tenant}[/bold]")
+    console.print()
+    console.print("[dim]Try: netskope alerts list --limit 5[/dim]")
+
+
 @config_app.command("test")
 def test_config(
     ctx: typer.Context,

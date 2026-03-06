@@ -212,10 +212,13 @@ class OutputFormatter:
 
     FORMATS = ("json", "table", "csv", "yaml", "jsonl", "human")
 
-    def __init__(self, *, no_color: bool = False, max_col_width: int = 80, count_only: bool = False) -> None:
+    def __init__(
+        self, *, no_color: bool = False, max_col_width: int = 80, count_only: bool = False, wide: bool = False
+    ) -> None:
         self.no_color = no_color
-        self.max_col_width = max_col_width
+        self.max_col_width = 0 if wide else max_col_width
         self._default_count_only = count_only
+        self._wide = wide
         self.console = _make_console(no_color=no_color)
         self.err_console = _make_console(no_color=no_color, stderr=True)
 
@@ -278,8 +281,8 @@ class OutputFormatter:
         if fmt not in self.FORMATS:
             raise ValueError(f"Unsupported format {fmt!r}. Choose from {self.FORMATS}")
 
-        # Check env var for wide mode
-        if os.environ.get("NETSKOPE_WIDE", "") == "1":
+        # Check env var or --wide flag for wide mode
+        if self._wide or os.environ.get("NETSKOPE_WIDE", "") == "1":
             show_all_columns = True
             self.max_col_width = 0
 
@@ -797,13 +800,14 @@ class OutputFormatter:
 def build_formatter(ctx: Any) -> "OutputFormatter":
     """Create an ``OutputFormatter`` pre-configured from the global CLI state.
 
-    Reads ``no_color`` and ``count`` from ``ctx.obj`` (the ``State`` dataclass
-    set by the main callback).  Safe to call even when ``ctx.obj`` is *None*.
+    Reads ``no_color``, ``count``, and ``wide`` from ``ctx.obj`` (the ``State``
+    dataclass set by the main callback).  Safe to call even when ``ctx.obj`` is *None*.
     """
     state = getattr(ctx, "obj", None)
     no_color = getattr(state, "no_color", False) if state is not None else False
     count_only = getattr(state, "count", False) if state is not None else False
-    return OutputFormatter(no_color=no_color, count_only=count_only)
+    wide = getattr(state, "wide", False) if state is not None else False
+    return OutputFormatter(no_color=no_color, count_only=count_only, wide=wide)
 
 
 # ---------------------------------------------------------------------------
@@ -841,14 +845,24 @@ def echo_info(msg: str, *, no_color: bool = False) -> None:
 
 
 @contextmanager
-def spinner(message: str = "Loading...", *, no_color: bool = False) -> Generator[Progress, None, None]:
+def spinner(
+    message: str = "Loading...", *, no_color: bool = False, quiet: bool = False
+) -> Generator[Progress, None, None]:
     """Context manager that shows a Rich spinner on stderr.
+
+    Automatically suppressed when stderr is not a TTY (piped output)
+    or when *quiet* is True.
 
     Usage::
 
         with spinner("Fetching data..."):
             do_slow_work()
     """
+    # Suppress spinner when stderr isn't a TTY or quiet mode is active
+    if quiet or not sys.stderr.isatty():
+        yield None  # type: ignore[arg-type]
+        return
+
     console = _make_console(no_color=no_color, stderr=True)
     progress = Progress(
         SpinnerColumn(),

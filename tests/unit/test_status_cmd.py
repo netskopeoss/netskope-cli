@@ -262,7 +262,7 @@ class TestStatusCLI:
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
 
-        async def mock_gather(base_url, headers, time_params):
+        async def mock_gather(base_url, headers, time_params, cookies=None):
             return (
                 {
                     "alert_events_24h": 100,
@@ -299,7 +299,7 @@ class TestStatusCLI:
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
 
-        async def mock_gather(base_url, headers, time_params):
+        async def mock_gather(base_url, headers, time_params, cookies=None):
             return (
                 {
                     "alert_events_24h": 100,
@@ -340,7 +340,7 @@ class TestStatusCLI:
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
 
-        async def mock_gather(base_url, headers, time_params):
+        async def mock_gather(base_url, headers, time_params, cookies=None):
             return (
                 {
                     "alert_events_24h": 10,

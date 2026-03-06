@@ -24,7 +24,7 @@ from netskope_cli.core.exceptions import NetskopeError
 # ---------------------------------------------------------------------------
 # Version — single source of truth
 # ---------------------------------------------------------------------------
-__version__ = "0.2.13"
+__version__ = "0.2.14"
 
 # ---------------------------------------------------------------------------
 # Global state object threaded through the context
@@ -51,6 +51,7 @@ class State:
     raw: bool = False
     epoch: bool = False
     count: bool = False
+    wide: bool = False
 
     # Lazily initialised console respects --no-color
     _console: Console | None = field(default=None, repr=False)
@@ -92,8 +93,7 @@ app = typer.Typer(
         "  [cyan]steering[/cyan]     Manage private-app steering and global steering configuration.\n"
         "  [cyan]publishers[/cyan]   Manage private-access publishers, upgrade profiles, and local brokers.\n\n"
         "[bold]Getting started:[/bold]\n\n"
-        "  netskope config set-tenant mytenant.goskope.com\n"
-        "  netskope config set-token\n"
+        "  netskope config setup                          # one-step wizard\n"
         "  netskope alerts list --limit 10\n\n"
         "[bold]Output formats:[/bold]  --output json | table | csv | yaml | jsonl\n\n"
         "[bold]Environment variables:[/bold]\n\n"
@@ -161,7 +161,7 @@ def main(
         help=(
             "Suppress non-essential output such as spinners, progress indicators, and "
             "informational messages. Only data and errors are printed. Useful for scripting "
-            "and CI/CD pipelines. Defaults to False."
+            "and CI/CD pipelines. Automatically enabled when stdout is not a TTY (piped output)."
         ),
     ),
     no_color: bool = typer.Option(
@@ -201,6 +201,17 @@ def main(
             "Saves bandwidth by skipping full record retrieval when you only need the count."
         ),
     ),
+    wide: bool = typer.Option(
+        False,
+        "--wide",
+        "-W",
+        help=(
+            "Show all table columns without truncation. By default, table output "
+            "auto-selects the most informative columns and truncates long values. "
+            "Use --wide to see every column at full width. Also settable via "
+            "NETSKOPE_WIDE=1 environment variable."
+        ),
+    ),
     _version: Optional[bool] = typer.Option(
         None,
         "--version",
@@ -210,6 +221,10 @@ def main(
     ),
 ) -> None:
     """Global options applied to every subcommand."""
+    # Auto-enable quiet mode when stdout is not a TTY (piped output).
+    if not quiet and not sys.stdout.isatty():
+        quiet = True
+
     state = State(
         profile=profile,
         output=output,
@@ -219,6 +234,7 @@ def main(
         raw=raw,
         epoch=epoch,
         count=count,
+        wide=wide,
     )
     ctx.obj = state
 
@@ -842,7 +858,7 @@ def _hoist_global_options(argv: list[str]) -> list[str]:
     # Flags that take a value and should be hoisted to the global position.
     _VALUE_FLAGS = {"--output", "-o", "--profile"}
     # Boolean flags that should be hoisted.
-    _BOOL_FLAGS = {"--quiet", "-q", "--no-color", "--verbose", "-v", "--raw", "--epoch", "--count"}
+    _BOOL_FLAGS = {"--quiet", "-q", "--no-color", "--verbose", "-v", "--raw", "--epoch", "--count", "--wide", "-W"}
 
     result = [argv[0]]
     hoisted: list[str] = []

@@ -160,9 +160,19 @@ def list_alerts(
         "--order-by",
         help=(
             "Field name to sort results by. For example: 'timestamp' to sort "
-            "chronologically. Use with the API's sort direction conventions. "
+            "chronologically. Combine with --desc or --asc to control direction. "
             "Omit to use the API default sort order."
         ),
+    ),
+    descending: bool = typer.Option(
+        False,
+        "--desc",
+        help="Sort in descending order (newest/highest first). Use with --order-by.",
+    ),
+    ascending: bool = typer.Option(
+        False,
+        "--asc",
+        help="Sort in ascending order (oldest/lowest first). Use with --order-by.",
     ),
     count: bool = typer.Option(
         False,
@@ -237,9 +247,15 @@ def list_alerts(
     if group_by is not None:
         params["groupbys"] = group_by
     if order_by is not None:
-        params["orderby"] = order_by
+        direction = ""
+        if descending:
+            direction = " DESC"
+        elif ascending:
+            direction = " ASC"
+        params["orderby"] = f"{order_by}{direction}"
 
-    with spinner("Fetching alerts..."):
+    quiet = getattr(state, "quiet", False) if state else False
+    with spinner("Fetching alerts...", quiet=quiet):
         data = client.request("GET", "/api/v2/events/datasearch/alert", params=params or None)
 
     formatter.format_output(
@@ -309,7 +325,8 @@ def alert_summary(
     params["starttime"] = unix_start
     params["endtime"] = unix_end
 
-    with spinner(f"Summarising alerts by {by}..."):
+    quiet = getattr(state, "quiet", False) if state else False
+    with spinner(f"Summarising alerts by {by}...", quiet=quiet):
         data = client.request("GET", "/api/v2/events/datasearch/alert", params=params)
 
     formatter.format_output(
