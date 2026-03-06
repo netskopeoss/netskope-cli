@@ -1,11 +1,11 @@
 [tool.poetry]
 name = "netskope"
-version = "0.2.9"
+version = "0.2.10"
 description = "The official Netskope CLI — manage your Netskope tenant from the command line"
 authors = ["Netskope"]
 license = "MIT"
 readme = "README.md"
-repository = "https://github.com/netSkopeoss/netksope-cli"
+repository = "https://github.com/netskopeoss/netskope-cli"
 packages = [{include = "netskope_cli", from = "src"}]
 
 [tool.poetry.scripts]

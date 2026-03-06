@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.2.10] - 2026-03-06
+
+- Fix repository URL typo in PyPI metadata
+
 ## [0.2.9] - 2026-03-06
 
 - Fix API endpoint corrections: infrastructure events, transaction event metrics, notification delivery settings, publisher upgrade profiles, URL list creation, and NSIQ URL lookup/recategorize request bodies
