@@ -379,8 +379,11 @@ class OutputFormatter:
         # Apply default_fields for table/human when no explicit fields given.
         # When grouped results are detected, clear default_fields so all
         # aggregation columns (e.g. alert_type, count) are shown.
+        # When wide mode is active, skip default_fields so all columns are visible.
         effective_fields = fields
         if is_grouped:
+            effective_fields = None
+        elif self._wide:
             effective_fields = None
         elif effective_fields is None and default_fields and fmt in ("table", "human", "csv"):
             effective_fields = list(default_fields)
@@ -603,14 +606,13 @@ class OutputFormatter:
         """Flatten group-by API responses.
 
         Detects responses shaped like ``[{"_id": {"field": "val"}, "count": N}, ...]``
-        and flattens them to ``[{"field": "val", "count": N}, ...]``.
+        or ``[{"_id": {"field": "val"}}, ...]`` (no count from API) and flattens them
+        to ``[{"field": "val", "count": N}, ...]``.
         """
         if not data or not isinstance(data, list):
             return data
-        # Check if this looks like a group-by response
-        if all(
-            isinstance(row, dict) and "_id" in row and isinstance(row["_id"], dict) and "count" in row for row in data
-        ):
+        # Check if this looks like a group-by response (with or without count)
+        if all(isinstance(row, dict) and "_id" in row and isinstance(row["_id"], dict) for row in data):
             flattened = []
             for row in data:
                 new_row = dict(row["_id"])

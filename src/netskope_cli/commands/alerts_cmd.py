@@ -66,7 +66,8 @@ def _get_formatter(ctx: typer.Context) -> OutputFormatter:
     state = ctx.obj
     no_color = state.no_color if state is not None else False
     count_only = getattr(state, "count", False) if state is not None else False
-    return OutputFormatter(no_color=no_color, count_only=count_only)
+    wide = getattr(state, "wide", False) if state is not None else False
+    return OutputFormatter(no_color=no_color, count_only=count_only, wide=wide)
 
 
 def _get_output_format(ctx: typer.Context) -> str:
@@ -111,6 +112,7 @@ def list_alerts(
     start: Optional[str] = typer.Option(
         None,
         "--start",
+        "--since",
         "-s",
         help=(
             "Start of the time range. Accepts a Unix epoch timestamp (seconds) or a "
@@ -139,6 +141,7 @@ def list_alerts(
     group_by: Optional[str] = typer.Option(
         None,
         "--group-by",
+        "--by",
         help=(
             "Field name to group (aggregate) results by, such as 'alert_type', "
             "'severity', or 'user'. Returns aggregated counts per unique value. "
@@ -190,10 +193,11 @@ def list_alerts(
     triage, security monitoring dashboards, and automated alert processing.
 
     Examples:
-        netskope alerts list
-        netskope alerts list --query 'alert_type eq "DLP"' --limit 50
-        netskope -o json alerts list --query 'severity eq "critical"' --start 1709510400
-        netskope alerts list --count
+        ntsk alerts list
+        ntsk alerts list --since 7d --limit 50
+        ntsk alerts list --query 'alert_type eq "DLP"' --limit 50
+        ntsk -o json alerts list --query 'severity eq "critical"' --since 24h
+        ntsk alerts list --count
     """
     # Validate limit
     if limit <= 0:
@@ -275,6 +279,7 @@ def alert_summary(
     by: str = typer.Option(
         "alert_type",
         "--by",
+        "--group-by",
         "-b",
         help="Field to group by (e.g. alert_type, severity, user, app).",
     ),
@@ -286,6 +291,7 @@ def alert_summary(
     start: Optional[str] = typer.Option(
         None,
         "--start",
+        "--since",
         "-s",
         help="Start of time range. Relative offset (24h, 7d) or epoch.",
     ),
@@ -298,16 +304,17 @@ def alert_summary(
 ) -> None:
     """Summarise alerts by a grouping field (e.g. type, severity, user).
 
-    Queries GET /api/v2/events/datasearch/alert with the groupbys parameter to
-    return aggregated counts per unique value of the chosen field. Defaults to
-    grouping by alert_type over the last 24 hours.
+    Fetches alerts and aggregates counts per unique value of the chosen field.
+    Defaults to grouping by alert_type over the last 24 hours.
 
     Examples:
-        netskope alerts summary
-        netskope alerts summary --by severity
-        netskope alerts summary --by user --start 7d
-        netskope -o json alerts summary --by app --query 'severity eq "high"'
+        ntsk alerts summary
+        ntsk alerts summary --by severity
+        ntsk alerts summary --group-by user --since 7d
+        ntsk -o json alerts summary --by app --query 'severity eq "high"'
     """
+    from collections import Counter
+
     from netskope_cli.utils.helpers import validate_time_range
 
     client = _build_client(ctx)
@@ -315,7 +322,7 @@ def alert_summary(
     fmt = _get_output_format(ctx)
     state = ctx.obj
 
-    params: dict[str, object] = {"groupbys": by, "limit": 10000}
+    params: dict[str, object] = {"limit": 10000}
 
     if query is not None:
         params["query"] = query
@@ -329,18 +336,30 @@ def alert_summary(
     with spinner(f"Summarising alerts by {by}...", quiet=quiet):
         data = client.request("GET", "/api/v2/events/datasearch/alert", params=params)
 
+    # Unwrap the API envelope to get the list of records, then aggregate locally.
+    from netskope_cli.core.output import unwrap_api_response
+
+    records, _meta = unwrap_api_response(data)
+
+    if isinstance(records, list) and records:
+        counts = Counter(str(row.get(by, "unknown")) if isinstance(row, dict) else "unknown" for row in records)
+        summary_data = [{by: value, "count": count} for value, count in counts.most_common()]
+    else:
+        summary_data = []
+
     formatter.format_output(
-        data,
+        summary_data,
         fmt=fmt,
         title=f"Alert Summary by {by}",
+        unwrap=False,
         empty_hint=(
-            f"The alerts API returned no grouped results for --by '{by}'. "
+            f"No alerts found for grouping by '{by}'. "
             "This can happen when the grouping field doesn't exist in the matching alerts. "
             "Try a different field (e.g. --by severity, --by user) or use 'alerts list' "
             "to see individual records."
         ),
         strip_internal=not (state.raw if state else False),
-        add_iso_timestamps=not (state.epoch if state else False),
+        add_iso_timestamps=False,
     )
 
 

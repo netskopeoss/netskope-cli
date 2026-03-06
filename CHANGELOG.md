@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.15] - 2026-03-06
+
+- Fix `alerts summary` to show actual counts per group (API only returned unique values, now aggregates locally)
+- Fix `-W` / `--wide` flag on alerts to show all columns (was being overridden by default field selection)
+- Add `--group-by` alias for `--by` on `alerts summary` and `alerts list` for discoverability
+- Add `--since` alias for `--start` on `alerts list` and `alerts summary` for common time-range queries
+- Fix `_flatten_grouped_results` to handle API group-by responses that omit a count field
+- Update README: use `ntsk` shorthand in all examples, fix clone URL typos, add all missing command groups, document global flags and environment variables, fix shell completion syntax
+
 ## [0.2.14] - 2026-03-06
 
 - Add `--wide` / `-W` global flag to show all table columns without truncation

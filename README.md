@@ -55,15 +55,15 @@ py -m pipx install netskope
 ### From source
 
 ```bash
-git clone https://github.com/netSkopeoss/netksope-cli.git
-cd netksope-cli
+git clone https://github.com/netskopeoss/netskope-cli.git
+cd netskope-cli
 pip install .
 ```
 
 ### Verify installation
 
 ```bash
-netskope --version
+ntsk --version
 ntsk --help
 ```
 
@@ -74,7 +74,7 @@ ntsk --help
 ### 1. Configure your tenant
 
 ```bash
-netskope config set-tenant mytenant.goskope.com
+ntsk config set-tenant mytenant.goskope.com
 ```
 
 ### 2. Authenticate
@@ -88,17 +88,23 @@ export NETSKOPE_API_TOKEN="your-token"
 **Option B — Browser SSO login:**
 
 ```bash
-netskope auth login
+ntsk auth login
 ```
 
 ### 3. Start using the CLI
 
 ```bash
-# Check tenant connectivity and status
+# Check setup and connectivity
+ntsk doctor
+
+# Tenant health overview
 ntsk status
 
 # List recent alerts
-ntsk alerts list --limit 10
+ntsk alerts list --since 24h --limit 10
+
+# Alert summary by type
+ntsk alerts summary --by severity
 
 # Search events by type
 ntsk events list --type alert --limit 20
@@ -135,26 +141,49 @@ ntsk alerts list -o json | jq '.[] | .alert_name'
 ntsk users list -o csv > users.csv
 ```
 
+### Global Flags
+
+| Flag           | Description                                        |
+|----------------|----------------------------------------------------|
+| `-W` / `--wide`| Show all table columns without truncation           |
+| `--raw`        | Include internal `_`-prefixed fields in output      |
+| `--count`      | Print only the total record count                   |
+| `--epoch`      | Keep timestamps as raw Unix epoch integers          |
+| `-q` / `--quiet` | Suppress spinners and informational messages     |
+| `--no-color`   | Disable coloured output                             |
+| `-v` / `--verbose` | Increase verbosity (-vv for debug)              |
+
 ---
 
 ## Commands
 
-| Category         | Commands                                                   |
-|------------------|------------------------------------------------------------|
-| **Status**       | `status`                                                   |
-| **Events**       | `events list --type alert\|application\|network\|...`      |
-| **Alerts**       | `alerts list`                                              |
-| **Incidents**    | `incidents list`, `incidents search`, `incidents uci`      |
-| **Users**        | `users list`, `users groups list`                          |
-| **Policy**       | `policy url-list list`, `policy deploy`                    |
-| **Auth**         | `auth login`, `auth logout`, `auth status`                 |
-| **Config**       | `config set-tenant`, `config set-token`, `config show`     |
-| **Publishers**   | `publishers list`                                          |
-| **Steering**     | `steering private-apps list`, `steering config get`        |
-| **IPSec**        | `ipsec tunnels list`, `ipsec pops list`                    |
-| **Services**     | `services cci APP_NAME`, `services tags list`              |
-| **DNS**          | `dns profiles list`, `dns categories`                      |
-| **Docs**         | `docs open`, `docs search`, `docs jql`                     |
+| Category              | Commands                                                   |
+|-----------------------|------------------------------------------------------------|
+| **Status & Setup**    | `doctor`, `tenant`, `status`, `commands`                   |
+| **Events**            | `events list --type alert\|application\|network\|...`      |
+| **Alerts**            | `alerts list`, `alerts summary`, `alerts types`            |
+| **Incidents**         | `incidents list`, `incidents search`, `incidents uci`      |
+| **Users & RBAC**      | `users list`, `users groups list`, `rbac roles list`       |
+| **Policy**            | `policy url-list list`, `policy deploy`                    |
+| **Auth & Config**     | `auth login`, `auth logout`, `config set-tenant`, `config set-token` |
+| **Tokens**            | `tokens list`, `tokens create`, `tokens revoke`            |
+| **Publishers**        | `publishers list`                                          |
+| **NPA**               | `npa apps list`, `npa publishers list`, `npa policy list`  |
+| **Steering**          | `steering private-apps list`, `steering config get`        |
+| **Devices**           | `devices list`, `devices tags list`                        |
+| **Enrollment**        | `enrollment list`, `enrollment create`                     |
+| **IPSec**             | `ipsec tunnels list`, `ipsec pops list`                    |
+| **DNS**               | `dns profiles list`, `dns categories`                      |
+| **Services**          | `services cci APP_NAME`, `services tags list`              |
+| **DSPM**              | `dspm resources list`, `dspm datastores list`              |
+| **SPM**               | `spm inventory list`, `spm posture`                        |
+| **ATP**               | `atp scan-file`, `atp scan-url`                            |
+| **IPS**               | `ips status`, `ips allowlist list`                         |
+| **Threat Intel**      | `intel url-lookup`, `intel recategorize`                   |
+| **RBI**               | `rbi apps list`, `rbi browsers list`                       |
+| **DEM**               | `dem app-probes list`, `dem network-probes list`           |
+| **Notifications**     | `notifications templates list`                             |
+| **Docs**              | `docs open`, `docs search`, `docs jql`                     |
 
 Run `ntsk --help` or `ntsk <command> --help` for full details.
 
@@ -162,15 +191,18 @@ Run `ntsk --help` or `ntsk <command> --help` for full details.
 
 ## Environment Variables
 
-| Variable             | Description                              |
-|----------------------|------------------------------------------|
-| `NETSKOPE_API_TOKEN` | API v2 token for authentication          |
-| `NETSKOPE_TENANT`    | Tenant hostname (overrides config file)  |
-| `NETSKOPE_PROFILE`   | Configuration profile to use             |
+| Variable              | Description                                    |
+|-----------------------|------------------------------------------------|
+| `NETSKOPE_API_TOKEN`  | API v2 token for authentication                |
+| `NETSKOPE_TENANT`     | Tenant hostname (overrides config file)        |
+| `NETSKOPE_PROFILE`    | Configuration profile to use                   |
+| `NETSKOPE_CA_BUNDLE`  | Custom CA bundle path (for SSL inspection)     |
+| `NETSKOPE_WIDE`       | Set to `1` to show all table columns           |
+| `NO_COLOR`            | Disable coloured output when set               |
 
 ```bash
 # Check which values are active and their sources
-netskope config show
+ntsk config show
 ```
 
 ---
@@ -179,16 +211,16 @@ netskope config show
 
 ```bash
 # Bash
-netskope --install-completion bash
+ntsk completion install bash
 
 # Zsh
-netskope --install-completion zsh
+ntsk completion install zsh
 
 # Fish
-netskope --install-completion fish
+ntsk completion install fish
 
 # PowerShell
-netskope --install-completion powershell
+ntsk completion install powershell
 ```
 
 ---
