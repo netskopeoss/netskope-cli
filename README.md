@@ -1,5 +1,7 @@
 # Netskope CLI
 
+> **Found a bug or have a feature request?** Please file an issue at [github.com/netskopeoss/netskope-cli/issues](https://github.com/netskopeoss/netskope-cli/issues).
+
 The official command-line interface for the [Netskope](https://www.netskope.com/) platform. Manage your tenant, query events, investigate alerts, configure policies, and more — all from your terminal.
 
 Available as both `netskope` and the shorter alias `ntsk`.

@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.2.12] - 2026-03-06
+
+- Add issue tracker link to README for bug reports and feature requests
+
 ## [0.2.11] - 2026-03-06
 
 - Add SSL/TLS CA bundle support for environments with Netskope client SSL inspection
