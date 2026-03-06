@@ -87,6 +87,155 @@ def _build_client(ctx: typer.Context) -> NetskopeClient:
 # ---------------------------------------------------------------------------
 
 
+@alerts_app.command("get")
+def get_alert(
+    ctx: typer.Context,
+    id: Optional[str] = typer.Argument(
+        None,
+        help="Alert ID (_id) to look up. If provided, other filters are ignored.",
+    ),
+    user: Optional[str] = typer.Option(
+        None,
+        "--user",
+        "-u",
+        help="Filter by user email address (exact match).",
+    ),
+    app: Optional[str] = typer.Option(
+        None,
+        "--app",
+        "-a",
+        help="Filter by application name (exact match).",
+    ),
+    alert_name: Optional[str] = typer.Option(
+        None,
+        "--name",
+        "-n",
+        help="Filter by alert name (exact match).",
+    ),
+    alert_type: Optional[str] = typer.Option(
+        None,
+        "--type",
+        "-t",
+        help="Filter by alert type (e.g. DLP, malware, anomaly).",
+    ),
+    severity: Optional[str] = typer.Option(
+        None,
+        "--severity",
+        help="Filter by severity level (e.g. high, medium, low, critical).",
+    ),
+    activity: Optional[str] = typer.Option(
+        None,
+        "--activity",
+        help="Filter by activity type (e.g. 'Login Attempt', 'Upload').",
+    ),
+    start: Optional[str] = typer.Option(
+        None,
+        "--start",
+        "--since",
+        "-s",
+        help="Start of time range. Relative offset (24h, 7d) or epoch.",
+    ),
+    end: Optional[str] = typer.Option(
+        None,
+        "--end",
+        "-e",
+        help="End of time range. Relative offset or epoch.",
+    ),
+    limit: int = typer.Option(
+        25,
+        "--limit",
+        "-l",
+        help="Maximum number of alerts to return (ignored when looking up by ID).",
+    ),
+) -> None:
+    """Look up alerts by ID, user, app, name, or other fields.
+
+    When an ID is provided as a positional argument, fetches that single alert.
+    Otherwise, filters alerts by the provided options and returns matches.
+
+    Examples:
+        ntsk alerts get f1c18fd0065a21e4ace54efb
+        ntsk alerts get --user alice@example.com --since 7d
+        ntsk alerts get --app Slack --type DLP
+        ntsk alerts get --severity high --since 24h
+        ntsk alerts get --name "ShinyHunters: cargurus.com Breach"
+        ntsk alerts get --activity "Login Attempt" --user bob@example.com
+    """
+    import re
+
+    if id is None and all(v is None for v in [user, app, alert_name, alert_type, severity, activity]):
+        from netskope_cli.core.output import echo_error
+
+        echo_error(
+            "Provide an alert ID or at least one filter" " (--user, --app, --name, --type, --severity, --activity)."
+        )
+        raise typer.Exit(code=1)
+
+    client = _build_client(ctx)
+    formatter = _get_formatter(ctx)
+    fmt = _get_output_format(ctx)
+    state = ctx.obj
+
+    # Build JQL query from the provided filters.
+    clauses: list[str] = []
+
+    def _safe_value(name: str, value: str) -> str:
+        """Allow printable chars but reject quotes that would break JQL."""
+        if '"' in value or "'" in value:
+            from netskope_cli.core.output import echo_error
+
+            echo_error(f"Invalid --{name} value: quotes are not allowed.")
+            raise typer.Exit(code=1)
+        return value
+
+    if id is not None:
+        if not re.match(r"^[a-fA-F0-9]+$", id):
+            from netskope_cli.core.output import echo_error
+
+            echo_error(f"Invalid alert ID: {id!r}. Expected a hex string.")
+            raise typer.Exit(code=1)
+        clauses.append(f'_id eq "{id}"')
+    else:
+        if user is not None:
+            clauses.append(f'user eq "{_safe_value("user", user)}"')
+        if app is not None:
+            clauses.append(f'app eq "{_safe_value("app", app)}"')
+        if alert_name is not None:
+            clauses.append(f'alert_name eq "{_safe_value("name", alert_name)}"')
+        if alert_type is not None:
+            clauses.append(f'alert_type eq "{_safe_value("type", alert_type)}"')
+        if severity is not None:
+            clauses.append(f'severity eq "{_safe_value("severity", severity)}"')
+        if activity is not None:
+            clauses.append(f'activity eq "{_safe_value("activity", activity)}"')
+
+    query = " AND ".join(clauses)
+    params: dict[str, object] = {"query": query}
+
+    if start is not None or end is not None:
+        from netskope_cli.utils.helpers import validate_time_range
+
+        effective_start = start or "24h"
+        unix_start, unix_end = validate_time_range(effective_start, end)
+        params["starttime"] = unix_start
+        params["endtime"] = unix_end
+
+    params["limit"] = 1 if id is not None else limit
+
+    quiet = getattr(state, "quiet", False) if state else False
+    with spinner("Fetching alert...", quiet=quiet):
+        data = client.request("GET", "/api/v2/events/datasearch/alert", params=params or None)
+
+    formatter.format_output(
+        data,
+        fmt=fmt,
+        title="Alert" if id is not None else "Alerts",
+        default_fields=["_id", "alert_name", "alert_type", "severity", "user", "app", "activity", "timestamp"],
+        strip_internal=not (state.raw if state else False),
+        add_iso_timestamps=not (state.epoch if state else False),
+    )
+
+
 @alerts_app.command("list")
 def list_alerts(
     ctx: typer.Context,

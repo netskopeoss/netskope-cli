@@ -103,11 +103,23 @@ ntsk status
 # List recent alerts
 ntsk alerts list --since 24h --limit 10
 
+# Look up a specific alert by ID
+ntsk alerts get f1c18fd0065a21e4ace54efb
+
+# Find alerts for a specific user
+ntsk alerts get --user alice@example.com --since 7d
+
 # Alert summary by type
 ntsk alerts summary --by severity
 
 # Search events by type
 ntsk events list --type alert --limit 20
+
+# Look up events by user and app
+ntsk events get --type application --user alice@example.com --since 7d
+
+# Find blocked page events for a domain
+ntsk events get --type page --domain example.com --action block
 
 # List SCIM users
 ntsk users list
@@ -160,8 +172,8 @@ ntsk users list -o csv > users.csv
 | Category              | Commands                                                   |
 |-----------------------|------------------------------------------------------------|
 | **Status & Setup**    | `doctor`, `tenant`, `status`, `commands`                   |
-| **Events**            | `events list --type alert\|application\|network\|...`      |
-| **Alerts**            | `alerts list`, `alerts summary`, `alerts types`            |
+| **Events**            | `events get`, `events list --type alert\|application\|network\|...` |
+| **Alerts**            | `alerts get`, `alerts list`, `alerts summary`, `alerts types` |
 | **Incidents**         | `incidents list`, `incidents search`, `incidents uci`      |
 | **Users & RBAC**      | `users list`, `users groups list`, `rbac roles list`       |
 | **Policy**            | `policy url-list list`, `policy deploy`                    |

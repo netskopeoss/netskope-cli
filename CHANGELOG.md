@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.20] - 2026-03-06
+
+- Add `alerts get` command — look up alerts by ID, user, app, name, type, severity, or activity without writing raw JQL
+- Add `events get` command — look up events by ID, user, app, action, severity, policy, domain, source/destination IP, or hostname
+- Update README and interactive HTML guide with examples and documentation for the new `get` commands
+- Update User Investigation Workflow in docs to use the new ergonomic `get` commands
+
 ## [0.2.19] - 2026-03-06
 
 - Fix zsh/bash/fish shell completion (`ntsk completion install`) failing with `Error: 'COMP_WORDS'` when `add_completion=False` is set on the Typer app — Typer's custom completion classes were never registered, causing Click's default handler to run instead

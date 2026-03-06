@@ -98,7 +98,7 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
         </div>
         <span class="font-bold text-lg tracking-tight">Netskope CLI</span>
-        <span class="badge badge-blue ml-1">v0.2.19</span>
+        <span class="badge badge-blue ml-1">v0.2.20</span>
       </div>
       <div class="hidden md:flex items-center gap-6 text-sm">
         <a href="#getting-started" class="nav-link text-muted-foreground">Getting Started</a>
@@ -249,7 +249,7 @@
     <div class="code-block p-4 relative">
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
       <code><span class="prompt">$</span> ntsk --version
-<span class="output">netskope-cli 0.2.19</span>
+<span class="output">netskope-cli 0.2.20</span>
 <span class="prompt">$</span> ntsk --help</code>
     </div>
   </div>
@@ -824,7 +824,7 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
         <span class="w-2 h-2 rounded-full bg-red-500"></span>
         <span class="font-semibold text-sm">Alerts</span>
       </div>
-      <p class="text-xs text-muted-foreground">List, filter, summarize security alerts</p>
+      <p class="text-xs text-muted-foreground">Get, list, filter, summarize security alerts</p>
     </a>
     <a href="#cmd-events" class="card p-4 hover:border-ns-blue transition-colors">
       <div class="flex items-center gap-2 mb-1">
@@ -951,6 +951,48 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
         </div>
       </details>
 
+      <!-- alerts get -->
+      <details class="card">
+        <summary class="p-4 font-semibold text-sm">alerts get</summary>
+        <div class="px-4 pb-4">
+          <p class="text-sm text-muted-foreground mb-3">Look up alerts by ID, user, app, name, or other fields. Queries <code>GET /api/v2/events/datasearch/alert</code>.</p>
+          <div class="table-wrapper mb-3">
+            <table>
+              <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td><code class="text-xs">ID</code> (positional)</td><td>string</td><td>&mdash;</td><td>Alert <code>_id</code> to look up (hex string)</td></tr>
+                <tr><td><code class="text-xs">-u, --user</code></td><td>string</td><td>&mdash;</td><td>Filter by user email</td></tr>
+                <tr><td><code class="text-xs">-a, --app</code></td><td>string</td><td>&mdash;</td><td>Filter by application name</td></tr>
+                <tr><td><code class="text-xs">-n, --name</code></td><td>string</td><td>&mdash;</td><td>Filter by alert name</td></tr>
+                <tr><td><code class="text-xs">-t, --type</code></td><td>string</td><td>&mdash;</td><td>Filter by alert type (DLP, malware, etc.)</td></tr>
+                <tr><td><code class="text-xs">--severity</code></td><td>string</td><td>&mdash;</td><td>Filter by severity (high, medium, low, critical)</td></tr>
+                <tr><td><code class="text-xs">--activity</code></td><td>string</td><td>&mdash;</td><td>Filter by activity type (e.g. Login Attempt)</td></tr>
+                <tr><td><code class="text-xs">-s, --start, --since</code></td><td>string</td><td>&mdash;</td><td>Start time. Epoch or relative: <code>24h</code>, <code>7d</code></td></tr>
+                <tr><td><code class="text-xs">-e, --end</code></td><td>string</td><td>now</td><td>End time</td></tr>
+                <tr><td><code class="text-xs">-l, --limit</code></td><td>int</td><td>25</td><td>Max records (ignored for ID lookup)</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="code-block p-4 relative text-xs">
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            <code><span class="comment"># Look up a single alert by ID</span>
+<span class="prompt">$</span> ntsk alerts get <span class="string">f1c18fd0065a21e4ace54efb</span>
+
+<span class="comment"># Find alerts for a specific user</span>
+<span class="prompt">$</span> ntsk alerts get <span class="flag">--user</span> <span class="string">alice@example.com</span> <span class="flag">--since</span> <span class="string">7d</span>
+
+<span class="comment"># Filter by app and type</span>
+<span class="prompt">$</span> ntsk alerts get <span class="flag">--app</span> <span class="string">Slack</span> <span class="flag">--type</span> <span class="string">DLP</span>
+
+<span class="comment"># High severity login attempts</span>
+<span class="prompt">$</span> ntsk alerts get <span class="flag">--severity</span> <span class="string">high</span> <span class="flag">--activity</span> <span class="string">"Login Attempt"</span> <span class="flag">--since</span> <span class="string">24h</span>
+
+<span class="comment"># Combine multiple filters</span>
+<span class="prompt">$</span> ntsk <span class="flag">-o</span> <span class="string">json</span> alerts get <span class="flag">--user</span> <span class="string">bob@company.com</span> <span class="flag">--type</span> <span class="string">"Compromised Credential"</span></code>
+          </div>
+        </div>
+      </details>
+
       <!-- alerts summary -->
       <details class="card">
         <summary class="p-4 font-semibold text-sm">alerts summary</summary>
@@ -1033,6 +1075,51 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
         </div>
       </div>
     </div>
+
+    <details class="card">
+      <summary class="p-4 font-semibold text-sm">events get</summary>
+      <div class="px-4 pb-4">
+        <p class="text-sm text-muted-foreground mb-3">Look up events by ID, user, app, action, or other fields. Requires <code>--type</code> to specify the event category. API: <code>GET /api/v2/events/datasearch/{type}</code></p>
+        <div class="table-wrapper mb-3">
+          <table>
+            <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+            <tbody>
+              <tr><td><code class="text-xs">ID</code> (positional)</td><td>string</td><td>&mdash;</td><td>Event <code>_id</code> to look up (hex string)</td></tr>
+              <tr><td><code class="text-xs">-t, --type</code></td><td>string</td><td>&mdash;</td><td>Event type (required)</td></tr>
+              <tr><td><code class="text-xs">-u, --user</code></td><td>string</td><td>&mdash;</td><td>Filter by user email</td></tr>
+              <tr><td><code class="text-xs">-a, --app</code></td><td>string</td><td>&mdash;</td><td>Filter by application name</td></tr>
+              <tr><td><code class="text-xs">--action</code></td><td>string</td><td>&mdash;</td><td>Filter by action (allow, block, alert)</td></tr>
+              <tr><td><code class="text-xs">--severity</code></td><td>string</td><td>&mdash;</td><td>Filter by severity level</td></tr>
+              <tr><td><code class="text-xs">--policy</code></td><td>string</td><td>&mdash;</td><td>Filter by policy name</td></tr>
+              <tr><td><code class="text-xs">--domain</code></td><td>string</td><td>&mdash;</td><td>Filter by domain name</td></tr>
+              <tr><td><code class="text-xs">--srcip</code></td><td>string</td><td>&mdash;</td><td>Filter by source IP</td></tr>
+              <tr><td><code class="text-xs">--dstip</code></td><td>string</td><td>&mdash;</td><td>Filter by destination IP</td></tr>
+              <tr><td><code class="text-xs">--hostname</code></td><td>string</td><td>&mdash;</td><td>Filter by device hostname</td></tr>
+              <tr><td><code class="text-xs">-s, --start, --since</code></td><td>string</td><td>&mdash;</td><td>Start time (epoch or relative)</td></tr>
+              <tr><td><code class="text-xs">-e, --end</code></td><td>string</td><td>now</td><td>End time</td></tr>
+              <tr><td><code class="text-xs">-l, --limit</code></td><td>int</td><td>25</td><td>Max records (ignored for ID lookup)</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="code-block p-4 relative text-xs">
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          <code><span class="comment"># Look up a single event by ID</span>
+<span class="prompt">$</span> ntsk events get <span class="string">abc123def456</span> <span class="flag">--type</span> <span class="string">alert</span>
+
+<span class="comment"># Find application events for a user</span>
+<span class="prompt">$</span> ntsk events get <span class="flag">--type</span> <span class="string">application</span> <span class="flag">--user</span> <span class="string">alice@example.com</span> <span class="flag">--since</span> <span class="string">7d</span>
+
+<span class="comment"># Page events for a specific domain</span>
+<span class="prompt">$</span> ntsk events get <span class="flag">--type</span> <span class="string">page</span> <span class="flag">--domain</span> <span class="string">github.com</span> <span class="flag">--since</span> <span class="string">24h</span>
+
+<span class="comment"># Network events by source and destination IP</span>
+<span class="prompt">$</span> ntsk events get <span class="flag">--type</span> <span class="string">network</span> <span class="flag">--srcip</span> <span class="string">10.0.0.1</span> <span class="flag">--dstip</span> <span class="string">192.168.1.1</span>
+
+<span class="comment"># Blocked events for a specific app</span>
+<span class="prompt">$</span> ntsk <span class="flag">-o</span> <span class="string">json</span> events get <span class="flag">--type</span> <span class="string">application</span> <span class="flag">--action</span> <span class="string">block</span> <span class="flag">--app</span> <span class="string">ChatGPT</span> <span class="flag">--since</span> <span class="string">7d</span></code>
+        </div>
+      </div>
+    </details>
 
     <details class="card" open>
       <summary class="p-4 font-semibold text-sm">events list / events {type}</summary>
@@ -2026,18 +2113,16 @@ ntsk alerts list <span class="flag">-t</span> <span class="string">"Compromised 
 <span class="prompt">$</span> ntsk incidents uci <span class="string">suspect@company.com</span> <span class="flag">--from-time</span> <span class="string">30d</span>
 
 <span class="comment"># 2. Get their alerts</span>
-<span class="prompt">$</span> ntsk alerts list <span class="flag">--query</span> <span class="string">'user eq "suspect@company.com"'</span> <span class="flag">--since</span> <span class="string">30d</span>
+<span class="prompt">$</span> ntsk alerts get <span class="flag">--user</span> <span class="string">suspect@company.com</span> <span class="flag">--since</span> <span class="string">30d</span>
 
 <span class="comment"># 3. Check UBA anomalies</span>
 <span class="prompt">$</span> ntsk incidents anomalies <span class="string">suspect@company.com</span>
 
 <span class="comment"># 4. Review their application usage</span>
-<span class="prompt">$</span> ntsk events application <span class="flag">--query</span> <span class="string">'user eq "suspect@company.com"'</span> <span class="flag">--start</span> <span class="string">30d</span> \
-  <span class="flag">--group-by</span> <span class="string">app</span>
+<span class="prompt">$</span> ntsk events get <span class="flag">--type</span> <span class="string">application</span> <span class="flag">--user</span> <span class="string">suspect@company.com</span> <span class="flag">--since</span> <span class="string">30d</span>
 
-<span class="comment"># 5. Check for data exfiltration (DLP events)</span>
-<span class="prompt">$</span> ntsk <span class="flag">-o</span> <span class="string">json</span> alerts list <span class="flag">--query</span> <span class="string">'user eq "suspect@company.com" AND alert_type eq "DLP"'</span> \
-  <span class="flag">--since</span> <span class="string">30d</span> <span class="flag">-f</span> <span class="string">alert_name,app,dlp_file,dlp_rule_severity,timestamp</span></code>
+<span class="comment"># 5. Check for data exfiltration (DLP alerts)</span>
+<span class="prompt">$</span> ntsk alerts get <span class="flag">--user</span> <span class="string">suspect@company.com</span> <span class="flag">--type</span> <span class="string">DLP</span> <span class="flag">--since</span> <span class="string">30d</span></code>
       </div>
     </div>
   </div>
@@ -2154,6 +2239,7 @@ ntsk alerts list <span class="flag">-t</span> <span class="string">"Compromised 
       <div class="code-block p-4 text-xs overflow-x-auto" style="max-height: 600px; overflow-y: auto;">
         <code><span class="output">netskope
 &#9500;&#9472;&#9472; alerts
+&#9474;   &#9500;&#9472;&#9472; get         Look up alerts by ID, user, app, or other fields
 &#9474;   &#9500;&#9472;&#9472; list        List security alerts
 &#9474;   &#9500;&#9472;&#9472; summary     Summarise alerts by grouping field
 &#9474;   &#9492;&#9472;&#9472; types       List known alert types
@@ -2205,6 +2291,7 @@ ntsk alerts list <span class="flag">-t</span> <span class="string">"Compromised 
 &#9500;&#9472;&#9472; enrollment
 &#9474;   &#9492;&#9472;&#9472; tokens &#9472; list / create / delete
 &#9500;&#9472;&#9472; events
+&#9474;   &#9500;&#9472;&#9472; get         Look up events by ID, user, app, or other fields
 &#9474;   &#9500;&#9472;&#9472; list / alert / application / audit
 &#9474;   &#9500;&#9472;&#9472; client-status / epdlp / incident
 &#9474;   &#9492;&#9472;&#9472; infrastructure / network / page / transaction
@@ -2280,7 +2367,7 @@ ntsk alerts list <span class="flag">-t</span> <span class="string">"Compromised 
       <div class="w-6 h-6 rounded bg-ns-blue flex items-center justify-center">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
       </div>
-      <span>Netskope CLI v0.2.19</span>
+      <span>Netskope CLI v0.2.20</span>
       <span>&middot;</span>
       <span>MIT License</span>
     </div>

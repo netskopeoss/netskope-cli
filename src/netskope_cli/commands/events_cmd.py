@@ -374,6 +374,155 @@ _EVENT_TYPE_MAP: dict[str, tuple[str, str, list[str]]] = {
 _VALID_EVENT_TYPES = ", ".join(sorted(_EVENT_TYPE_MAP.keys())) + ", audit"
 
 
+@events_app.command("get")
+def events_get(
+    ctx: typer.Context,
+    id: Optional[str] = typer.Argument(
+        None,
+        help="Event ID (_id) to look up. If provided, other filters are ignored.",
+    ),
+    event_type: str = typer.Option(
+        ...,
+        "--type",
+        "-t",
+        help=f"Event type to query. Valid values: {_VALID_EVENT_TYPES}.",
+    ),
+    user: Optional[str] = typer.Option(
+        None,
+        "--user",
+        "-u",
+        help="Filter by user email (exact match).",
+    ),
+    app: Optional[str] = typer.Option(
+        None,
+        "--app",
+        "-a",
+        help="Filter by application name (exact match).",
+    ),
+    action: Optional[str] = typer.Option(
+        None,
+        "--action",
+        help="Filter by action (e.g. allow, block, alert).",
+    ),
+    severity: Optional[str] = typer.Option(
+        None,
+        "--severity",
+        help="Filter by severity level.",
+    ),
+    policy: Optional[str] = typer.Option(
+        None,
+        "--policy",
+        help="Filter by policy name.",
+    ),
+    domain: Optional[str] = typer.Option(
+        None,
+        "--domain",
+        help="Filter by domain name.",
+    ),
+    srcip: Optional[str] = typer.Option(
+        None,
+        "--srcip",
+        help="Filter by source IP address.",
+    ),
+    dstip: Optional[str] = typer.Option(
+        None,
+        "--dstip",
+        help="Filter by destination IP address.",
+    ),
+    hostname: Optional[str] = typer.Option(
+        None,
+        "--hostname",
+        help="Filter by device hostname.",
+    ),
+    start: Optional[str] = typer.Option(None, "--start", "--since", "-s", help=_HELP_START),
+    end: Optional[str] = typer.Option(None, "--end", "-e", help=_HELP_END),
+    limit: int = typer.Option(
+        25,
+        "--limit",
+        "-l",
+        help="Maximum number of events to return (ignored for ID lookup).",
+    ),
+) -> None:
+    """Look up events by ID, user, app, action, or other fields.
+
+    When an ID is provided as a positional argument, fetches that single event.
+    Otherwise, filters events by the provided options and returns matches.
+    Requires --type to specify the event category.
+
+    Examples:
+        ntsk events get abc123def456 --type alert
+        ntsk events get --type application --user alice@example.com --since 7d
+        ntsk events get --type page --domain github.com --since 24h
+        ntsk events get --type network --srcip 10.0.0.1 --dstip 192.168.1.1
+        ntsk events get --type alert --severity high --app Slack
+        ntsk events get --type application --action block --policy "DLP Policy"
+    """
+    import re
+
+    if id is None and all(v is None for v in [user, app, action, severity, policy, domain, srcip, dstip, hostname]):
+        raise NetskopeError(
+            "Provide an event ID or at least one filter "
+            "(--user, --app, --action, --severity, --policy, --domain, --srcip, --dstip, --hostname).",
+        )
+
+    normalized = event_type.lower().strip()
+    if normalized == "audit":
+        raise NetskopeError(
+            "The audit event type does not support field-level filtering.",
+            suggestion="Use 'events audit' with --type instead.",
+        )
+    if normalized not in _EVENT_TYPE_MAP:
+        raise NetskopeError(
+            f"Unknown event type '{event_type}'.",
+            suggestion=f"Valid types: {_VALID_EVENT_TYPES}",
+        )
+
+    def _safe_value(name: str, value: str) -> str:
+        if '"' in value or "'" in value:
+            raise NetskopeError(f"Invalid --{name} value: quotes are not allowed.")
+        return value
+
+    clauses: list[str] = []
+
+    if id is not None:
+        if not re.match(r"^[a-fA-F0-9]+$", id):
+            raise NetskopeError(f"Invalid event ID: {id!r}. Expected a hex string.")
+        clauses.append(f'_id eq "{id}"')
+    else:
+        if user is not None:
+            clauses.append(f'user eq "{_safe_value("user", user)}"')
+        if app is not None:
+            clauses.append(f'app eq "{_safe_value("app", app)}"')
+        if action is not None:
+            clauses.append(f'action eq "{_safe_value("action", action)}"')
+        if severity is not None:
+            clauses.append(f'severity eq "{_safe_value("severity", severity)}"')
+        if policy is not None:
+            clauses.append(f'policy eq "{_safe_value("policy", policy)}"')
+        if domain is not None:
+            clauses.append(f'domain eq "{_safe_value("domain", domain)}"')
+        if srcip is not None:
+            clauses.append(f'srcip eq "{_safe_value("srcip", srcip)}"')
+        if dstip is not None:
+            clauses.append(f'dstip eq "{_safe_value("dstip", dstip)}"')
+        if hostname is not None:
+            clauses.append(f'hostname eq "{_safe_value("hostname", hostname)}"')
+
+    query = " AND ".join(clauses)
+    endpoint, title, default_fields = _EVENT_TYPE_MAP[normalized]
+
+    _run_event_query(
+        ctx,
+        endpoint,
+        query=query,
+        start=start,
+        end=end,
+        limit=1 if id is not None else limit,
+        title="Event" if id is not None else title,
+        default_fields=default_fields,
+    )
+
+
 @events_app.command("list")
 def events_list(
     ctx: typer.Context,
