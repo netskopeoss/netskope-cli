@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.2.16] - 2026-03-06
+
+- Improve playwright missing error message: clarify that browser SSO is optional, show correct `netskope-cli[browser]` install command, and suggest API token auth as an alternative
+
 ## [0.2.15] - 2026-03-06
 
 - Fix `alerts summary` to show actual counts per group (API only returned unique values, now aggregates locally)

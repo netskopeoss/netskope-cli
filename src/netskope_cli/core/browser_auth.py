@@ -79,8 +79,13 @@ def browser_login(
         from playwright.sync_api import sync_playwright
     except ImportError as exc:
         raise AuthError(
-            "Playwright is not installed.",
-            suggestion="Run: pip install playwright && playwright install chromium",
+            "Browser-based SSO login requires the optional 'playwright' package.",
+            suggestion=(
+                "Install it with:\n"
+                "  pip install 'netskope-cli[browser]' && playwright install chromium\n\n"
+                "If you don't need browser SSO, use API token auth instead:\n"
+                "  netskope config set-token"
+            ),
         ) from exc
 
     cfg = load_config()
@@ -193,8 +198,13 @@ def browser_login_with_credentials(
         from playwright.sync_api import sync_playwright
     except ImportError as exc:
         raise AuthError(
-            "Playwright is not installed.",
-            suggestion="Run: pip install playwright && playwright install chromium",
+            "Browser-based SSO login requires the optional 'playwright' package.",
+            suggestion=(
+                "Install it with:\n"
+                "  pip install 'netskope-cli[browser]' && playwright install chromium\n\n"
+                "If you don't need browser SSO, use API token auth instead:\n"
+                "  netskope config set-token"
+            ),
         ) from exc
 
     if not tenant_url.startswith("http"):
