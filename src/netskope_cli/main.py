@@ -18,13 +18,14 @@ from typing import Optional
 import click.exceptions
 import typer
 from rich.console import Console
+from typer._completion_classes import completion_init
 
 from netskope_cli.core.exceptions import NetskopeError
 
 # ---------------------------------------------------------------------------
 # Version — single source of truth
 # ---------------------------------------------------------------------------
-__version__ = "0.2.18"
+__version__ = "0.2.19"
 
 # ---------------------------------------------------------------------------
 # Global state object threaded through the context
@@ -106,6 +107,11 @@ app = typer.Typer(
     rich_markup_mode="rich",
     pretty_exceptions_enable=False,  # We handle our own errors
 )
+
+# Register Typer's custom shell completion classes so that zsh/bash/fish
+# completion works even though add_completion=False disables the built-in
+# --install-completion flag (which would normally trigger this registration).
+completion_init()
 
 
 # ---------------------------------------------------------------------------

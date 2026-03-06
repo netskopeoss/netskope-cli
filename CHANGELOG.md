@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.2.19] - 2026-03-06
+
+- Fix zsh/bash/fish shell completion (`ntsk completion install`) failing with `Error: 'COMP_WORDS'` when `add_completion=False` is set on the Typer app — Typer's custom completion classes were never registered, causing Click's default handler to run instead
+
 ## [0.2.18] - 2026-03-06
 
 - Add interactive HTML guide with shadcn/Tailwind design, Mermaid architecture diagrams, real API response examples, and full command reference
