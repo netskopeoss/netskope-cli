@@ -14,6 +14,13 @@ Available as both `netskope` and the shorter alias `ntsk`.
 pip install netskope
 ```
 
+### Homebrew (macOS / Linux)
+
+```bash
+brew tap netskopeoss/tap
+brew install netskope
+```
+
 ### pipx (recommended — isolated install)
 
 [pipx](https://pypa.github.io/pipx/) installs the CLI in its own virtual environment so it won't conflict with other Python packages.

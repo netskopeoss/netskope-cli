@@ -44,3 +44,6 @@ poetry.lock
 
 # Local scratch files
 local/
+
+# Local-only Claude Code commands (release automation, etc.)
+.claude/commands/
