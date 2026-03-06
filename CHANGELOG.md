@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.18] - 2026-03-06
+
+- Add interactive HTML guide with shadcn/Tailwind design, Mermaid architecture diagrams, real API response examples, and full command reference
+- Publish guide as GitHub Pages at https://netskopeoss.github.io/netskope-cli/
+- Add homepage and documentation URLs to pyproject.toml for PyPI display
+- Add guide link to top of README.md
+- Set GitHub repo homepage to the guide URL
+
 ## [0.2.17] - 2026-03-06
 
 - Allow `intel url-lookup` to accept URL as a positional argument (e.g. `ntsk intel url-lookup google.com`) in addition to `--url`
