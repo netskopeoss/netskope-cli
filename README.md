@@ -237,6 +237,22 @@ ntsk completion install powershell
 
 ---
 
+## AI Agent Skill (Claude Code)
+
+A ready-to-use [Claude Code skill](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/slash-commands) is included at [`.claude/commands/netskope.md`](.claude/commands/netskope.md). It teaches an AI agent how to use every `netskope` CLI command — including flags, field names, gotchas, and workflow patterns.
+
+**Setup:** Copy the file into your project's `.claude/commands/` directory (or symlink it), then use the `/netskope` slash command in Claude Code:
+
+```
+/netskope show me high severity alerts from the last 24 hours
+/netskope investigate user alice@example.com
+/netskope export application events from last 7 days as CSV
+```
+
+The skill is also available as a copyable block in the [interactive guide](https://netskopeoss.github.io/netskope-cli/#ai-agent-skill).
+
+---
+
 ## Requirements
 
 - Python 3.11 or later

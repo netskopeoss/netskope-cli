@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.21] - 2026-03-06
+
+- Add AI Agent Skill (`.claude/commands/netskope.md`) — a Claude Code `/netskope` slash command that teaches AI agents how to use every CLI command, with verified flags, field names, gotchas, and workflow patterns
+- Add AI Agent Skill section to the interactive HTML guide with collapsible viewer and copy-to-clipboard button
+- Add AI Agent Skill section to README with setup instructions and examples
+- Track `.claude/commands/` in git for shared agent skills
+
 ## [0.2.20] - 2026-03-06
 
 - Add `alerts get` command — look up alerts by ID, user, app, name, type, severity, or activity without writing raw JQL
