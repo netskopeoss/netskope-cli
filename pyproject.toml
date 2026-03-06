@@ -6,6 +6,8 @@ authors = ["Netskope"]
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/netskopeoss/netskope-cli"
+homepage = "https://netskopeoss.github.io/netskope-cli/"
+documentation = "https://netskopeoss.github.io/netskope-cli/"
 packages = [{include = "netskope_cli", from = "src"}]
 
 [tool.poetry.scripts]

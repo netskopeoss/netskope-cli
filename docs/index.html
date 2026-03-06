@@ -1,0 +1,2342 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Netskope CLI — Complete Guide</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] },
+          colors: {
+            border: '#e5e7eb', input: '#e5e7eb', ring: '#2563eb',
+            background: '#ffffff', foreground: '#0f172a',
+            primary: { DEFAULT: '#0f172a', foreground: '#f8fafc' },
+            secondary: { DEFAULT: '#f1f5f9', foreground: '#0f172a' },
+            muted: { DEFAULT: '#f1f5f9', foreground: '#64748b' },
+            accent: { DEFAULT: '#f1f5f9', foreground: '#0f172a' },
+            destructive: { DEFAULT: '#ef4444', foreground: '#f8fafc' },
+            card: { DEFAULT: '#ffffff', foreground: '#0f172a' },
+            ns: { blue: '#0066FF', dark: '#0A1628', green: '#10B981', orange: '#F59E0B', red: '#EF4444', purple: '#8B5CF6' }
+          },
+          borderRadius: { lg: '0.75rem', md: '0.5rem', sm: '0.375rem' },
+        }
+      }
+    }
+  </script>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: 'Inter', system-ui, sans-serif; background: #ffffff; color: #0f172a; }
+    code, pre { font-family: 'JetBrains Mono', monospace; }
+    .code-block { background: #0f172a; color: #e2e8f0; border-radius: 0.75rem; overflow-x: auto; }
+    .code-block code { font-size: 0.8125rem; line-height: 1.7; white-space: pre; display: block; }
+    .code-block .prompt { color: #10B981; user-select: none; }
+    .code-block .comment { color: #64748b; }
+    .code-block .flag { color: #60a5fa; }
+    .code-block .string { color: #fbbf24; }
+    .code-block .output { color: #94a3b8; }
+    .badge { display: inline-flex; align-items: center; border-radius: 9999px; padding: 0.125rem 0.625rem; font-size: 0.75rem; font-weight: 500; }
+    .badge-blue { background: #dbeafe; color: #1d4ed8; }
+    .badge-green { background: #dcfce7; color: #15803d; }
+    .badge-orange { background: #fef3c7; color: #b45309; }
+    .badge-red { background: #fee2e2; color: #b91c1c; }
+    .badge-purple { background: #ede9fe; color: #6d28d9; }
+    .badge-gray { background: #f1f5f9; color: #475569; }
+    .card { background: #ffffff; border: 1px solid #e5e7eb; border-radius: 0.75rem; }
+    .card:hover { border-color: #cbd5e1; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+    .nav-link { transition: color 0.15s; }
+    .nav-link:hover { color: #0066FF; }
+    .nav-link.active { color: #0066FF; font-weight: 600; }
+    .sidebar { position: sticky; top: 2rem; max-height: calc(100vh - 4rem); overflow-y: auto; }
+    .sidebar::-webkit-scrollbar { width: 3px; }
+    .sidebar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    .table-wrapper { overflow-x: auto; }
+    .table-wrapper table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    .table-wrapper th { background: #f8fafc; font-weight: 600; text-align: left; padding: 0.75rem 1rem; border-bottom: 2px solid #e5e7eb; }
+    .table-wrapper td { padding: 0.75rem 1rem; border-bottom: 1px solid #f1f5f9; }
+    .table-wrapper tr:hover td { background: #f8fafc; }
+    .tab-btn { padding: 0.5rem 1rem; font-size: 0.8125rem; font-weight: 500; border-bottom: 2px solid transparent; color: #64748b; cursor: pointer; transition: all 0.15s; }
+    .tab-btn:hover { color: #0f172a; }
+    .tab-btn.active { color: #0f172a; border-bottom-color: #0f172a; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    .toc-item { border-left: 2px solid #e5e7eb; padding-left: 0.75rem; transition: all 0.15s; }
+    .toc-item:hover { border-left-color: #0066FF; }
+    .toc-item.active { border-left-color: #0066FF; }
+    details summary { cursor: pointer; list-style: none; }
+    details summary::-webkit-details-marker { display: none; }
+    details summary::before { content: '▶'; display: inline-block; margin-right: 0.5rem; font-size: 0.625rem; transition: transform 0.2s; vertical-align: middle; }
+    details[open] summary::before { transform: rotate(90deg); }
+    .copy-btn { position: absolute; top: 0.75rem; right: 0.75rem; padding: 0.25rem 0.5rem; border-radius: 0.375rem; background: rgba(255,255,255,0.1); color: #94a3b8; font-size: 0.6875rem; cursor: pointer; opacity: 0; transition: opacity 0.2s; }
+    .code-block:hover .copy-btn { opacity: 1; }
+    .copy-btn:hover { background: rgba(255,255,255,0.2); color: #e2e8f0; }
+    @media (max-width: 1024px) { .sidebar-col { display: none; } }
+    .mermaid { background: transparent !important; }
+    .hero-grid { background-image: radial-gradient(#e5e7eb 1px, transparent 1px); background-size: 24px 24px; }
+    .gradient-text { background: linear-gradient(135deg, #0066FF, #8B5CF6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .section-anchor { scroll-margin-top: 2rem; }
+    .real-output { background: #0f172a; color: #e2e8f0; border-radius: 0.75rem; font-size: 0.8125rem; line-height: 1.6; overflow-x: auto; }
+    .real-output .table-header { color: #60a5fa; }
+    .real-output .table-border { color: #475569; }
+    .real-output .check { color: #10B981; }
+    .real-output .info { color: #94a3b8; }
+    .real-output .count { color: #fbbf24; }
+  </style>
+</head>
+<body class="antialiased">
+<!-- Navigation -->
+<nav class="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-lg border-b border-border">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="flex items-center justify-between h-14">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg bg-ns-blue flex items-center justify-center">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        </div>
+        <span class="font-bold text-lg tracking-tight">Netskope CLI</span>
+        <span class="badge badge-blue ml-1">v0.2.17</span>
+      </div>
+      <div class="hidden md:flex items-center gap-6 text-sm">
+        <a href="#getting-started" class="nav-link text-muted-foreground">Getting Started</a>
+        <a href="#commands" class="nav-link text-muted-foreground">Commands</a>
+        <a href="#output-formats" class="nav-link text-muted-foreground">Output</a>
+        <a href="#architecture" class="nav-link text-muted-foreground">Architecture</a>
+        <a href="#workflows" class="nav-link text-muted-foreground">Workflows</a>
+        <a href="https://github.com/netskopeoss/netskope-cli" target="_blank" class="nav-link text-muted-foreground flex items-center gap-1">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+          GitHub
+        </a>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<!-- Hero -->
+<section class="relative pt-14">
+  <div class="hero-grid absolute inset-0 opacity-50"></div>
+  <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-16">
+    <div class="max-w-3xl">
+      <div class="flex items-center gap-2 mb-6">
+        <span class="badge badge-green">Open Source</span>
+        <span class="badge badge-blue">Python 3.11+</span>
+        <span class="badge badge-purple">MIT License</span>
+      </div>
+      <h1 class="text-5xl sm:text-6xl font-black tracking-tight leading-[1.1] mb-6">
+        The complete guide to <span class="gradient-text">Netskope CLI</span>
+      </h1>
+      <p class="text-xl text-muted-foreground leading-relaxed mb-8">
+        Manage your Netskope Security Cloud tenant from the terminal. Query events, investigate alerts, configure policies, provision users, and more &mdash; all from <code class="text-sm bg-secondary px-1.5 py-0.5 rounded font-mono">ntsk</code>.
+      </p>
+      <div class="flex flex-wrap gap-3">
+        <a href="#installation" class="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity">
+          Get Started
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m-7-7 7 7-7 7"/></svg>
+        </a>
+        <a href="#commands" class="inline-flex items-center gap-2 px-5 py-2.5 bg-secondary text-secondary-foreground rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors">
+          Command Reference
+        </a>
+      </div>
+    </div>
+    <!-- Quick install snippet -->
+    <div class="mt-12 max-w-2xl">
+      <div class="code-block relative p-5">
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        <code><span class="prompt">$</span> pip install netskope
+<span class="prompt">$</span> ntsk config setup          <span class="comment"># interactive wizard</span>
+<span class="prompt">$</span> ntsk alerts list <span class="flag">--since</span> <span class="string">24h</span> <span class="flag">--limit</span> <span class="string">10</span></code>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Main content with sidebar -->
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-24">
+  <div class="flex gap-10">
+    <!-- Sidebar TOC -->
+    <aside class="sidebar-col w-56 flex-shrink-0">
+      <nav class="sidebar text-[0.8125rem]">
+        <div class="font-semibold text-xs uppercase tracking-wider text-muted-foreground mb-3">On this page</div>
+        <div class="space-y-1">
+          <a href="#installation" class="toc-item block py-1 text-muted-foreground hover:text-foreground">Installation</a>
+          <a href="#getting-started" class="toc-item block py-1 text-muted-foreground hover:text-foreground">Getting Started</a>
+          <a href="#architecture" class="toc-item block py-1 text-muted-foreground hover:text-foreground">Architecture</a>
+          <a href="#configuration" class="toc-item block py-1 text-muted-foreground hover:text-foreground">Configuration</a>
+          <a href="#authentication" class="toc-item block py-1 text-muted-foreground hover:text-foreground">Authentication</a>
+          <a href="#output-formats" class="toc-item block py-1 text-muted-foreground hover:text-foreground">Output Formats</a>
+          <a href="#global-flags" class="toc-item block py-1 text-muted-foreground hover:text-foreground">Global Flags</a>
+          <a href="#commands" class="toc-item block py-1 text-muted-foreground hover:text-foreground">Commands</a>
+          <a href="#cmd-alerts" class="toc-item block py-1 pl-4 text-muted-foreground hover:text-foreground">Alerts</a>
+          <a href="#cmd-events" class="toc-item block py-1 pl-4 text-muted-foreground hover:text-foreground">Events</a>
+          <a href="#cmd-incidents" class="toc-item block py-1 pl-4 text-muted-foreground hover:text-foreground">Incidents</a>
+          <a href="#cmd-users" class="toc-item block py-1 pl-4 text-muted-foreground hover:text-foreground">Users &amp; Groups</a>
+          <a href="#cmd-policy" class="toc-item block py-1 pl-4 text-muted-foreground hover:text-foreground">Policy</a>
+          <a href="#cmd-publishers" class="toc-item block py-1 pl-4 text-muted-foreground hover:text-foreground">Publishers</a>
+          <a href="#cmd-services" class="toc-item block py-1 pl-4 text-muted-foreground hover:text-foreground">Services / CCI</a>
+          <a href="#cmd-npa" class="toc-item block py-1 pl-4 text-muted-foreground hover:text-foreground">Private Access</a>
+          <a href="#cmd-steering" class="toc-item block py-1 pl-4 text-muted-foreground hover:text-foreground">Steering</a>
+          <a href="#cmd-devices" class="toc-item block py-1 pl-4 text-muted-foreground hover:text-foreground">Devices</a>
+          <a href="#cmd-cloud" class="toc-item block py-1 pl-4 text-muted-foreground hover:text-foreground">Cloud Security</a>
+          <a href="#cmd-infra" class="toc-item block py-1 pl-4 text-muted-foreground hover:text-foreground">Infrastructure</a>
+          <a href="#cmd-monitoring" class="toc-item block py-1 pl-4 text-muted-foreground hover:text-foreground">Monitoring</a>
+          <a href="#cmd-utility" class="toc-item block py-1 pl-4 text-muted-foreground hover:text-foreground">Utility</a>
+          <a href="#jql" class="toc-item block py-1 text-muted-foreground hover:text-foreground">JQL Query Syntax</a>
+          <a href="#error-handling" class="toc-item block py-1 text-muted-foreground hover:text-foreground">Error Handling</a>
+          <a href="#workflows" class="toc-item block py-1 text-muted-foreground hover:text-foreground">Workflows &amp; Recipes</a>
+          <a href="#env-vars" class="toc-item block py-1 text-muted-foreground hover:text-foreground">Environment Variables</a>
+          <a href="#shell-completion" class="toc-item block py-1 text-muted-foreground hover:text-foreground">Shell Completion</a>
+        </div>
+      </nav>
+    </aside>
+
+    <!-- Main content -->
+    <main class="flex-1 min-w-0 space-y-16">
+
+<!-- ============================================================ -->
+<!-- INSTALLATION -->
+<!-- ============================================================ -->
+<section id="installation" class="section-anchor">
+  <h2 class="text-3xl font-bold tracking-tight mb-2">Installation</h2>
+  <p class="text-muted-foreground mb-6">Choose any method below. The CLI installs as both <code class="text-sm bg-secondary px-1.5 py-0.5 rounded font-mono">netskope</code> and the shorter alias <code class="text-sm bg-secondary px-1.5 py-0.5 rounded font-mono">ntsk</code>.</p>
+
+  <div class="grid sm:grid-cols-2 gap-4">
+    <div class="card p-5">
+      <div class="flex items-center gap-2 mb-3">
+        <span class="badge badge-green">Recommended</span>
+        <h3 class="font-semibold">pipx (isolated install)</h3>
+      </div>
+      <div class="code-block p-4 relative">
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        <code><span class="comment"># Install pipx first if needed</span>
+<span class="prompt">$</span> brew install pipx &amp;&amp; pipx ensurepath  <span class="comment"># macOS</span>
+<span class="prompt">$</span> python3 -m pip install --user pipx     <span class="comment"># Linux</span>
+
+<span class="comment"># Then install Netskope CLI</span>
+<span class="prompt">$</span> pipx install netskope</code>
+      </div>
+    </div>
+    <div class="card p-5">
+      <h3 class="font-semibold mb-3">pip (all platforms)</h3>
+      <div class="code-block p-4 relative">
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        <code><span class="prompt">$</span> pip install netskope</code>
+      </div>
+    </div>
+    <div class="card p-5">
+      <h3 class="font-semibold mb-3">Homebrew (macOS / Linux)</h3>
+      <div class="code-block p-4 relative">
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        <code><span class="prompt">$</span> brew tap netskopeoss/tap
+<span class="prompt">$</span> brew install netskope</code>
+      </div>
+    </div>
+    <div class="card p-5">
+      <h3 class="font-semibold mb-3">From source</h3>
+      <div class="code-block p-4 relative">
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        <code><span class="prompt">$</span> git clone https://github.com/netskopeoss/netskope-cli.git
+<span class="prompt">$</span> cd netskope-cli
+<span class="prompt">$</span> pip install .</code>
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-4 card p-5 bg-secondary/30">
+    <h4 class="font-semibold text-sm mb-2">Verify installation</h4>
+    <div class="code-block p-4 relative">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <code><span class="prompt">$</span> ntsk --version
+<span class="output">netskope-cli 0.2.17</span>
+<span class="prompt">$</span> ntsk --help</code>
+    </div>
+  </div>
+  <p class="text-xs text-muted-foreground mt-3">Requires <strong>Python 3.11+</strong> and a Netskope tenant with API access.</p>
+</section>
+
+<!-- ============================================================ -->
+<!-- GETTING STARTED -->
+<!-- ============================================================ -->
+<section id="getting-started" class="section-anchor">
+  <h2 class="text-3xl font-bold tracking-tight mb-2">Getting Started</h2>
+  <p class="text-muted-foreground mb-6">Three steps to go from install to your first query.</p>
+
+  <!-- Step 1 -->
+  <div class="relative pl-8 pb-8 border-l-2 border-ns-blue/20">
+    <div class="absolute -left-3 top-0 w-6 h-6 rounded-full bg-ns-blue text-white flex items-center justify-center text-xs font-bold">1</div>
+    <h3 class="font-semibold text-lg mb-2">Configure your tenant</h3>
+    <p class="text-sm text-muted-foreground mb-3">Run the interactive setup wizard, or set the tenant hostname manually.</p>
+    <div class="code-block p-4 relative max-w-xl">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <code><span class="comment"># Option A: Interactive wizard (recommended)</span>
+<span class="prompt">$</span> ntsk config setup
+
+<span class="comment"># Option B: Set tenant directly</span>
+<span class="prompt">$</span> ntsk config set-tenant mytenant.goskope.com</code>
+    </div>
+    <p class="text-xs text-muted-foreground mt-2">Config is stored at <code class="bg-secondary px-1 py-0.5 rounded">~/.config/netskope/config.toml</code> (XDG-compliant).</p>
+  </div>
+
+  <!-- Step 2 -->
+  <div class="relative pl-8 pb-8 border-l-2 border-ns-blue/20">
+    <div class="absolute -left-3 top-0 w-6 h-6 rounded-full bg-ns-blue text-white flex items-center justify-center text-xs font-bold">2</div>
+    <h3 class="font-semibold text-lg mb-2">Authenticate</h3>
+    <p class="text-sm text-muted-foreground mb-3">Choose between an API token or browser-based SSO login.</p>
+    <div class="grid sm:grid-cols-2 gap-3 max-w-xl">
+      <div class="card p-4">
+        <div class="font-medium text-sm mb-2">API Token <span class="badge badge-blue ml-1">Recommended</span></div>
+        <div class="code-block p-3 text-xs">
+          <code><span class="comment"># Via environment variable</span>
+<span class="prompt">$</span> export NETSKOPE_API_TOKEN=<span class="string">"your-token"</span>
+
+<span class="comment"># Or store securely in keyring</span>
+<span class="prompt">$</span> ntsk config set-token</code>
+        </div>
+      </div>
+      <div class="card p-4">
+        <div class="font-medium text-sm mb-2">Browser SSO</div>
+        <div class="code-block p-3 text-xs">
+          <code><span class="comment"># Opens browser for SSO login</span>
+<span class="prompt">$</span> ntsk auth login
+
+<span class="comment"># Check auth status</span>
+<span class="prompt">$</span> ntsk auth status</code>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 3 -->
+  <div class="relative pl-8 pb-2">
+    <div class="absolute -left-3 top-0 w-6 h-6 rounded-full bg-ns-blue text-white flex items-center justify-center text-xs font-bold">3</div>
+    <h3 class="font-semibold text-lg mb-2">Start using the CLI</h3>
+    <p class="text-sm text-muted-foreground mb-3">Verify your setup and run your first queries.</p>
+    <div class="code-block p-4 relative max-w-2xl">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <code><span class="comment"># Verify setup and connectivity</span>
+<span class="prompt">$</span> ntsk doctor
+<span class="output">Netskope CLI Doctor
+
+  &#10003; Config file exists: ~/.config/netskope/config.toml
+  &#10003; Active profile: default
+  &#10003; Tenant configured: https://sedemo.goskope.com
+  &#10003; API token: set (source: NETSKOPE_API_TOKEN env var)
+  &#8226; Session cookie: not set (optional)
+  &#10003; CA bundle: /usr/lib/ssl/cert.pem
+  &#10003; API connectivity: OK
+
+  All checks passed! You're good to go.</span>
+
+<span class="comment"># List recent alerts</span>
+<span class="prompt">$</span> ntsk alerts list <span class="flag">--since</span> <span class="string">24h</span> <span class="flag">--limit</span> <span class="string">5</span>
+<span class="output">5 results
+Time range: 2026-02-24 23:11 UTC &rarr; 2026-02-24 23:11 UTC
+                              Alerts
+&#9487;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9471;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9471;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9471;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9491;
+&#9475; alert_name              &#9475; alert_type          &#9475; app     &#9475; timestamp            &#9475;
+&#9507;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9547;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9547;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9547;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9513;
+&#9475; Session timeout for ... &#9475; Security Assessment &#9475; Workday &#9475; 2026-02-24 23:11 UTC &#9475;
+&#9475; Integration System ...  &#9475; Security Assessment &#9475; Workday &#9475; 2026-02-24 23:11 UTC &#9475;
+&#9475; Sensitive data should.. &#9475; Security Assessment &#9475; Workday &#9475; 2026-02-24 23:11 UTC &#9475;
+&#9495;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9527;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9527;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9527;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9499;</span></code>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- ARCHITECTURE -->
+<!-- ============================================================ -->
+<section id="architecture" class="section-anchor">
+  <h2 class="text-3xl font-bold tracking-tight mb-2">Architecture</h2>
+  <p class="text-muted-foreground mb-6">How the CLI is structured internally &mdash; from command entry to API response.</p>
+
+  <div class="card p-6 mb-6">
+    <h3 class="font-semibold mb-4">Request Flow</h3>
+    <div class="mermaid">
+    flowchart LR
+      A["<b>User</b><br/>ntsk alerts list"] --> B["<b>main.py</b><br/>Typer App<br/>Global Options"]
+      B --> C["<b>Command Module</b><br/>alerts_cmd.py<br/>Build params"]
+      C --> D["<b>NetskopeClient</b><br/>client.py<br/>Async httpx"]
+      D --> E["<b>Netskope API</b><br/>api/v2/..."]
+      E --> F["<b>OutputFormatter</b><br/>output.py<br/>Unwrap &amp; format"]
+      F --> G["<b>Terminal</b><br/>table / json / csv"]
+
+      style A fill:#dbeafe,stroke:#2563eb,color:#1e3a5f
+      style B fill:#f1f5f9,stroke:#94a3b8,color:#0f172a
+      style C fill:#f1f5f9,stroke:#94a3b8,color:#0f172a
+      style D fill:#ede9fe,stroke:#8b5cf6,color:#3b0764
+      style E fill:#dcfce7,stroke:#22c55e,color:#14532d
+      style F fill:#f1f5f9,stroke:#94a3b8,color:#0f172a
+      style G fill:#fef3c7,stroke:#f59e0b,color:#78350f
+    </div>
+  </div>
+
+  <div class="grid sm:grid-cols-2 gap-4 mb-6">
+    <div class="card p-5">
+      <h3 class="font-semibold mb-4">Configuration Resolution</h3>
+      <div class="mermaid text-sm">
+      flowchart TD
+        A["CLI Flag<br/><code>--profile, -o</code>"] --> E{Resolved Value}
+        B["Env Var<br/><code>NETSKOPE_*</code>"] --> E
+        C["Profile Config<br/><code>config.toml</code>"] --> E
+        D["Defaults<br/><code>table, default</code>"] --> E
+        E --> F["Used by Command"]
+
+        style A fill:#fee2e2,stroke:#ef4444,color:#7f1d1d
+        style B fill:#fef3c7,stroke:#f59e0b,color:#78350f
+        style C fill:#dbeafe,stroke:#2563eb,color:#1e3a5f
+        style D fill:#f1f5f9,stroke:#94a3b8,color:#334155
+        style E fill:#dcfce7,stroke:#22c55e,color:#14532d
+        style F fill:#f1f5f9,stroke:#94a3b8,color:#0f172a
+      </div>
+      <p class="text-xs text-muted-foreground mt-3">Highest priority wins: CLI flags &gt; env vars &gt; profile config &gt; defaults.</p>
+    </div>
+    <div class="card p-5">
+      <h3 class="font-semibold mb-4">Core Modules</h3>
+      <div class="space-y-3 text-sm">
+        <div class="flex items-start gap-3 p-3 rounded-lg bg-secondary/50">
+          <code class="text-xs font-semibold text-ns-blue whitespace-nowrap">main.py</code>
+          <span class="text-muted-foreground">Entry point. <code>State</code> dataclass, global option hoisting, Typer app with lazy-loaded command groups.</span>
+        </div>
+        <div class="flex items-start gap-3 p-3 rounded-lg bg-secondary/50">
+          <code class="text-xs font-semibold text-ns-blue whitespace-nowrap">client.py</code>
+          <span class="text-muted-foreground">Async <code>httpx</code> client. Token &amp; session auth, pagination, SSL/TLS CA bundle, typed error mapping.</span>
+        </div>
+        <div class="flex items-start gap-3 p-3 rounded-lg bg-secondary/50">
+          <code class="text-xs font-semibold text-ns-blue whitespace-nowrap">config.py</code>
+          <span class="text-muted-foreground">XDG-compliant TOML config. Multi-profile support, keyring credential storage, CA bundle auto-detection.</span>
+        </div>
+        <div class="flex items-start gap-3 p-3 rounded-lg bg-secondary/50">
+          <code class="text-xs font-semibold text-ns-blue whitespace-nowrap">output.py</code>
+          <span class="text-muted-foreground"><code>OutputFormatter</code> &mdash; json/table/csv/yaml/jsonl. Auto-unwraps API envelopes, TTY detection, timestamp conversion.</span>
+        </div>
+        <div class="flex items-start gap-3 p-3 rounded-lg bg-secondary/50">
+          <code class="text-xs font-semibold text-ns-blue whitespace-nowrap">exceptions.py</code>
+          <span class="text-muted-foreground"><code>NetskopeError</code> base with typed subclasses: AuthError, NotFoundError, RateLimitError, SSLError, etc.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card p-5">
+    <h3 class="font-semibold mb-4">Command Pattern</h3>
+    <p class="text-sm text-muted-foreground mb-3">Every command module follows this consistent pattern:</p>
+    <div class="code-block p-4 text-sm">
+      <code><span class="comment"># Every command follows the same structure:</span>
+<span style="color:#c084fc">@app.command</span>()
+<span style="color:#93c5fd">def</span> <span style="color:#fbbf24">list</span>(ctx: typer.Context, query: str = None, limit: int = 25):
+    state  = ctx.obj                     <span class="comment"># Global State dataclass</span>
+    client = _build_client(ctx)          <span class="comment"># Create NetskopeClient from config</span>
+    data   = client.request(<span class="string">"GET"</span>, <span class="string">"/api/v2/..."</span>, params={...})
+    fmt    = _get_formatter(ctx)         <span class="comment"># Create OutputFormatter</span>
+    fmt.format_output(data, fmt=state.output.value, fields=...)
+</code>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- CONFIGURATION -->
+<!-- ============================================================ -->
+<section id="configuration" class="section-anchor">
+  <h2 class="text-3xl font-bold tracking-tight mb-2">Configuration</h2>
+  <p class="text-muted-foreground mb-6">Multi-profile TOML configuration with secure credential storage.</p>
+
+  <div class="grid sm:grid-cols-2 gap-4 mb-6">
+    <div class="card p-5">
+      <h3 class="font-semibold mb-3">Config file layout</h3>
+      <p class="text-xs text-muted-foreground mb-2"><code>~/.config/netskope/config.toml</code> &mdash; Permissions: <code>0600</code></p>
+      <div class="code-block p-4 text-sm">
+        <code><span class="comment"># Global settings</span>
+active_profile = <span class="string">"production"</span>
+output_format  = <span class="string">"table"</span>
+no_color       = <span style="color:#c084fc">false</span>
+
+<span class="comment"># Default profile</span>
+[profiles.default]
+tenant    = <span class="string">"dev.goskope.com"</span>
+auth_type = <span class="string">"token"</span>
+
+<span class="comment"># Production profile</span>
+[profiles.production]
+tenant    = <span class="string">"prod.goskope.com"</span>
+auth_type = <span class="string">"session"</span>
+ca_bundle = <span class="string">"/etc/ssl/netskope-ca.pem"</span></code>
+      </div>
+    </div>
+    <div class="card p-5">
+      <h3 class="font-semibold mb-3">XDG directories</h3>
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th>Purpose</th><th>Path</th></tr></thead>
+          <tbody>
+            <tr><td>Config</td><td><code class="text-xs">~/.config/netskope/config.toml</code></td></tr>
+            <tr><td>Cache</td><td><code class="text-xs">~/.cache/netskope/</code></td></tr>
+            <tr><td>Data</td><td><code class="text-xs">~/.local/share/netskope/</code></td></tr>
+            <tr><td>Session cookies</td><td><code class="text-xs">~/.local/share/netskope/session_{profile}.json</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="text-xs text-muted-foreground mt-3">All directories are created with <code>0700</code> permissions. Respects <code>$XDG_CONFIG_HOME</code>, <code>$XDG_CACHE_HOME</code>, and <code>$XDG_DATA_HOME</code>.</p>
+    </div>
+  </div>
+
+  <div class="card p-5 mb-6">
+    <h3 class="font-semibold mb-3">Profile management commands</h3>
+    <div class="code-block p-4 relative">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <code><span class="comment"># Create a new profile</span>
+<span class="prompt">$</span> ntsk config create-profile staging
+
+<span class="comment"># Set tenant for a specific profile</span>
+<span class="prompt">$</span> ntsk config set-tenant staging.goskope.com <span class="flag">--profile</span> staging
+
+<span class="comment"># Store API token securely in system keyring</span>
+<span class="prompt">$</span> ntsk config set-token <span class="flag">--profile</span> staging
+
+<span class="comment"># Switch the active profile</span>
+<span class="prompt">$</span> ntsk config use-profile staging
+
+<span class="comment"># List all profiles</span>
+<span class="prompt">$</span> ntsk config profiles
+
+<span class="comment"># Show effective config with resolution sources</span>
+<span class="prompt">$</span> ntsk config show
+<span class="output">            Configuration &#8212; profile 'default'
+&#9487;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9471;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9471;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9491;
+&#9475; Key       &#9475; Value              &#9475; Source                       &#9475;
+&#9507;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9547;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9547;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9513;
+&#9475; profile   &#9475; default            &#9475; config                       &#9475;
+&#9475; tenant    &#9475; sedemo.goskope.com &#9475; env var (NETSKOPE_TENANT)    &#9475;
+&#9475; token     &#9475; cmJh****eg==       &#9475; env var (NETSKOPE_API_TOKEN) &#9475;
+&#9475; auth_type &#9475; token              &#9475; config                       &#9475;
+&#9495;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9527;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9527;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9499;</span>
+
+<span class="comment"># Test API connectivity</span>
+<span class="prompt">$</span> ntsk config test</code>
+    </div>
+  </div>
+
+  <div class="card p-5 border-l-4 border-l-ns-orange bg-orange-50/50">
+    <h4 class="font-semibold text-sm mb-2">Credential storage priority</h4>
+    <ol class="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
+      <li><strong>System keyring</strong> (macOS Keychain, GNOME Keyring, Windows Credential Manager) &mdash; preferred and most secure</li>
+      <li><strong>Plaintext in config file</strong> &mdash; automatic fallback when keyring is unavailable (file has <code>0600</code> perms)</li>
+      <li><strong>Environment variable</strong> <code>NETSKOPE_API_TOKEN</code> &mdash; overrides both of the above</li>
+    </ol>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- AUTHENTICATION -->
+<!-- ============================================================ -->
+<section id="authentication" class="section-anchor">
+  <h2 class="text-3xl font-bold tracking-tight mb-2">Authentication</h2>
+  <p class="text-muted-foreground mb-6">Two methods: API token (stateless) or browser SSO session (cookie-based).</p>
+
+  <div class="card p-6 mb-6">
+    <h3 class="font-semibold mb-4">Auth Flow</h3>
+    <div class="mermaid">
+    flowchart TD
+      A{Auth Method?} -->|API Token| B["Set Netskope-Api-Token header"]
+      A -->|Browser SSO| C["ntsk auth login<br/>Opens Chromium"]
+      C --> D["User completes SSO/MFA"]
+      D --> E["Capture ci_session cookie"]
+      E --> F["Validate via /api/v2/rbac/roles/me"]
+      F --> G["Save to keyring/file"]
+      B --> H["API Request"]
+      G --> H
+
+      style A fill:#dbeafe,stroke:#2563eb,color:#1e3a5f
+      style C fill:#ede9fe,stroke:#8b5cf6,color:#3b0764
+      style F fill:#dcfce7,stroke:#22c55e,color:#14532d
+      style H fill:#f1f5f9,stroke:#94a3b8,color:#0f172a
+    </div>
+  </div>
+
+  <div class="grid sm:grid-cols-2 gap-4">
+    <div class="card p-5">
+      <h3 class="font-semibold mb-3 flex items-center gap-2">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        API Token Auth
+      </h3>
+      <ul class="text-sm text-muted-foreground space-y-2">
+        <li class="flex items-start gap-2"><span class="text-ns-green mt-0.5">&#10003;</span> Stateless, works in CI/CD pipelines</li>
+        <li class="flex items-start gap-2"><span class="text-ns-green mt-0.5">&#10003;</span> Set once, works everywhere</li>
+        <li class="flex items-start gap-2"><span class="text-ns-green mt-0.5">&#10003;</span> Scoped to specific API endpoints</li>
+        <li class="flex items-start gap-2"><span class="text-muted-foreground mt-0.5">&#8226;</span> Token created in Netskope admin UI or via <code class="text-xs">ntsk tokens create</code></li>
+      </ul>
+      <div class="code-block p-3 mt-3 text-xs">
+        <code><span class="comment"># Three ways to provide the token:</span>
+<span class="prompt">$</span> export NETSKOPE_API_TOKEN=<span class="string">"your-token"</span>
+<span class="prompt">$</span> ntsk config set-token    <span class="comment"># interactive prompt</span>
+<span class="prompt">$</span> echo <span class="string">"token"</span> | ntsk config set-token  <span class="comment"># piped</span></code>
+      </div>
+    </div>
+    <div class="card p-5">
+      <h3 class="font-semibold mb-3 flex items-center gap-2">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        Browser SSO Auth
+      </h3>
+      <ul class="text-sm text-muted-foreground space-y-2">
+        <li class="flex items-start gap-2"><span class="text-ns-green mt-0.5">&#10003;</span> Works with any SSO provider (Okta, Azure AD, etc.)</li>
+        <li class="flex items-start gap-2"><span class="text-ns-green mt-0.5">&#10003;</span> Supports MFA/FIDO2</li>
+        <li class="flex items-start gap-2"><span class="text-ns-green mt-0.5">&#10003;</span> Session saved per-profile</li>
+        <li class="flex items-start gap-2"><span class="text-muted-foreground mt-0.5">&#8226;</span> Requires Playwright: <code class="text-xs">pip install playwright && playwright install chromium</code></li>
+      </ul>
+      <div class="code-block p-3 mt-3 text-xs">
+        <code><span class="prompt">$</span> ntsk auth login
+<span class="output">Opening browser for SSO login...
+&#10003; Authenticated successfully
+  Session saved for profile 'default'</span>
+
+<span class="prompt">$</span> ntsk auth status
+<span class="prompt">$</span> ntsk auth logout  <span class="comment"># clear credentials</span></code>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- OUTPUT FORMATS -->
+<!-- ============================================================ -->
+<section id="output-formats" class="section-anchor">
+  <h2 class="text-3xl font-bold tracking-tight mb-2">Output Formats</h2>
+  <p class="text-muted-foreground mb-6">Five formats via <code class="text-sm bg-secondary px-1.5 py-0.5 rounded font-mono">-o</code> / <code class="text-sm bg-secondary px-1.5 py-0.5 rounded font-mono">--output</code>. Auto-detects TTY &mdash; table for terminals, JSON when piped.</p>
+
+  <!-- Format tabs -->
+  <div class="card overflow-hidden mb-6">
+    <div class="flex border-b border-border overflow-x-auto">
+      <button class="tab-btn active" onclick="showTab(event, 'fmt-table')">Table</button>
+      <button class="tab-btn" onclick="showTab(event, 'fmt-json')">JSON</button>
+      <button class="tab-btn" onclick="showTab(event, 'fmt-csv')">CSV</button>
+      <button class="tab-btn" onclick="showTab(event, 'fmt-yaml')">YAML</button>
+      <button class="tab-btn" onclick="showTab(event, 'fmt-jsonl')">JSONL</button>
+    </div>
+
+    <div id="fmt-table" class="tab-content active p-5">
+      <div class="flex items-center gap-2 mb-3">
+        <span class="badge badge-green">Default in TTY</span>
+        <code class="text-xs text-muted-foreground">-o table</code>
+      </div>
+      <p class="text-sm text-muted-foreground mb-3">Rich-formatted table with colored headers. Auto-selects the most informative columns when there are more than 10. Use <code>-W</code> for all columns.</p>
+      <div class="code-block p-4 relative">
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        <code><span class="prompt">$</span> ntsk publishers list <span class="flag">--limit</span> <span class="string">3</span>
+<span class="output">Showing 3 of 7 results
+                              Publishers
+&#9487;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9471;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9471;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9471;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9491;
+&#9475; apps_count &#9475; publisher_id &#9475; publisher_name              &#9475; status    &#9475;
+&#9507;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9547;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9547;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9547;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9513;
+&#9475; 6          &#9475; 109          &#9475; flonkerton-sedemo-publisher &#9475; connected &#9475;
+&#9475; 18         &#9475; 126          &#9475; NPA-Unified-Pub-US-EAST-1   &#9475; connected &#9475;
+&#9475; 7          &#9475; 134          &#9475; NPA-Unified-Pub-US-WEST-1   &#9475; connected &#9475;
+&#9495;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9527;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9527;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9527;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9499;</span></code>
+      </div>
+    </div>
+
+    <div id="fmt-json" class="tab-content p-5">
+      <div class="flex items-center gap-2 mb-3">
+        <span class="badge badge-blue">Default when piped</span>
+        <code class="text-xs text-muted-foreground">-o json</code>
+      </div>
+      <p class="text-sm text-muted-foreground mb-3">Pretty-printed JSON. Ideal for <code>jq</code> pipelines and programmatic consumption. Adds ISO 8601 companion fields for timestamps.</p>
+      <div class="code-block p-4 relative">
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        <code><span class="prompt">$</span> ntsk users list <span class="flag">-o</span> <span class="string">json</span> <span class="flag">--limit</span> <span class="string">2</span>
+<span class="output">[
+  {
+    "id": "b9fc433a-c9f5-40b4-bd3e-bd9b93160d99",
+    "userName": "aabdelaziz+cfw@netskope.com",
+    "active": true,
+    "externalId": "00u19e1wz27uB8jMY0x8",
+    "givenName": "Ammar",
+    "familyName": "Abdelaziz",
+    "email": "aabdelaziz+cfw@netskope.com",
+    "recordSource": "SCIM"
+  },
+  ...
+]</span></code>
+      </div>
+    </div>
+
+    <div id="fmt-csv" class="tab-content p-5">
+      <div class="flex items-center gap-2 mb-3">
+        <code class="text-xs text-muted-foreground">-o csv</code>
+      </div>
+      <p class="text-sm text-muted-foreground mb-3">Comma-separated values. Great for spreadsheets and data analysis. Nested objects are JSON-serialized.</p>
+      <div class="code-block p-4 relative">
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        <code><span class="prompt">$</span> ntsk alerts list <span class="flag">-o</span> <span class="string">csv</span> <span class="flag">--limit</span> <span class="string">3</span>
+<span class="output">alert_name,alert_type,app,severity,timestamp,user
+Google Gmail watchlist,watchlist,Google Gmail,unknown,1769902541,n.rowe9631@gmail.com
+OTP authentication grace period...,Security Assessment,Workday,,1766610188,
+Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></code>
+      </div>
+    </div>
+
+    <div id="fmt-yaml" class="tab-content p-5">
+      <div class="flex items-center gap-2 mb-3">
+        <code class="text-xs text-muted-foreground">-o yaml</code>
+      </div>
+      <p class="text-sm text-muted-foreground mb-3">YAML output. Readable for complex nested structures.</p>
+      <div class="code-block p-4 relative">
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        <code><span class="prompt">$</span> ntsk alerts list <span class="flag">-o</span> <span class="string">yaml</span> <span class="flag">--limit</span> <span class="string">1</span>
+<span class="output">- _id: 78047ceab1dd866c98ae76c0
+  access_method: Client
+  alert_name: Google Gmail watchlist
+  alert_type: watchlist
+  app: Google Gmail
+  app_tags:
+  - Enterprise
+  - IP_Restrict
+  appcategory: Webmail
+  cci: 87
+  ccl: high
+  domain: mail.google.com
+  dst_country: CA
+  dstip: 192.178.192.17</span></code>
+      </div>
+    </div>
+
+    <div id="fmt-jsonl" class="tab-content p-5">
+      <div class="flex items-center gap-2 mb-3">
+        <code class="text-xs text-muted-foreground">-o jsonl</code>
+      </div>
+      <p class="text-sm text-muted-foreground mb-3">JSON Lines &mdash; one JSON object per line. Ideal for streaming large datasets and log processing.</p>
+      <div class="code-block p-4 relative">
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        <code><span class="prompt">$</span> ntsk alerts list <span class="flag">-o</span> <span class="string">jsonl</span> <span class="flag">--limit</span> <span class="string">2</span>
+<span class="output">{"_id":"09c94dc1...","alert_name":"OTP authentication grace period...","alert_type":"Security Assessment","app":"Workday","timestamp":1770900175,"timestamp_iso":"2026-02-12T12:42:55Z"}
+{"_id":"43973c77...","alert_name":"Session timeout for Workday...","alert_type":"Security Assessment","app":"Workday","timestamp":1770900175,"timestamp_iso":"2026-02-12T12:42:55Z"}</span></code>
+      </div>
+    </div>
+  </div>
+
+  <!-- Smart features -->
+  <div class="grid sm:grid-cols-3 gap-4">
+    <div class="card p-4">
+      <h4 class="font-semibold text-sm mb-2">Auto-unwrapping</h4>
+      <p class="text-xs text-muted-foreground">Netskope API responses wrap data in envelopes (<code>result</code>, <code>data</code>, <code>Resources</code>). The formatter automatically extracts the actual records.</p>
+    </div>
+    <div class="card p-4">
+      <h4 class="font-semibold text-sm mb-2">Timestamp conversion</h4>
+      <p class="text-xs text-muted-foreground">Epoch timestamps are auto-converted to human-readable format in tables, and get ISO 8601 companion fields (<code>*_iso</code>) in JSON/CSV/YAML. Use <code>--epoch</code> to keep raw values.</p>
+    </div>
+    <div class="card p-4">
+      <h4 class="font-semibold text-sm mb-2">TTY detection</h4>
+      <p class="text-xs text-muted-foreground">Interactive terminal &rarr; table with colors. Piped output &rarr; JSON without colors. Spinners auto-suppressed when piped. Override with <code>-o</code> flag.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- GLOBAL FLAGS -->
+<!-- ============================================================ -->
+<section id="global-flags" class="section-anchor">
+  <h2 class="text-3xl font-bold tracking-tight mb-2">Global Flags</h2>
+  <p class="text-muted-foreground mb-6">These flags work with <em>every</em> command and can appear before or after the subcommand.</p>
+
+  <div class="table-wrapper card">
+    <table>
+      <thead>
+        <tr><th class="w-48">Flag</th><th>Type</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code class="text-xs font-semibold">--profile NAME</code></td>
+          <td><span class="badge badge-gray">string</span></td>
+          <td>Configuration profile to use. Overrides <code>NETSKOPE_PROFILE</code> env var and <code>active_profile</code> in config. Default: <code>default</code>.</td>
+        </tr>
+        <tr>
+          <td><code class="text-xs font-semibold">-o, --output FORMAT</code></td>
+          <td><span class="badge badge-gray">enum</span></td>
+          <td>Output format: <code>json</code> | <code>table</code> | <code>csv</code> | <code>yaml</code> | <code>jsonl</code>. Default: <code>table</code> (TTY) or <code>json</code> (piped).</td>
+        </tr>
+        <tr>
+          <td><code class="text-xs font-semibold">-v, --verbose</code></td>
+          <td><span class="badge badge-gray">count</span></td>
+          <td>Increase verbosity. <code>-v</code> for info messages, <code>-vv</code> for debug (shows API request details).</td>
+        </tr>
+        <tr>
+          <td><code class="text-xs font-semibold">-q, --quiet</code></td>
+          <td><span class="badge badge-gray">flag</span></td>
+          <td>Suppress spinners and info messages. Only data and errors printed. Auto-enabled when piped.</td>
+        </tr>
+        <tr>
+          <td><code class="text-xs font-semibold">-W, --wide</code></td>
+          <td><span class="badge badge-gray">flag</span></td>
+          <td>Show all table columns without truncation. Also settable via <code>NETSKOPE_WIDE=1</code>.</td>
+        </tr>
+        <tr>
+          <td><code class="text-xs font-semibold">--raw</code></td>
+          <td><span class="badge badge-gray">flag</span></td>
+          <td>Include internal <code>_</code>-prefixed fields in output. By default these are stripped (except <code>_id</code>).</td>
+        </tr>
+        <tr>
+          <td><code class="text-xs font-semibold">--epoch</code></td>
+          <td><span class="badge badge-gray">flag</span></td>
+          <td>Keep timestamps as raw Unix epoch integers. Suppresses ISO 8601 companion fields.</td>
+        </tr>
+        <tr>
+          <td><code class="text-xs font-semibold">--count</code></td>
+          <td><span class="badge badge-gray">flag</span></td>
+          <td>Print only the total record count. Saves bandwidth by skipping full record retrieval.</td>
+        </tr>
+        <tr>
+          <td><code class="text-xs font-semibold">--no-color</code></td>
+          <td><span class="badge badge-gray">flag</span></td>
+          <td>Disable colored output. Also set via <code>NO_COLOR</code> env var.</td>
+        </tr>
+        <tr>
+          <td><code class="text-xs font-semibold">--version</code></td>
+          <td><span class="badge badge-gray">flag</span></td>
+          <td>Print version and exit.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="mt-4 card p-4 bg-secondary/30">
+    <h4 class="font-semibold text-sm mb-2">Flag position flexibility</h4>
+    <p class="text-sm text-muted-foreground">Global flags can appear <strong>before or after</strong> the subcommand. These are equivalent:</p>
+    <div class="code-block p-3 mt-2 text-xs">
+      <code><span class="prompt">$</span> ntsk <span class="flag">-o</span> <span class="string">json</span> alerts list <span class="flag">--limit</span> <span class="string">5</span>
+<span class="prompt">$</span> ntsk alerts list <span class="flag">-o</span> <span class="string">json</span> <span class="flag">--limit</span> <span class="string">5</span>   <span class="comment"># same result</span></code>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- COMMANDS OVERVIEW -->
+<!-- ============================================================ -->
+<section id="commands" class="section-anchor">
+  <h2 class="text-3xl font-bold tracking-tight mb-2">Command Reference</h2>
+  <p class="text-muted-foreground mb-6">25+ command groups covering the full Netskope platform. Run <code class="text-sm bg-secondary px-1.5 py-0.5 rounded font-mono">ntsk commands</code> for the full tree.</p>
+
+  <!-- Category overview cards -->
+  <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-10">
+    <a href="#cmd-alerts" class="card p-4 hover:border-ns-blue transition-colors">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="w-2 h-2 rounded-full bg-red-500"></span>
+        <span class="font-semibold text-sm">Alerts</span>
+      </div>
+      <p class="text-xs text-muted-foreground">List, filter, summarize security alerts</p>
+    </a>
+    <a href="#cmd-events" class="card p-4 hover:border-ns-blue transition-colors">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+        <span class="font-semibold text-sm">Events</span>
+      </div>
+      <p class="text-xs text-muted-foreground">Query 10 event types: alert, app, network, page, audit...</p>
+    </a>
+    <a href="#cmd-incidents" class="card p-4 hover:border-ns-blue transition-colors">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="w-2 h-2 rounded-full bg-orange-500"></span>
+        <span class="font-semibold text-sm">Incidents</span>
+      </div>
+      <p class="text-xs text-muted-foreground">Search, update, DLP forensics, UCI scores</p>
+    </a>
+    <a href="#cmd-users" class="card p-4 hover:border-ns-blue transition-colors">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="w-2 h-2 rounded-full bg-green-500"></span>
+        <span class="font-semibold text-sm">Users &amp; Groups</span>
+      </div>
+      <p class="text-xs text-muted-foreground">SCIM v2 user/group provisioning</p>
+    </a>
+    <a href="#cmd-policy" class="card p-4 hover:border-ns-blue transition-colors">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="w-2 h-2 rounded-full bg-purple-500"></span>
+        <span class="font-semibold text-sm">Policy</span>
+      </div>
+      <p class="text-xs text-muted-foreground">URL lists, policy deploy</p>
+    </a>
+    <a href="#cmd-publishers" class="card p-4 hover:border-ns-blue transition-colors">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="w-2 h-2 rounded-full bg-cyan-500"></span>
+        <span class="font-semibold text-sm">Publishers</span>
+      </div>
+      <p class="text-xs text-muted-foreground">Manage publishers, upgrade profiles, local brokers</p>
+    </a>
+    <a href="#cmd-services" class="card p-4 hover:border-ns-blue transition-colors">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+        <span class="font-semibold text-sm">Services / CCI</span>
+      </div>
+      <p class="text-xs text-muted-foreground">Cloud Confidence Index, tags, private apps</p>
+    </a>
+    <a href="#cmd-npa" class="card p-4 hover:border-ns-blue transition-colors">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="w-2 h-2 rounded-full bg-indigo-500"></span>
+        <span class="font-semibold text-sm">Private Access (NPA)</span>
+      </div>
+      <p class="text-xs text-muted-foreground">Private apps, publishers, policy, tags, discovery</p>
+    </a>
+    <a href="#cmd-cloud" class="card p-4 hover:border-ns-blue transition-colors">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+        <span class="font-semibold text-sm">Cloud Security</span>
+      </div>
+      <p class="text-xs text-muted-foreground">DSPM, SPM, RBI, ATP, IPS, Threat Intel</p>
+    </a>
+    <a href="#cmd-infra" class="card p-4 hover:border-ns-blue transition-colors">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="w-2 h-2 rounded-full bg-slate-500"></span>
+        <span class="font-semibold text-sm">Infrastructure</span>
+      </div>
+      <p class="text-xs text-muted-foreground">Steering, devices, DNS, IPsec, enrollment</p>
+    </a>
+    <a href="#cmd-monitoring" class="card p-4 hover:border-ns-blue transition-colors">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="w-2 h-2 rounded-full bg-pink-500"></span>
+        <span class="font-semibold text-sm">Monitoring</span>
+      </div>
+      <p class="text-xs text-muted-foreground">DEM, notifications, status, RBAC, tokens</p>
+    </a>
+    <a href="#cmd-utility" class="card p-4 hover:border-ns-blue transition-colors">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="w-2 h-2 rounded-full bg-gray-400"></span>
+        <span class="font-semibold text-sm">Utility</span>
+      </div>
+      <p class="text-xs text-muted-foreground">Doctor, tenant, docs, completion, commands</p>
+    </a>
+  </div>
+
+  <!-- ==================== ALERTS ==================== -->
+  <div id="cmd-alerts" class="section-anchor border-t border-border pt-8 mb-10">
+    <div class="flex items-center gap-3 mb-4">
+      <span class="w-3 h-3 rounded-full bg-red-500"></span>
+      <h3 class="text-2xl font-bold">alerts</h3>
+      <span class="badge badge-red">Security &amp; Events</span>
+    </div>
+    <p class="text-muted-foreground mb-4">List and filter security alerts from the events datasearch API.</p>
+
+    <div class="space-y-4">
+      <!-- alerts list -->
+      <details class="card" open>
+        <summary class="p-4 font-semibold text-sm">alerts list</summary>
+        <div class="px-4 pb-4">
+          <p class="text-sm text-muted-foreground mb-3">Query <code>GET /api/v2/events/datasearch/alert</code>.</p>
+          <div class="table-wrapper mb-3">
+            <table>
+              <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td><code class="text-xs">--query</code></td><td>string</td><td>&mdash;</td><td>JQL filter. E.g. <code>'alert_type eq "DLP"'</code></td></tr>
+                <tr><td><code class="text-xs">-f, --fields</code></td><td>string</td><td>&mdash;</td><td>Comma-separated field list</td></tr>
+                <tr><td><code class="text-xs">-s, --start, --since</code></td><td>string</td><td>&mdash;</td><td>Start time. Epoch or relative: <code>24h</code>, <code>7d</code>, <code>1h</code></td></tr>
+                <tr><td><code class="text-xs">-e, --end</code></td><td>string</td><td>now</td><td>End time</td></tr>
+                <tr><td><code class="text-xs">-l, --limit</code></td><td>int</td><td>25</td><td>Max records</td></tr>
+                <tr><td><code class="text-xs">-t, --type</code></td><td>string</td><td>&mdash;</td><td>Filter by alert type (shortcut for <code>--query</code>)</td></tr>
+                <tr><td><code class="text-xs">--group-by, --by</code></td><td>string</td><td>&mdash;</td><td>Aggregate by field (e.g. <code>alert_type</code>, <code>severity</code>)</td></tr>
+                <tr><td><code class="text-xs">--order-by</code></td><td>string</td><td>&mdash;</td><td>Sort field</td></tr>
+                <tr><td><code class="text-xs">--desc / --asc</code></td><td>flag</td><td>&mdash;</td><td>Sort direction</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="code-block p-4 relative text-xs">
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            <code><span class="comment"># Recent DLP alerts as JSON</span>
+<span class="prompt">$</span> ntsk <span class="flag">-o</span> <span class="string">json</span> alerts list <span class="flag">--query</span> <span class="string">'alert_type eq "DLP"'</span> <span class="flag">--since</span> <span class="string">7d</span> <span class="flag">--limit</span> <span class="string">50</span>
+
+<span class="comment"># Count all alerts</span>
+<span class="prompt">$</span> ntsk alerts list <span class="flag">--count</span>
+<span class="output">10000</span>
+
+<span class="comment"># Only specific fields, sorted by timestamp</span>
+<span class="prompt">$</span> ntsk alerts list <span class="flag">-f</span> <span class="string">alert_name,severity,user,timestamp</span> <span class="flag">--order-by</span> <span class="string">timestamp</span> <span class="flag">--desc</span></code>
+          </div>
+        </div>
+      </details>
+
+      <!-- alerts summary -->
+      <details class="card">
+        <summary class="p-4 font-semibold text-sm">alerts summary</summary>
+        <div class="px-4 pb-4">
+          <p class="text-sm text-muted-foreground mb-3">Aggregate alert counts by a grouping field.</p>
+          <div class="table-wrapper mb-3">
+            <table>
+              <thead><tr><th>Option</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td><code class="text-xs">--by FIELD</code></td><td>Field to group by: <code>alert_type</code>, <code>severity</code>, <code>user</code>, <code>app</code>, etc.</td></tr>
+                <tr><td><code class="text-xs">-s, --start, --since</code></td><td>Start time (relative or epoch)</td></tr>
+                <tr><td><code class="text-xs">-e, --end</code></td><td>End time</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="code-block p-4 relative text-xs">
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            <code><span class="prompt">$</span> ntsk alerts summary <span class="flag">--by</span> <span class="string">alert_type</span>
+<span class="output">       Alert Summary by alert_type
+&#9487;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9471;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9491;
+&#9475; alert_type             &#9475; count &#9475;
+&#9507;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9547;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9513;
+&#9475; Security Assessment    &#9475; 925   &#9475;
+&#9475; policy                 &#9475; 453   &#9475;
+&#9475; watchlist              &#9475; 163   &#9475;
+&#9475; DLP                    &#9475; 124   &#9475;
+&#9475; AI Security            &#9475; 37    &#9475;
+&#9475; uba                    &#9475; 15    &#9475;
+&#9475; Compromised Credential &#9475; 3     &#9475;
+&#9475; Malware                &#9475; 2     &#9475;
+&#9495;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9527;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9473;&#9499;</span></code>
+          </div>
+        </div>
+      </details>
+
+      <!-- alerts types -->
+      <details class="card">
+        <summary class="p-4 font-semibold text-sm">alerts types</summary>
+        <div class="px-4 pb-4">
+          <p class="text-sm text-muted-foreground">Lists all known Netskope alert types with descriptions. Useful for discovering valid <code>--type</code> filter values.</p>
+          <div class="code-block p-3 mt-2 text-xs"><code><span class="prompt">$</span> ntsk alerts types</code></div>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <!-- ==================== EVENTS ==================== -->
+  <div id="cmd-events" class="section-anchor border-t border-border pt-8 mb-10">
+    <div class="flex items-center gap-3 mb-4">
+      <span class="w-3 h-3 rounded-full bg-blue-500"></span>
+      <h3 class="text-2xl font-bold">events</h3>
+      <span class="badge badge-blue">Security &amp; Events</span>
+    </div>
+    <p class="text-muted-foreground mb-4">Query security events by type. Ten event types available through a unified interface or individual subcommands.</p>
+
+    <div class="grid sm:grid-cols-2 gap-3 mb-4">
+      <div class="card p-4">
+        <h4 class="font-semibold text-sm mb-2">Event Types</h4>
+        <div class="flex flex-wrap gap-1.5">
+          <span class="badge badge-blue">alert</span>
+          <span class="badge badge-blue">application</span>
+          <span class="badge badge-blue">network</span>
+          <span class="badge badge-blue">page</span>
+          <span class="badge badge-blue">incident</span>
+          <span class="badge badge-blue">audit</span>
+          <span class="badge badge-blue">infrastructure</span>
+          <span class="badge badge-blue">client-status</span>
+          <span class="badge badge-blue">epdlp</span>
+          <span class="badge badge-blue">transaction</span>
+        </div>
+      </div>
+      <div class="card p-4">
+        <h4 class="font-semibold text-sm mb-2">Two equivalent approaches</h4>
+        <div class="code-block p-3 text-xs">
+          <code><span class="comment"># Unified interface</span>
+<span class="prompt">$</span> ntsk events list <span class="flag">--type</span> <span class="string">application</span>
+
+<span class="comment"># Direct subcommand (same result)</span>
+<span class="prompt">$</span> ntsk events application</code>
+        </div>
+      </div>
+    </div>
+
+    <details class="card" open>
+      <summary class="p-4 font-semibold text-sm">events list / events {type}</summary>
+      <div class="px-4 pb-4">
+        <p class="text-sm text-muted-foreground mb-3">All event subcommands share these options. API: <code>GET /api/v2/events/datasearch/{type}</code></p>
+        <div class="table-wrapper mb-3">
+          <table>
+            <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+            <tbody>
+              <tr><td><code class="text-xs">-t, --type</code></td><td>string</td><td>&mdash;</td><td>Event type (required for <code>events list</code>)</td></tr>
+              <tr><td><code class="text-xs">--query</code></td><td>string</td><td>&mdash;</td><td>JQL filter expression</td></tr>
+              <tr><td><code class="text-xs">-f, --fields</code></td><td>string</td><td>&mdash;</td><td>Comma-separated field list</td></tr>
+              <tr><td><code class="text-xs">-s, --start</code></td><td>string</td><td>&mdash;</td><td>Start time (epoch or relative)</td></tr>
+              <tr><td><code class="text-xs">-e, --end</code></td><td>string</td><td>now</td><td>End time</td></tr>
+              <tr><td><code class="text-xs">-l, --limit</code></td><td>int</td><td>25</td><td>Max records</td></tr>
+              <tr><td><code class="text-xs">--group-by</code></td><td>string</td><td>&mdash;</td><td>Aggregate by field</td></tr>
+              <tr><td><code class="text-xs">--order-by</code></td><td>string</td><td>&mdash;</td><td>Sort field</td></tr>
+              <tr><td><code class="text-xs">--desc / --asc</code></td><td>flag</td><td>&mdash;</td><td>Sort direction</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="code-block p-4 relative text-xs">
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          <code><span class="comment"># Page events with real response data</span>
+<span class="prompt">$</span> ntsk <span class="flag">-o</span> <span class="string">json</span> events list <span class="flag">--type</span> <span class="string">page</span> <span class="flag">--limit</span> <span class="string">1</span>
+<span class="output">[
+  {
+    "access_method": "Client",
+    "app": "iCloud Drive",
+    "appcategory": "Cloud Storage",
+    "cci": 56,
+    "ccl": "low",
+    "domain": "gateway.icloud.com",
+    "dst_country": "US",
+    "dst_location": "Cupertino",
+    "netskope_pop": "US-SFO1",
+    "os_family": "iOS",
+    "srcip": "75.52.92.136",
+    "user": "tandrey+web@netskope.com",
+    "timestamp_iso": "2026-01-30T23:58:39Z"
+  }
+]</span>
+
+<span class="comment"># Network events grouped by user</span>
+<span class="prompt">$</span> ntsk events network <span class="flag">--group-by</span> <span class="string">user</span> <span class="flag">--start</span> <span class="string">24h</span>
+
+<span class="comment"># Application events as CSV</span>
+<span class="prompt">$</span> ntsk events application <span class="flag">-o</span> <span class="string">csv</span> <span class="flag">--start</span> <span class="string">7d</span> > app_events.csv</code>
+        </div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ==================== INCIDENTS ==================== -->
+  <div id="cmd-incidents" class="section-anchor border-t border-border pt-8 mb-10">
+    <div class="flex items-center gap-3 mb-4">
+      <span class="w-3 h-3 rounded-full bg-orange-500"></span>
+      <h3 class="text-2xl font-bold">incidents</h3>
+      <span class="badge badge-orange">Security &amp; Events</span>
+    </div>
+    <p class="text-muted-foreground mb-4">View incidents, update status, retrieve DLP forensics, and check user confidence index.</p>
+
+    <div class="space-y-4">
+      <details class="card" open>
+        <summary class="p-4 font-semibold text-sm">incidents list / incidents search</summary>
+        <div class="px-4 pb-4">
+          <p class="text-sm text-muted-foreground mb-3">API: <code>GET /api/v2/events/datasearch/incident</code>. <code>list</code> has optional query; <code>search</code> requires it.</p>
+          <div class="table-wrapper mb-3">
+            <table>
+              <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td><code class="text-xs">-q, --query</code></td><td>string</td><td>&mdash;</td><td>JQL filter (required for <code>search</code>)</td></tr>
+                <tr><td><code class="text-xs">-f, --fields</code></td><td>string</td><td>&mdash;</td><td>Comma-separated fields</td></tr>
+                <tr><td><code class="text-xs">-s, --start</code></td><td>string</td><td>24h</td><td>Start time</td></tr>
+                <tr><td><code class="text-xs">-e, --end</code></td><td>string</td><td>now</td><td>End time</td></tr>
+                <tr><td><code class="text-xs">-l, --limit</code></td><td>int</td><td>100</td><td>Max records</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="code-block p-4 relative text-xs">
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            <code><span class="prompt">$</span> ntsk incidents list <span class="flag">--start</span> <span class="string">7d</span> <span class="flag">--limit</span> <span class="string">10</span>
+<span class="prompt">$</span> ntsk incidents search <span class="flag">-q</span> <span class="string">'severity eq "critical"'</span> <span class="flag">--start</span> <span class="string">30d</span></code>
+          </div>
+        </div>
+      </details>
+
+      <details class="card">
+        <summary class="p-4 font-semibold text-sm">incidents uci</summary>
+        <div class="px-4 pb-4">
+          <p class="text-sm text-muted-foreground mb-3">Retrieve User Confidence Index (UCI) score. API: <code>POST /api/v2/ubadatasvc/user/uci</code></p>
+          <div class="code-block p-3 text-xs">
+            <code><span class="prompt">$</span> ntsk incidents uci <span class="string">alice@example.com</span> <span class="flag">--from-time</span> <span class="string">30d</span></code>
+          </div>
+        </div>
+      </details>
+
+      <details class="card">
+        <summary class="p-4 font-semibold text-sm">incidents update</summary>
+        <div class="px-4 pb-4">
+          <p class="text-sm text-muted-foreground mb-3">Update incident fields. API: <code>PATCH /api/v2/incidents/{id}</code></p>
+          <div class="code-block p-3 text-xs">
+            <code><span class="prompt">$</span> ntsk incidents update <span class="string">INC-12345</span> <span class="flag">--status</span> <span class="string">closed</span> <span class="flag">--assignee</span> <span class="string">alice@example.com</span></code>
+          </div>
+        </div>
+      </details>
+
+      <details class="card">
+        <summary class="p-4 font-semibold text-sm">incidents forensics &amp; anomalies</summary>
+        <div class="px-4 pb-4">
+          <div class="code-block p-3 text-xs">
+            <code><span class="comment"># DLP forensics for an incident</span>
+<span class="prompt">$</span> ntsk incidents forensics <span class="string">32885923562112144</span>
+
+<span class="comment"># UBA anomalies for a user</span>
+<span class="prompt">$</span> ntsk incidents anomalies <span class="string">alice@example.com</span></code>
+          </div>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <!-- ==================== USERS ==================== -->
+  <div id="cmd-users" class="section-anchor border-t border-border pt-8 mb-10">
+    <div class="flex items-center gap-3 mb-4">
+      <span class="w-3 h-3 rounded-full bg-green-500"></span>
+      <h3 class="text-2xl font-bold">users</h3>
+      <span class="badge badge-green">Policy &amp; Access</span>
+    </div>
+    <p class="text-muted-foreground mb-4">SCIM v2 user and group provisioning for identity-based security policies.</p>
+
+    <div class="space-y-4">
+      <details class="card" open>
+        <summary class="p-4 font-semibold text-sm">users list</summary>
+        <div class="px-4 pb-4">
+          <p class="text-sm text-muted-foreground mb-3">API: <code>GET /api/v2/scim/Users</code></p>
+          <div class="table-wrapper mb-3">
+            <table>
+              <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td><code class="text-xs">--filter</code></td><td>string</td><td>&mdash;</td><td>SCIM filter. E.g. <code>'userName eq "alice@example.com"'</code></td></tr>
+                <tr><td><code class="text-xs">--limit, --count</code></td><td>int</td><td>100</td><td>Records per page</td></tr>
+                <tr><td><code class="text-xs">--start-index, --offset</code></td><td>int</td><td>1</td><td>1-based pagination start</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="code-block p-4 relative text-xs">
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            <code><span class="prompt">$</span> ntsk <span class="flag">-o</span> <span class="string">json</span> users list <span class="flag">--limit</span> <span class="string">2</span>
+<span class="output">[
+  {
+    "id": "b9fc433a-c9f5-40b4-bd3e-bd9b93160d99",
+    "userName": "aabdelaziz+cfw@netskope.com",
+    "active": true,
+    "givenName": "Ammar",
+    "familyName": "Abdelaziz",
+    "email": "aabdelaziz+cfw@netskope.com",
+    "recordSource": "SCIM"
+  }
+]</span></code>
+          </div>
+        </div>
+      </details>
+
+      <details class="card">
+        <summary class="p-4 font-semibold text-sm">users create / get / update / delete</summary>
+        <div class="px-4 pb-4">
+          <div class="code-block p-3 text-xs">
+            <code><span class="comment"># Create a new user</span>
+<span class="prompt">$</span> ntsk users create <span class="flag">--set</span> <span class="string">userName=alice@example.com</span> <span class="flag">--set</span> <span class="string">active=true</span>
+
+<span class="comment"># Get user by ID</span>
+<span class="prompt">$</span> ntsk users get <span class="string">b9fc433a-c9f5-40b4-bd3e-bd9b93160d99</span>
+
+<span class="comment"># Update user</span>
+<span class="prompt">$</span> ntsk users update <span class="string">b9fc433a-...</span> <span class="flag">--set</span> <span class="string">active=false</span>
+
+<span class="comment"># Delete user</span>
+<span class="prompt">$</span> ntsk users delete <span class="string">b9fc433a-...</span></code>
+          </div>
+        </div>
+      </details>
+
+      <details class="card">
+        <summary class="p-4 font-semibold text-sm">users groups (list / create / get / update / delete)</summary>
+        <div class="px-4 pb-4">
+          <p class="text-sm text-muted-foreground mb-3">API: <code>/api/v2/scim/Groups</code></p>
+          <div class="code-block p-3 text-xs">
+            <code><span class="prompt">$</span> ntsk users groups list
+<span class="prompt">$</span> ntsk users groups create <span class="string">"Engineering"</span> <span class="flag">--members</span> <span class="string">id1,id2</span>
+<span class="prompt">$</span> ntsk users groups update <span class="string">group-id</span> <span class="flag">--name</span> <span class="string">"New Name"</span></code>
+          </div>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <!-- ==================== POLICY ==================== -->
+  <div id="cmd-policy" class="section-anchor border-t border-border pt-8 mb-10">
+    <div class="flex items-center gap-3 mb-4">
+      <span class="w-3 h-3 rounded-full bg-purple-500"></span>
+      <h3 class="text-2xl font-bold">policy</h3>
+      <span class="badge badge-purple">Policy &amp; Access</span>
+    </div>
+    <p class="text-muted-foreground mb-4">Manage URL lists and deploy pending policy changes.</p>
+
+    <div class="space-y-4">
+      <details class="card" open>
+        <summary class="p-4 font-semibold text-sm">policy url-list (list / create / get / update / delete)</summary>
+        <div class="px-4 pb-4">
+          <p class="text-sm text-muted-foreground mb-3">API: <code>/api/v2/policy/urllist</code></p>
+          <div class="code-block p-4 relative text-xs">
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            <code><span class="comment"># List all URL lists</span>
+<span class="prompt">$</span> ntsk <span class="flag">-o</span> <span class="string">json</span> policy url-list list
+<span class="output">[
+  {
+    "id": 1,
+    "name": "Exceptions to prohibited sites",
+    "data": {
+      "type": "exact",
+      "urls": ["*.casino.com", "*.mansion.com", "casino.com"]
+    },
+    "modify_by": "twillis@netskope.com",
+    "modify_time": "2024-06-03T23:54:03.000Z",
+    "pending": 0
+  },
+  {
+    "id": 3,
+    "name": "YouTube Allowed",
+    "data": { "urls": ["*youtube.com", "*.googlevideo.com"], "type": "exact" }
+  }
+]</span>
+
+<span class="comment"># Create a new URL list</span>
+<span class="prompt">$</span> ntsk policy url-list create <span class="string">"Blocked Sites"</span> <span class="flag">--urls</span> <span class="string">"malware.com,phishing.org"</span>
+
+<span class="comment"># Deploy pending changes</span>
+<span class="prompt">$</span> ntsk policy deploy</code>
+          </div>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <!-- ==================== PUBLISHERS ==================== -->
+  <div id="cmd-publishers" class="section-anchor border-t border-border pt-8 mb-10">
+    <div class="flex items-center gap-3 mb-4">
+      <span class="w-3 h-3 rounded-full bg-cyan-500"></span>
+      <h3 class="text-2xl font-bold">publishers</h3>
+      <span class="badge badge-blue">Infrastructure</span>
+    </div>
+    <p class="text-muted-foreground mb-4">Manage private-access publishers, upgrade profiles, and local brokers. API: <code>/api/v2/infrastructure/publishers</code></p>
+
+    <div class="space-y-4">
+      <details class="card" open>
+        <summary class="p-4 font-semibold text-sm">publishers list / get / create / update / delete</summary>
+        <div class="px-4 pb-4">
+          <div class="code-block p-4 relative text-xs">
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            <code><span class="prompt">$</span> ntsk <span class="flag">-o</span> <span class="string">json</span> publishers list <span class="flag">--limit</span> <span class="string">2</span>
+<span class="output">[
+  {
+    "apps_count": 6,
+    "publisher_id": 109,
+    "publisher_name": "flonkerton-sedemo-publisher",
+    "registered": true,
+    "status": "connected",
+    "stitcher_pop": "US-NYC1",
+    "assessment": {
+      "host_os_version": "Ubuntu 22.04.5 LTS",
+      "ip_address": "10.0.0.17",
+      "latency": 7,
+      "version": "134.0.0.10606"
+    }
+  }
+]</span>
+
+<span class="comment"># Create a publisher</span>
+<span class="prompt">$</span> ntsk publishers create <span class="flag">--name</span> <span class="string">"prod-publisher-us-west"</span>
+
+<span class="comment"># View upgrade profiles</span>
+<span class="prompt">$</span> ntsk publishers upgrade-profiles list
+
+<span class="comment"># List local brokers</span>
+<span class="prompt">$</span> ntsk publishers local-brokers list</code>
+          </div>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <!-- ==================== SERVICES / CCI ==================== -->
+  <div id="cmd-services" class="section-anchor border-t border-border pt-8 mb-10">
+    <div class="flex items-center gap-3 mb-4">
+      <span class="w-3 h-3 rounded-full bg-amber-500"></span>
+      <h3 class="text-2xl font-bold">services</h3>
+      <span class="badge badge-orange">Cloud Security</span>
+    </div>
+    <p class="text-muted-foreground mb-4">Cloud Confidence Index (CCI) lookups, service tags, publishers, and private apps.</p>
+
+    <div class="space-y-4">
+      <details class="card" open>
+        <summary class="p-4 font-semibold text-sm">services cci APP_NAME</summary>
+        <div class="px-4 pb-4">
+          <p class="text-sm text-muted-foreground mb-3">Look up CCI risk data for any cloud application. API: <code>GET /api/v2/services/cci/app</code></p>
+          <div class="code-block p-4 relative text-xs">
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            <code><span class="prompt">$</span> ntsk <span class="flag">-o</span> <span class="string">json</span> services cci <span class="string">"Slack"</span>
+<span class="output">[
+  {
+    "app_name": "Slack",
+    "category_name": "Collaboration",
+    "cci": 76,
+    "ccl": "high",
+    "id": 4877,
+    "organisation": "Slack Technologies, LLC"
+  }
+]</span></code>
+          </div>
+          <div class="table-wrapper mt-3">
+            <table>
+              <thead><tr><th>Option</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td><code class="text-xs">--category</code></td><td>Filter by category</td></tr>
+                <tr><td><code class="text-xs">--ccl</code></td><td>Cloud Confidence Level: excellent, high, medium, low, poor</td></tr>
+                <tr><td><code class="text-xs">--tag</code></td><td>Filter by service tag</td></tr>
+                <tr><td><code class="text-xs">--discovered</code></td><td>Filter by discovery status</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+
+      <details class="card">
+        <summary class="p-4 font-semibold text-sm">services tags / publishers / private-apps</summary>
+        <div class="px-4 pb-4">
+          <div class="code-block p-3 text-xs">
+            <code><span class="comment"># Manage CCI service tags</span>
+<span class="prompt">$</span> ntsk services tags list
+<span class="prompt">$</span> ntsk services tags create <span class="string">"Critical Apps"</span>
+
+<span class="comment"># List publishers</span>
+<span class="prompt">$</span> ntsk services publishers list
+
+<span class="comment"># Private apps</span>
+<span class="prompt">$</span> ntsk services private-apps list
+<span class="prompt">$</span> ntsk services private-apps create <span class="string">"Internal Wiki"</span> <span class="flag">--host</span> <span class="string">wiki.internal</span></code>
+          </div>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <!-- ==================== NPA ==================== -->
+  <div id="cmd-npa" class="section-anchor border-t border-border pt-8 mb-10">
+    <div class="flex items-center gap-3 mb-4">
+      <span class="w-3 h-3 rounded-full bg-indigo-500"></span>
+      <h3 class="text-2xl font-bold">npa</h3>
+      <span class="badge badge-purple">Private Access</span>
+    </div>
+    <p class="text-muted-foreground mb-4">Netskope Private Access &mdash; comprehensive management of private apps, publishers, policy, tags, local brokers, and discovery.</p>
+
+    <div class="card p-5">
+      <h4 class="font-semibold text-sm mb-3">Subcommand tree</h4>
+      <div class="grid sm:grid-cols-2 gap-4 text-sm">
+        <div>
+          <div class="font-medium mb-1">npa apps</div>
+          <p class="text-xs text-muted-foreground mb-2">list / get / create / update / delete / bulk-delete / policy-check</p>
+          <div class="font-medium mb-1">npa publishers</div>
+          <p class="text-xs text-muted-foreground mb-2">list / get / create / delete / update / upgrade / releases / registration-token</p>
+          <div class="font-medium mb-1">npa publishers local-brokers</div>
+          <p class="text-xs text-muted-foreground mb-2">list / get / create / delete / update / config-get / config-update / registration-token</p>
+          <div class="font-medium mb-1">npa publishers upgrade-profiles</div>
+          <p class="text-xs text-muted-foreground">list / get / create / delete / update / assign</p>
+        </div>
+        <div>
+          <div class="font-medium mb-1">npa policy rules</div>
+          <p class="text-xs text-muted-foreground mb-2">list / get / create / update / delete</p>
+          <div class="font-medium mb-1">npa policy groups</div>
+          <p class="text-xs text-muted-foreground mb-2">list / get / create / update / delete</p>
+          <div class="font-medium mb-1">npa tags</div>
+          <p class="text-xs text-muted-foreground mb-2">list / get / create / update / delete / add / remove / replace / policy-check</p>
+          <div class="font-medium mb-1">npa app-publishers / discovery / alerts-config</div>
+          <p class="text-xs text-muted-foreground">add / remove / replace &middot; get / update</p>
+        </div>
+      </div>
+      <div class="code-block p-3 mt-4 text-xs">
+        <code><span class="prompt">$</span> ntsk npa apps list <span class="flag">--limit</span> <span class="string">10</span>
+<span class="prompt">$</span> ntsk npa policy rules list
+<span class="prompt">$</span> ntsk npa publishers list
+<span class="prompt">$</span> ntsk npa tags list
+<span class="prompt">$</span> ntsk npa search <span class="string">"internal-wiki"</span>
+<span class="prompt">$</span> ntsk npa validate-name <span class="string">"my-new-app"</span></code>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== STEERING ==================== -->
+  <div id="cmd-steering" class="section-anchor border-t border-border pt-8 mb-10">
+    <div class="flex items-center gap-3 mb-4">
+      <span class="w-3 h-3 rounded-full bg-slate-500"></span>
+      <h3 class="text-2xl font-bold">steering</h3>
+      <span class="badge badge-gray">Infrastructure</span>
+    </div>
+    <p class="text-muted-foreground mb-4">Manage private-app steering rules and global steering configuration.</p>
+    <div class="code-block p-4 text-xs">
+      <code><span class="comment"># View global steering config</span>
+<span class="prompt">$</span> ntsk steering config get
+
+<span class="comment"># Update steering settings</span>
+<span class="prompt">$</span> ntsk steering config update <span class="flag">--set</span> <span class="string">key=value</span>
+
+<span class="comment"># List private apps in steering</span>
+<span class="prompt">$</span> ntsk steering private-apps list
+<span class="prompt">$</span> ntsk steering private-apps get <span class="string">APP_ID</span></code>
+    </div>
+  </div>
+
+  <!-- ==================== DEVICES ==================== -->
+  <div id="cmd-devices" class="section-anchor border-t border-border pt-8 mb-10">
+    <div class="flex items-center gap-3 mb-4">
+      <span class="w-3 h-3 rounded-full bg-slate-500"></span>
+      <h3 class="text-2xl font-bold">devices</h3>
+      <span class="badge badge-gray">Infrastructure</span>
+    </div>
+    <p class="text-muted-foreground mb-4">List managed devices, manage tags, and check supported OS versions. API: <code>/api/v2/steering/devices</code></p>
+    <div class="code-block p-4 text-xs">
+      <code><span class="prompt">$</span> ntsk devices list <span class="flag">--limit</span> <span class="string">25</span>
+<span class="prompt">$</span> ntsk devices supported-os
+
+<span class="comment"># Device tags management</span>
+<span class="prompt">$</span> ntsk devices tags list
+<span class="prompt">$</span> ntsk devices tags create <span class="string">"Corporate Laptops"</span>
+<span class="prompt">$</span> ntsk devices tags delete <span class="string">TAG_ID</span></code>
+    </div>
+  </div>
+
+  <!-- ==================== CLOUD SECURITY ==================== -->
+  <div id="cmd-cloud" class="section-anchor border-t border-border pt-8 mb-10">
+    <div class="flex items-center gap-3 mb-4">
+      <span class="w-3 h-3 rounded-full bg-emerald-500"></span>
+      <h3 class="text-2xl font-bold">Cloud Security</h3>
+      <span class="badge badge-green">Cloud Security</span>
+    </div>
+    <p class="text-muted-foreground mb-6">DSPM, SPM, RBI, ATP, IPS, and Threat Intelligence modules.</p>
+
+    <div class="grid sm:grid-cols-2 gap-4">
+      <!-- DSPM -->
+      <div class="card p-5">
+        <h4 class="font-semibold mb-2">dspm <span class="text-xs text-muted-foreground font-normal">&mdash; Data Security Posture Management</span></h4>
+        <div class="code-block p-3 text-xs">
+          <code><span class="prompt">$</span> ntsk dspm resources <span class="string">tables</span> <span class="flag">--limit</span> <span class="string">10</span>
+<span class="prompt">$</span> ntsk dspm datastores connect <span class="string">DS_ID</span>
+<span class="prompt">$</span> ntsk dspm datastores scan <span class="string">DS_ID</span>
+<span class="prompt">$</span> ntsk dspm analytics <span class="string">classification</span></code>
+        </div>
+        <p class="text-xs text-muted-foreground mt-2">Resource types: connected_datastores, databases, schemas, tables, columns, scans, policy_violations, etc.</p>
+      </div>
+
+      <!-- SPM -->
+      <div class="card p-5">
+        <h4 class="font-semibold mb-2">spm <span class="text-xs text-muted-foreground font-normal">&mdash; SaaS Security Posture</span></h4>
+        <div class="code-block p-3 text-xs">
+          <code><span class="prompt">$</span> ntsk spm apps list
+<span class="prompt">$</span> ntsk spm apps get <span class="string">"Workday"</span>
+<span class="prompt">$</span> ntsk spm posture-score
+<span class="prompt">$</span> ntsk spm rules list
+<span class="prompt">$</span> ntsk spm changes
+<span class="prompt">$</span> ntsk spm inventory</code>
+        </div>
+      </div>
+
+      <!-- ATP -->
+      <div class="card p-5">
+        <h4 class="font-semibold mb-2">atp <span class="text-xs text-muted-foreground font-normal">&mdash; Advanced Threat Protection</span></h4>
+        <div class="code-block p-3 text-xs">
+          <code><span class="comment"># Scan a file for malware</span>
+<span class="prompt">$</span> ntsk atp scan-file <span class="flag">-f</span> <span class="string">suspicious.exe</span>
+
+<span class="comment"># Scan a URL</span>
+<span class="prompt">$</span> ntsk atp scan-url <span class="flag">--url</span> <span class="string">"https://suspect.site"</span>
+
+<span class="comment"># Get scan report</span>
+<span class="prompt">$</span> ntsk atp report <span class="string">JOB_ID</span></code>
+        </div>
+      </div>
+
+      <!-- IPS -->
+      <div class="card p-5">
+        <h4 class="font-semibold mb-2">ips <span class="text-xs text-muted-foreground font-normal">&mdash; Intrusion Prevention System</span></h4>
+        <div class="code-block p-3 text-xs">
+          <code><span class="prompt">$</span> ntsk ips status
+<span class="prompt">$</span> ntsk ips allowlist list
+<span class="prompt">$</span> ntsk ips allowlist add <span class="string">10.0.0.0/8</span>
+<span class="prompt">$</span> ntsk ips signatures <span class="flag">--search</span> <span class="string">"CVE-2024"</span></code>
+        </div>
+      </div>
+
+      <!-- Threat Intel -->
+      <div class="card p-5">
+        <h4 class="font-semibold mb-2">intel <span class="text-xs text-muted-foreground font-normal">&mdash; Threat Intelligence</span></h4>
+        <div class="code-block p-3 text-xs">
+          <code><span class="prompt">$</span> ntsk intel url-lookup <span class="flag">--url</span> <span class="string">"https://suspect.site"</span>
+<span class="prompt">$</span> ntsk intel url-recategorize <span class="flag">--url</span> <span class="string">"https://miscat.site"</span>
+<span class="prompt">$</span> ntsk intel false-positive <span class="flag">--url</span> <span class="string">"https://legit.site"</span></code>
+        </div>
+      </div>
+
+      <!-- RBI -->
+      <div class="card p-5">
+        <h4 class="font-semibold mb-2">rbi <span class="text-xs text-muted-foreground font-normal">&mdash; Remote Browser Isolation</span></h4>
+        <div class="code-block p-3 text-xs">
+          <code><span class="prompt">$</span> ntsk rbi apps list
+<span class="prompt">$</span> ntsk rbi browsers
+<span class="prompt">$</span> ntsk rbi categories
+<span class="prompt">$</span> ntsk rbi templates list</code>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== INFRASTRUCTURE ==================== -->
+  <div id="cmd-infra" class="section-anchor border-t border-border pt-8 mb-10">
+    <div class="flex items-center gap-3 mb-4">
+      <span class="w-3 h-3 rounded-full bg-slate-500"></span>
+      <h3 class="text-2xl font-bold">Infrastructure</h3>
+      <span class="badge badge-gray">Infrastructure</span>
+    </div>
+
+    <div class="grid sm:grid-cols-2 gap-4">
+      <!-- DNS -->
+      <div class="card p-5">
+        <h4 class="font-semibold mb-2">dns <span class="text-xs text-muted-foreground font-normal">&mdash; DNS Security</span></h4>
+        <div class="code-block p-3 text-xs">
+          <code><span class="prompt">$</span> ntsk dns profiles list
+<span class="prompt">$</span> ntsk dns profiles create <span class="string">"Corporate DNS"</span>
+<span class="prompt">$</span> ntsk dns profiles deploy
+<span class="prompt">$</span> ntsk dns categories
+<span class="prompt">$</span> ntsk dns groups list
+<span class="prompt">$</span> ntsk dns record-types
+<span class="prompt">$</span> ntsk dns tunnels</code>
+        </div>
+      </div>
+
+      <!-- IPsec -->
+      <div class="card p-5">
+        <h4 class="font-semibold mb-2">ipsec <span class="text-xs text-muted-foreground font-normal">&mdash; IPsec VPN</span></h4>
+        <div class="code-block p-3 text-xs">
+          <code><span class="prompt">$</span> ntsk ipsec tunnels list
+<span class="prompt">$</span> ntsk ipsec tunnels create <span class="flag">--name</span> <span class="string">"HQ-Tunnel"</span> \
+    <span class="flag">--site-ip</span> <span class="string">203.0.113.1</span> <span class="flag">--bandwidth</span> <span class="string">200</span>
+<span class="prompt">$</span> ntsk ipsec pops list <span class="flag">--region</span> <span class="string">EU</span></code>
+        </div>
+        <p class="text-xs text-muted-foreground mt-2">Bandwidth: 50, 100, 150, 200, 250, 1000 Mbps. Encryption: AES128-CBC, AES256-CBC, AES256-GCM.</p>
+      </div>
+
+      <!-- Enrollment -->
+      <div class="card p-5">
+        <h4 class="font-semibold mb-2">enrollment <span class="text-xs text-muted-foreground font-normal">&mdash; Device Enrollment</span></h4>
+        <div class="code-block p-3 text-xs">
+          <code><span class="prompt">$</span> ntsk enrollment tokens list
+<span class="prompt">$</span> ntsk enrollment tokens create <span class="flag">--name</span> <span class="string">"Sales"</span> <span class="flag">--max-devices</span> <span class="string">100</span>
+<span class="prompt">$</span> ntsk enrollment tokens delete <span class="string">TOKEN_ID</span></code>
+        </div>
+      </div>
+
+      <!-- RBAC -->
+      <div class="card p-5">
+        <h4 class="font-semibold mb-2">rbac <span class="text-xs text-muted-foreground font-normal">&mdash; Role-Based Access Control</span></h4>
+        <div class="code-block p-3 text-xs">
+          <code><span class="prompt">$</span> ntsk rbac roles list
+<span class="prompt">$</span> ntsk rbac roles get <span class="string">ROLE_ID</span>
+<span class="prompt">$</span> ntsk rbac roles create <span class="flag">--name</span> <span class="string">"Auditor"</span>
+<span class="prompt">$</span> ntsk rbac admins list</code>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MONITORING ==================== -->
+  <div id="cmd-monitoring" class="section-anchor border-t border-border pt-8 mb-10">
+    <div class="flex items-center gap-3 mb-4">
+      <span class="w-3 h-3 rounded-full bg-pink-500"></span>
+      <h3 class="text-2xl font-bold">Monitoring</h3>
+      <span class="badge badge-red">Monitoring</span>
+    </div>
+
+    <div class="grid sm:grid-cols-2 gap-4">
+      <!-- DEM -->
+      <div class="card p-5">
+        <h4 class="font-semibold mb-2">dem <span class="text-xs text-muted-foreground font-normal">&mdash; Digital Experience Management</span></h4>
+        <div class="code-block p-3 text-xs">
+          <code><span class="prompt">$</span> ntsk dem probes list
+<span class="prompt">$</span> ntsk dem probes create <span class="string">"Salesforce Probe"</span>
+<span class="prompt">$</span> ntsk dem network-probes list
+<span class="prompt">$</span> ntsk dem alerts list
+<span class="prompt">$</span> ntsk dem alerts create <span class="string">"Latency Alert"</span></code>
+        </div>
+      </div>
+
+      <!-- Notifications -->
+      <div class="card p-5">
+        <h4 class="font-semibold mb-2">notifications <span class="text-xs text-muted-foreground font-normal">&mdash; Templates &amp; Delivery</span></h4>
+        <div class="code-block p-3 text-xs">
+          <code><span class="prompt">$</span> ntsk notifications templates list
+<span class="prompt">$</span> ntsk notifications templates get <span class="string">TPL_ID</span>
+<span class="prompt">$</span> ntsk notifications settings get</code>
+        </div>
+      </div>
+
+      <!-- Tokens -->
+      <div class="card p-5">
+        <h4 class="font-semibold mb-2">tokens <span class="text-xs text-muted-foreground font-normal">&mdash; API Token Management</span></h4>
+        <div class="code-block p-3 text-xs">
+          <code><span class="prompt">$</span> ntsk tokens list
+<span class="prompt">$</span> ntsk tokens create <span class="flag">--name</span> <span class="string">"ci-pipeline"</span> \
+    <span class="flag">--endpoints</span> <span class="string">"/api/v2/events,/api/v2/alerts"</span>
+<span class="prompt">$</span> ntsk tokens get <span class="string">TOKEN_ID</span>
+<span class="prompt">$</span> ntsk tokens revoke <span class="string">TOKEN_ID</span></code>
+        </div>
+      </div>
+
+      <!-- Status -->
+      <div class="card p-5">
+        <h4 class="font-semibold mb-2">status <span class="text-xs text-muted-foreground font-normal">&mdash; Tenant Health Overview</span></h4>
+        <p class="text-xs text-muted-foreground mb-2">Concurrent fetch of alerts, events, publishers, private apps, and SCIM users.</p>
+        <div class="code-block p-3 text-xs">
+          <code><span class="prompt">$</span> ntsk status</code>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== UTILITY ==================== -->
+  <div id="cmd-utility" class="section-anchor border-t border-border pt-8 mb-10">
+    <div class="flex items-center gap-3 mb-4">
+      <span class="w-3 h-3 rounded-full bg-gray-400"></span>
+      <h3 class="text-2xl font-bold">Utility Commands</h3>
+    </div>
+
+    <div class="grid sm:grid-cols-2 gap-4">
+      <div class="card p-5">
+        <h4 class="font-semibold mb-2">doctor</h4>
+        <p class="text-xs text-muted-foreground mb-2">Comprehensive setup diagnostic. Checks config file, profile, tenant, credentials, CA bundle, and API connectivity.</p>
+        <div class="code-block p-3 text-xs"><code><span class="prompt">$</span> ntsk doctor</code></div>
+      </div>
+      <div class="card p-5">
+        <h4 class="font-semibold mb-2">tenant</h4>
+        <p class="text-xs text-muted-foreground mb-2">Show tenant configuration, auth method, and API connectivity status.</p>
+        <div class="code-block p-3 text-xs"><code><span class="prompt">$</span> ntsk tenant</code></div>
+      </div>
+      <div class="card p-5">
+        <h4 class="font-semibold mb-2">commands</h4>
+        <p class="text-xs text-muted-foreground mb-2">Print the full command tree for discoverability.</p>
+        <div class="code-block p-3 text-xs"><code><span class="prompt">$</span> ntsk commands</code></div>
+      </div>
+      <div class="card p-5">
+        <h4 class="font-semibold mb-2">docs</h4>
+        <p class="text-xs text-muted-foreground mb-2">Documentation and help &mdash; open docs, search, view API reference, and JQL syntax.</p>
+        <div class="code-block p-3 text-xs">
+          <code><span class="prompt">$</span> ntsk docs open          <span class="comment"># open docs in browser</span>
+<span class="prompt">$</span> ntsk docs search <span class="string">"URL list"</span>
+<span class="prompt">$</span> ntsk docs jql            <span class="comment"># JQL syntax reference</span>
+<span class="prompt">$</span> ntsk docs api            <span class="comment"># API reference link</span></code>
+        </div>
+      </div>
+    </div>
+  </div>
+</section><!-- end #commands -->
+
+<!-- ============================================================ -->
+<!-- JQL QUERY SYNTAX -->
+<!-- ============================================================ -->
+<section id="jql" class="section-anchor">
+  <h2 class="text-3xl font-bold tracking-tight mb-2">JQL Query Syntax</h2>
+  <p class="text-muted-foreground mb-6">JSON Query Language for filtering events, alerts, and incidents. Run <code class="text-sm bg-secondary px-1.5 py-0.5 rounded font-mono">ntsk docs jql</code> for the full reference.</p>
+
+  <div class="grid sm:grid-cols-2 gap-4 mb-6">
+    <div class="card p-5">
+      <h3 class="font-semibold mb-3">Operators</h3>
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th>Operator</th><th>Meaning</th><th>Example</th></tr></thead>
+          <tbody>
+            <tr><td><code>eq</code></td><td>Equals</td><td><code class="text-xs">alert_type eq "DLP"</code></td></tr>
+            <tr><td><code>ne</code></td><td>Not equals</td><td><code class="text-xs">status ne "closed"</code></td></tr>
+            <tr><td><code>lt</code> / <code>gt</code></td><td>Less / greater than</td><td><code class="text-xs">cci gt 80</code></td></tr>
+            <tr><td><code>le</code> / <code>ge</code></td><td>Less/greater or equal</td><td><code class="text-xs">timestamp ge 1700000000</code></td></tr>
+            <tr><td><code>in</code></td><td>In list</td><td><code class="text-xs">app in ["Box","Dropbox"]</code></td></tr>
+            <tr><td><code>like</code></td><td>Wildcard match</td><td><code class="text-xs">user like "*@acme.com"</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card p-5">
+      <h3 class="font-semibold mb-3">Logical combinators</h3>
+      <div class="table-wrapper mb-3">
+        <table>
+          <thead><tr><th>Combinator</th><th>Example</th></tr></thead>
+          <tbody>
+            <tr><td><code>AND</code></td><td><code class="text-xs">alert_type eq "DLP" AND severity eq "high"</code></td></tr>
+            <tr><td><code>OR</code></td><td><code class="text-xs">app eq "Box" OR app eq "Dropbox"</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h4 class="font-semibold text-sm mb-2">Common filter fields</h4>
+      <div class="flex flex-wrap gap-1.5">
+        <span class="badge badge-gray">alert_type</span>
+        <span class="badge badge-gray">severity</span>
+        <span class="badge badge-gray">user</span>
+        <span class="badge badge-gray">app</span>
+        <span class="badge badge-gray">action</span>
+        <span class="badge badge-gray">access_method</span>
+        <span class="badge badge-gray">cci</span>
+        <span class="badge badge-gray">ccl</span>
+        <span class="badge badge-gray">domain</span>
+        <span class="badge badge-gray">srcip</span>
+        <span class="badge badge-gray">dstip</span>
+        <span class="badge badge-gray">category</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="code-block p-4 relative">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <code><span class="comment"># DLP alerts for a specific user in the last week</span>
+<span class="prompt">$</span> ntsk alerts list <span class="flag">--query</span> <span class="string">'alert_type eq "DLP" AND user eq "alice@acme.com"'</span> <span class="flag">--since</span> <span class="string">7d</span>
+
+<span class="comment"># High-risk cloud apps with low CCI</span>
+<span class="prompt">$</span> ntsk events application <span class="flag">--query</span> <span class="string">'cci lt 50 AND action eq "block"'</span> <span class="flag">--start</span> <span class="string">24h</span>
+
+<span class="comment"># Alerts for specific apps</span>
+<span class="prompt">$</span> ntsk alerts list <span class="flag">--query</span> <span class="string">'app in ["ChatGPT","Google Bard"] AND alert_type eq "AI Security"'</span>
+
+<span class="comment"># Wildcard user matching</span>
+<span class="prompt">$</span> ntsk events list <span class="flag">-t</span> <span class="string">page</span> <span class="flag">--query</span> <span class="string">'user like "*@engineering.acme.com"'</span></code>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- ERROR HANDLING -->
+<!-- ============================================================ -->
+<section id="error-handling" class="section-anchor">
+  <h2 class="text-3xl font-bold tracking-tight mb-2">Error Handling &amp; Exit Codes</h2>
+  <p class="text-muted-foreground mb-6">Typed exceptions with actionable suggestions and distinct exit codes for scripting.</p>
+
+  <div class="table-wrapper card mb-6">
+    <table>
+      <thead>
+        <tr><th>Exit Code</th><th>Exception</th><th>HTTP Status</th><th>Meaning</th><th>Suggestion</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code class="font-bold">1</code></td>
+          <td><code class="text-xs">APIError</code></td>
+          <td>5xx, timeout</td>
+          <td>Generic API error</td>
+          <td>Check connectivity, retry</td>
+        </tr>
+        <tr>
+          <td><code class="font-bold">1</code></td>
+          <td><code class="text-xs">RateLimitError</code></td>
+          <td>429</td>
+          <td>Rate limit exceeded</td>
+          <td>Wait for <code>Retry-After</code> header, then retry</td>
+        </tr>
+        <tr>
+          <td><code class="font-bold">2</code></td>
+          <td><code class="text-xs">ValidationError</code></td>
+          <td>400</td>
+          <td>Invalid input</td>
+          <td>Check JQL syntax: <code>ntsk docs jql</code></td>
+        </tr>
+        <tr>
+          <td><code class="font-bold">3</code></td>
+          <td><code class="text-xs">AuthError</code></td>
+          <td>401</td>
+          <td>Authentication failed</td>
+          <td>Check token validity or re-login</td>
+        </tr>
+        <tr>
+          <td><code class="font-bold">4</code></td>
+          <td><code class="text-xs">AuthorizationError</code></td>
+          <td>403</td>
+          <td>Permission denied</td>
+          <td>Verify account permissions / RBAC role</td>
+        </tr>
+        <tr>
+          <td><code class="font-bold">5</code></td>
+          <td><code class="text-xs">NotFoundError</code></td>
+          <td>404</td>
+          <td>Resource not found</td>
+          <td>Context-specific: license check, ID validation</td>
+        </tr>
+        <tr>
+          <td><code class="font-bold">6</code></td>
+          <td><code class="text-xs">SSLError</code></td>
+          <td>&mdash;</td>
+          <td>SSL/TLS verification failed</td>
+          <td>Set <code>NETSKOPE_CA_BUNDLE</code> or <code>ntsk config set-ca-bundle</code></td>
+        </tr>
+        <tr>
+          <td><code class="font-bold">78</code></td>
+          <td><code class="text-xs">ConfigError</code></td>
+          <td>&mdash;</td>
+          <td>Missing/invalid configuration</td>
+          <td>Run <code>ntsk config setup</code></td>
+        </tr>
+        <tr>
+          <td><code class="font-bold">130</code></td>
+          <td>&mdash;</td>
+          <td>&mdash;</td>
+          <td>Keyboard interrupt (Ctrl+C)</td>
+          <td>&mdash;</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card p-5 mb-6">
+    <h3 class="font-semibold mb-3">SSL/TLS troubleshooting</h3>
+    <p class="text-sm text-muted-foreground mb-3">If your organization uses Netskope client for SSL inspection, the CLI needs the Netskope CA certificate. The CLI auto-detects common paths:</p>
+    <div class="table-wrapper mb-3">
+      <table>
+        <thead><tr><th>Platform</th><th>Auto-detected path</th></tr></thead>
+        <tbody>
+          <tr><td>macOS</td><td><code class="text-xs">/Library/Application Support/Netskope/STAgent/data/nscacert*.pem</code></td></tr>
+          <tr><td>Linux</td><td><code class="text-xs">/opt/netskope/stagent/nsca/nscacert*.pem</code></td></tr>
+          <tr><td>Windows</td><td><code class="text-xs">C:\ProgramData\Netskope\STAgent\data\nscacert*.pem</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="code-block p-3 text-xs">
+      <code><span class="comment"># Manual CA bundle configuration</span>
+<span class="prompt">$</span> export NETSKOPE_CA_BUNDLE=<span class="string">"/path/to/ca-bundle.pem"</span>
+<span class="comment"># Or persist in profile</span>
+<span class="prompt">$</span> ntsk config set-ca-bundle <span class="string">"/path/to/ca-bundle.pem"</span></code>
+    </div>
+  </div>
+
+  <div class="code-block p-4 relative">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <code><span class="comment"># Use exit codes in scripts</span>
+<span class="prompt">$</span> ntsk alerts list <span class="flag">--since</span> <span class="string">1h</span> <span class="flag">--count</span> <span class="flag">-q</span>
+<span class="prompt">$</span> echo $?  <span class="comment"># 0 = success, non-zero = error</span>
+
+<span class="comment"># Example: alert on failure</span>
+<span style="color:#93c5fd">if</span> ! ntsk alerts list <span class="flag">--count</span> <span class="flag">-q</span> > /dev/null 2>&amp;1; <span style="color:#93c5fd">then</span>
+    echo <span class="string">"CLI failed with exit code $?"</span>
+<span style="color:#93c5fd">fi</span></code>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- WORKFLOWS & RECIPES -->
+<!-- ============================================================ -->
+<section id="workflows" class="section-anchor">
+  <h2 class="text-3xl font-bold tracking-tight mb-2">Workflows &amp; Recipes</h2>
+  <p class="text-muted-foreground mb-6">Common real-world patterns combining multiple commands.</p>
+
+  <div class="space-y-6">
+    <!-- Recipe 1: Daily Security Dashboard -->
+    <div class="card p-6">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="badge badge-red">Security</span>
+        <h3 class="font-semibold">Daily Security Dashboard</h3>
+      </div>
+      <p class="text-sm text-muted-foreground mb-3">Morning security review &mdash; summarize alerts, check critical incidents, review publisher health.</p>
+      <div class="code-block p-4 relative text-xs">
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        <code><span class="comment">#!/bin/bash - Daily security dashboard</span>
+
+<span class="comment"># Alert summary by type</span>
+echo <span class="string">"=== Alert Summary (last 24h) ==="</span>
+ntsk alerts summary <span class="flag">--by</span> <span class="string">alert_type</span> <span class="flag">--since</span> <span class="string">24h</span>
+
+<span class="comment"># Critical DLP alerts</span>
+echo <span class="string">"=== DLP Alerts ==="</span>
+ntsk alerts list <span class="flag">--query</span> <span class="string">'alert_type eq "DLP"'</span> <span class="flag">--since</span> <span class="string">24h</span> <span class="flag">--limit</span> <span class="string">20</span>
+
+<span class="comment"># Publisher health</span>
+echo <span class="string">"=== Publishers ==="</span>
+ntsk publishers list
+
+<span class="comment"># Compromised credentials</span>
+echo <span class="string">"=== Compromised Credentials ==="</span>
+ntsk alerts list <span class="flag">-t</span> <span class="string">"Compromised Credential"</span> <span class="flag">--since</span> <span class="string">24h</span></code>
+      </div>
+    </div>
+
+    <!-- Recipe 2: Export & Analyze -->
+    <div class="card p-6">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="badge badge-blue">Data</span>
+        <h3 class="font-semibold">Export &amp; Analyze with jq</h3>
+      </div>
+      <p class="text-sm text-muted-foreground mb-3">Pipe JSON output to jq for custom analysis and transformation.</p>
+      <div class="code-block p-4 relative text-xs">
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        <code><span class="comment"># Top 10 users by alert count</span>
+<span class="prompt">$</span> ntsk <span class="flag">-o</span> <span class="string">json</span> alerts list <span class="flag">--since</span> <span class="string">7d</span> <span class="flag">--limit</span> <span class="string">1000</span> | \
+  jq <span class="string">'[.[].user] | group_by(.) | map({user: .[0], count: length}) | sort_by(-.count) | .[:10]'</span>
+
+<span class="comment"># Export DLP incidents to CSV for compliance report</span>
+<span class="prompt">$</span> ntsk <span class="flag">-o</span> <span class="string">csv</span> alerts list <span class="flag">--query</span> <span class="string">'alert_type eq "DLP"'</span> <span class="flag">--since</span> <span class="string">30d</span> \
+  <span class="flag">-f</span> <span class="string">alert_name,user,app,timestamp,dlp_profile,dlp_rule_severity</span> > dlp_report.csv
+
+<span class="comment"># Unique applications seen in the last week</span>
+<span class="prompt">$</span> ntsk <span class="flag">-o</span> <span class="string">json</span> events application <span class="flag">--start</span> <span class="string">7d</span> <span class="flag">--limit</span> <span class="string">5000</span> | \
+  jq <span class="string">'[.[].app] | unique | sort'</span>
+
+<span class="comment"># Count events by category using JSONL for streaming</span>
+<span class="prompt">$</span> ntsk <span class="flag">-o</span> <span class="string">jsonl</span> events page <span class="flag">--start</span> <span class="string">24h</span> <span class="flag">--limit</span> <span class="string">5000</span> | \
+  jq -s <span class="string">'group_by(.category) | map({category: .[0].category, count: length}) | sort_by(-.count)'</span></code>
+      </div>
+    </div>
+
+    <!-- Recipe 3: CI/CD Integration -->
+    <div class="card p-6">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="badge badge-green">CI/CD</span>
+        <h3 class="font-semibold">CI/CD Pipeline Integration</h3>
+      </div>
+      <p class="text-sm text-muted-foreground mb-3">Automate policy updates and security checks in your deployment pipeline.</p>
+      <div class="code-block p-4 relative text-xs">
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        <code><span class="comment"># GitHub Actions example</span>
+<span style="color:#93c5fd">env:</span>
+  <span style="color:#93c5fd">NETSKOPE_TENANT:</span> <span class="string">${{ secrets.NETSKOPE_TENANT }}</span>
+  <span style="color:#93c5fd">NETSKOPE_API_TOKEN:</span> <span class="string">${{ secrets.NETSKOPE_API_TOKEN }}</span>
+
+<span style="color:#93c5fd">steps:</span>
+  - <span style="color:#93c5fd">run:</span> pip install netskope
+
+  <span class="comment"># Verify connectivity</span>
+  - <span style="color:#93c5fd">run:</span> ntsk doctor <span class="flag">-q</span>
+
+  <span class="comment"># Update URL blocklist from file</span>
+  - <span style="color:#93c5fd">run:</span> |
+      ntsk policy url-list update 42 \
+        <span class="flag">--urls</span> <span class="string">"$(cat blocklist.txt | tr '\n' ',')"</span>
+      ntsk policy deploy
+
+  <span class="comment"># Check for critical alerts (fail pipeline if found)</span>
+  - <span style="color:#93c5fd">run:</span> |
+      COUNT=$(ntsk alerts list <span class="flag">--query</span> <span class="string">'severity eq "critical"'</span> <span class="flag">--since</span> <span class="string">1h</span> <span class="flag">--count</span> <span class="flag">-q</span>)
+      if [ "$COUNT" -gt 0 ]; then
+        echo <span class="string">"::error::$COUNT critical alerts in last hour"</span>
+        exit 1
+      fi</code>
+      </div>
+    </div>
+
+    <!-- Recipe 4: Multi-tenant -->
+    <div class="card p-6">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="badge badge-purple">Multi-tenant</span>
+        <h3 class="font-semibold">Multi-Tenant Management</h3>
+      </div>
+      <p class="text-sm text-muted-foreground mb-3">Use profiles to switch between tenants seamlessly.</p>
+      <div class="code-block p-4 relative text-xs">
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        <code><span class="comment"># Set up multiple profiles</span>
+<span class="prompt">$</span> ntsk config create-profile dev
+<span class="prompt">$</span> ntsk config set-tenant dev.goskope.com <span class="flag">--profile</span> <span class="string">dev</span>
+<span class="prompt">$</span> ntsk config set-token <span class="flag">--profile</span> <span class="string">dev</span>
+
+<span class="prompt">$</span> ntsk config create-profile prod
+<span class="prompt">$</span> ntsk config set-tenant prod.goskope.com <span class="flag">--profile</span> <span class="string">prod</span>
+<span class="prompt">$</span> ntsk config set-token <span class="flag">--profile</span> <span class="string">prod</span>
+
+<span class="comment"># Query different tenants</span>
+<span class="prompt">$</span> ntsk <span class="flag">--profile</span> <span class="string">dev</span> alerts summary <span class="flag">--by</span> <span class="string">alert_type</span>
+<span class="prompt">$</span> ntsk <span class="flag">--profile</span> <span class="string">prod</span> alerts summary <span class="flag">--by</span> <span class="string">alert_type</span>
+
+<span class="comment"># Or set via env var for scripts</span>
+<span class="prompt">$</span> NETSKOPE_PROFILE=prod ntsk publishers list</code>
+      </div>
+    </div>
+
+    <!-- Recipe 5: User Investigation -->
+    <div class="card p-6">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="badge badge-orange">Investigation</span>
+        <h3 class="font-semibold">User Investigation Workflow</h3>
+      </div>
+      <div class="code-block p-4 relative text-xs">
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        <code><span class="comment"># 1. Check user confidence index (risk score)</span>
+<span class="prompt">$</span> ntsk incidents uci <span class="string">suspect@company.com</span> <span class="flag">--from-time</span> <span class="string">30d</span>
+
+<span class="comment"># 2. Get their alerts</span>
+<span class="prompt">$</span> ntsk alerts list <span class="flag">--query</span> <span class="string">'user eq "suspect@company.com"'</span> <span class="flag">--since</span> <span class="string">30d</span>
+
+<span class="comment"># 3. Check UBA anomalies</span>
+<span class="prompt">$</span> ntsk incidents anomalies <span class="string">suspect@company.com</span>
+
+<span class="comment"># 4. Review their application usage</span>
+<span class="prompt">$</span> ntsk events application <span class="flag">--query</span> <span class="string">'user eq "suspect@company.com"'</span> <span class="flag">--start</span> <span class="string">30d</span> \
+  <span class="flag">--group-by</span> <span class="string">app</span>
+
+<span class="comment"># 5. Check for data exfiltration (DLP events)</span>
+<span class="prompt">$</span> ntsk <span class="flag">-o</span> <span class="string">json</span> alerts list <span class="flag">--query</span> <span class="string">'user eq "suspect@company.com" AND alert_type eq "DLP"'</span> \
+  <span class="flag">--since</span> <span class="string">30d</span> <span class="flag">-f</span> <span class="string">alert_name,app,dlp_file,dlp_rule_severity,timestamp</span></code>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- ENVIRONMENT VARIABLES -->
+<!-- ============================================================ -->
+<section id="env-vars" class="section-anchor">
+  <h2 class="text-3xl font-bold tracking-tight mb-2">Environment Variables</h2>
+  <p class="text-muted-foreground mb-6">All settings can be overridden via environment variables. They take precedence over config file values but are overridden by CLI flags.</p>
+
+  <div class="table-wrapper card">
+    <table>
+      <thead>
+        <tr><th>Variable</th><th>Description</th><th>Example</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code class="text-xs font-semibold">NETSKOPE_TENANT</code></td>
+          <td>Tenant hostname (overrides profile config)</td>
+          <td><code class="text-xs">sedemo.goskope.com</code></td>
+        </tr>
+        <tr>
+          <td><code class="text-xs font-semibold">NETSKOPE_API_TOKEN</code></td>
+          <td>API v2 token (overrides keyring and config)</td>
+          <td><code class="text-xs">your-api-token</code></td>
+        </tr>
+        <tr>
+          <td><code class="text-xs font-semibold">NETSKOPE_PROFILE</code></td>
+          <td>Active configuration profile</td>
+          <td><code class="text-xs">production</code></td>
+        </tr>
+        <tr>
+          <td><code class="text-xs font-semibold">NETSKOPE_CA_BUNDLE</code></td>
+          <td>Custom CA certificate bundle path for SSL inspection</td>
+          <td><code class="text-xs">/etc/ssl/netskope-ca.pem</code></td>
+        </tr>
+        <tr>
+          <td><code class="text-xs font-semibold">NETSKOPE_WIDE</code></td>
+          <td>Set to <code>1</code> to show all table columns</td>
+          <td><code class="text-xs">1</code></td>
+        </tr>
+        <tr>
+          <td><code class="text-xs font-semibold">NETSKOPE_OUTPUT_FORMAT</code></td>
+          <td>Default output format</td>
+          <td><code class="text-xs">json</code></td>
+        </tr>
+        <tr>
+          <td><code class="text-xs font-semibold">NO_COLOR</code></td>
+          <td>Disable colored output when set to any value</td>
+          <td><code class="text-xs">1</code></td>
+        </tr>
+        <tr>
+          <td><code class="text-xs font-semibold">REQUESTS_CA_BUNDLE</code></td>
+          <td>Standard Python CA bundle (also checked)</td>
+          <td><code class="text-xs">/etc/ssl/certs/ca-certificates.crt</code></td>
+        </tr>
+        <tr>
+          <td><code class="text-xs font-semibold">SSL_CERT_FILE</code></td>
+          <td>Standard SSL certificate file (also checked)</td>
+          <td><code class="text-xs">/etc/ssl/cert.pem</code></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SHELL COMPLETION -->
+<!-- ============================================================ -->
+<section id="shell-completion" class="section-anchor">
+  <h2 class="text-3xl font-bold tracking-tight mb-2">Shell Completion</h2>
+  <p class="text-muted-foreground mb-6">Tab-completion for commands, subcommands, and options.</p>
+
+  <div class="grid sm:grid-cols-2 gap-4">
+    <div class="card p-5">
+      <h3 class="font-semibold mb-3">One-step install</h3>
+      <div class="code-block p-4 text-xs">
+        <code><span class="comment"># Auto-detects your shell</span>
+<span class="prompt">$</span> ntsk completion install bash
+<span class="prompt">$</span> ntsk completion install zsh
+<span class="prompt">$</span> ntsk completion install fish
+<span class="prompt">$</span> ntsk completion install powershell</code>
+      </div>
+    </div>
+    <div class="card p-5">
+      <h3 class="font-semibold mb-3">Manual setup</h3>
+      <div class="code-block p-4 text-xs">
+        <code><span class="comment"># Print script to stdout</span>
+<span class="prompt">$</span> ntsk completion show zsh > ~/.zfunc/_netskope
+
+<span class="comment"># Bash</span>
+<span class="prompt">$</span> ntsk completion show bash >> ~/.bashrc
+
+<span class="comment"># Fish</span>
+<span class="prompt">$</span> ntsk completion show fish > \
+  ~/.config/fish/completions/ntsk.fish</code>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- FULL COMMAND TREE -->
+<!-- ============================================================ -->
+<section id="command-tree" class="section-anchor">
+  <h2 class="text-3xl font-bold tracking-tight mb-2">Full Command Tree</h2>
+  <p class="text-muted-foreground mb-4">Every command and subcommand. Output of <code class="text-sm bg-secondary px-1.5 py-0.5 rounded font-mono">ntsk commands</code>.</p>
+
+  <details class="card">
+    <summary class="p-4 font-semibold text-sm">Show full command tree (120+ commands)</summary>
+    <div class="p-4 pt-0">
+      <div class="code-block p-4 text-xs overflow-x-auto" style="max-height: 600px; overflow-y: auto;">
+        <code><span class="output">netskope
+&#9500;&#9472;&#9472; alerts
+&#9474;   &#9500;&#9472;&#9472; list        List security alerts
+&#9474;   &#9500;&#9472;&#9472; summary     Summarise alerts by grouping field
+&#9474;   &#9492;&#9472;&#9472; types       List known alert types
+&#9500;&#9472;&#9472; atp
+&#9474;   &#9500;&#9472;&#9472; report      Retrieve scan report
+&#9474;   &#9500;&#9472;&#9472; scan-file   Submit file for malware scan
+&#9474;   &#9500;&#9472;&#9472; scan-url    Submit URL for threat scan
+&#9474;   &#9492;&#9472;&#9472; submission  Retrieve TPaaS submission report
+&#9500;&#9472;&#9472; auth
+&#9474;   &#9500;&#9472;&#9472; login       Browser-based SSO login
+&#9474;   &#9500;&#9472;&#9472; logout      Clear stored credentials
+&#9474;   &#9500;&#9472;&#9472; status      Show auth status
+&#9474;   &#9492;&#9472;&#9472; token       Display masked token info
+&#9500;&#9472;&#9472; commands          Print full command tree
+&#9500;&#9472;&#9472; completion
+&#9474;   &#9500;&#9472;&#9472; install     Install shell completion
+&#9474;   &#9492;&#9472;&#9472; show        Print completion script
+&#9500;&#9472;&#9472; config
+&#9474;   &#9500;&#9472;&#9472; create-profile  Create new profile
+&#9474;   &#9500;&#9472;&#9472; profiles        List all profiles
+&#9474;   &#9500;&#9472;&#9472; set-ca-bundle   Set custom CA bundle
+&#9474;   &#9500;&#9472;&#9472; set-tenant      Set tenant hostname
+&#9474;   &#9500;&#9472;&#9472; set-token       Store API token securely
+&#9474;   &#9500;&#9472;&#9472; setup           Interactive setup wizard
+&#9474;   &#9500;&#9472;&#9472; show            Display effective config
+&#9474;   &#9500;&#9472;&#9472; test            Test API connectivity
+&#9474;   &#9492;&#9472;&#9472; use-profile     Switch active profile
+&#9500;&#9472;&#9472; dem
+&#9474;   &#9500;&#9472;&#9472; alerts &#9472; list / create
+&#9474;   &#9500;&#9472;&#9472; network-probes &#9472; list
+&#9474;   &#9492;&#9472;&#9472; probes &#9472; list / create
+&#9500;&#9472;&#9472; devices
+&#9474;   &#9500;&#9472;&#9472; list            List managed devices
+&#9474;   &#9500;&#9472;&#9472; supported-os    Supported OS versions
+&#9474;   &#9492;&#9472;&#9472; tags &#9472; list / create / get / update / delete
+&#9500;&#9472;&#9472; dns
+&#9474;   &#9500;&#9472;&#9472; categories      Domain categories
+&#9474;   &#9500;&#9472;&#9472; groups &#9472; list / create / get / update / delete / deploy
+&#9474;   &#9500;&#9472;&#9472; profiles &#9472; list / create / get / update / delete / deploy
+&#9474;   &#9500;&#9472;&#9472; record-types    DNS record types
+&#9474;   &#9492;&#9472;&#9472; tunnels         DNS tunnels
+&#9500;&#9472;&#9472; docs
+&#9474;   &#9500;&#9472;&#9472; api / jql / open / search
+&#9500;&#9472;&#9472; doctor                Setup diagnostic
+&#9500;&#9472;&#9472; dspm
+&#9474;   &#9500;&#9472;&#9472; analytics       DSPM analytics
+&#9474;   &#9500;&#9472;&#9472; datastores &#9472; connect / scan
+&#9474;   &#9492;&#9472;&#9472; resources       List DSPM resources
+&#9500;&#9472;&#9472; enrollment
+&#9474;   &#9492;&#9472;&#9472; tokens &#9472; list / create / delete
+&#9500;&#9472;&#9472; events
+&#9474;   &#9500;&#9472;&#9472; list / alert / application / audit
+&#9474;   &#9500;&#9472;&#9472; client-status / epdlp / incident
+&#9474;   &#9492;&#9472;&#9472; infrastructure / network / page / transaction
+&#9500;&#9472;&#9472; incidents
+&#9474;   &#9500;&#9472;&#9472; anomalies / forensics / list / search / uci / update
+&#9500;&#9472;&#9472; intel
+&#9474;   &#9500;&#9472;&#9472; false-positive / url-lookup / url-recategorize
+&#9500;&#9472;&#9472; ips
+&#9474;   &#9500;&#9472;&#9472; allowlist &#9472; add / list
+&#9474;   &#9500;&#9472;&#9472; signatures    IPS signatures
+&#9474;   &#9492;&#9472;&#9472; status        IPS feature status
+&#9500;&#9472;&#9472; ipsec
+&#9474;   &#9500;&#9472;&#9472; pops &#9472; list
+&#9474;   &#9492;&#9472;&#9472; tunnels &#9472; list / create / get / update / delete
+&#9500;&#9472;&#9472; notifications
+&#9474;   &#9500;&#9472;&#9472; settings &#9472; get
+&#9474;   &#9492;&#9472;&#9472; templates &#9472; list / create / get / update / delete
+&#9500;&#9472;&#9472; npa
+&#9474;   &#9500;&#9472;&#9472; alerts-config &#9472; get / update
+&#9474;   &#9500;&#9472;&#9472; app-publishers &#9472; add / remove / replace
+&#9474;   &#9500;&#9472;&#9472; apps &#9472; list / get / create / update / delete / bulk-delete / policy-check
+&#9474;   &#9500;&#9472;&#9472; discovery &#9472; get / update
+&#9474;   &#9500;&#9472;&#9472; policy &#9472; rules (CRUD) / groups (CRUD)
+&#9474;   &#9500;&#9472;&#9472; publishers &#9472; list / get / create / delete / update / upgrade
+&#9474;   &#9474;   &#9500;&#9472;&#9472; local-brokers &#9472; list / get / create / delete / update / config
+&#9474;   &#9474;   &#9492;&#9472;&#9472; upgrade-profiles &#9472; list / get / create / delete / update / assign
+&#9474;   &#9500;&#9472;&#9472; search / validate-name
+&#9474;   &#9492;&#9472;&#9472; tags &#9472; list / get / create / update / delete / add / remove / replace
+&#9500;&#9472;&#9472; policy
+&#9474;   &#9500;&#9472;&#9472; deploy          Deploy pending changes
+&#9474;   &#9492;&#9472;&#9472; url-list &#9472; list / create / get / update / delete
+&#9500;&#9472;&#9472; publishers
+&#9474;   &#9500;&#9472;&#9472; list / get / create / update / delete
+&#9474;   &#9500;&#9472;&#9472; local-brokers &#9472; list
+&#9474;   &#9492;&#9472;&#9472; upgrade-profiles &#9472; list
+&#9500;&#9472;&#9472; rbac
+&#9474;   &#9500;&#9472;&#9472; admins &#9472; list
+&#9474;   &#9492;&#9472;&#9472; roles &#9472; list / get / create / update / delete
+&#9500;&#9472;&#9472; rbi
+&#9474;   &#9500;&#9472;&#9472; apps &#9472; list
+&#9474;   &#9500;&#9472;&#9472; browsers / categories
+&#9474;   &#9492;&#9472;&#9472; templates &#9472; list / get
+&#9500;&#9472;&#9472; services
+&#9474;   &#9500;&#9472;&#9472; cci             CCI lookup
+&#9474;   &#9500;&#9472;&#9472; private-apps &#9472; list / get / create
+&#9474;   &#9500;&#9472;&#9472; publishers &#9472; list / get
+&#9474;   &#9492;&#9472;&#9472; tags &#9472; list / get / create / update / delete
+&#9500;&#9472;&#9472; spm
+&#9474;   &#9500;&#9472;&#9472; apps &#9472; list / get
+&#9474;   &#9500;&#9472;&#9472; changes / inventory / posture-score
+&#9474;   &#9492;&#9472;&#9472; rules &#9472; list
+&#9500;&#9472;&#9472; status                Tenant health overview
+&#9500;&#9472;&#9472; steering
+&#9474;   &#9500;&#9472;&#9472; config &#9472; get / update
+&#9474;   &#9492;&#9472;&#9472; private-apps &#9472; list / get
+&#9500;&#9472;&#9472; tenant                Show tenant info
+&#9500;&#9472;&#9472; tokens
+&#9474;   &#9500;&#9472;&#9472; list / create / get / update / revoke
+&#9492;&#9472;&#9472; users
+    &#9500;&#9472;&#9472; list / get / create / update / delete
+    &#9492;&#9472;&#9472; groups &#9472; list / get / create / update / delete</span></code>
+      </div>
+    </div>
+  </details>
+</section>
+
+<!-- ============================================================ -->
+<!-- FOOTER -->
+<!-- ============================================================ -->
+<footer class="mt-20 pt-8 border-t border-border">
+  <div class="flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-muted-foreground">
+    <div class="flex items-center gap-2">
+      <div class="w-6 h-6 rounded bg-ns-blue flex items-center justify-center">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+      </div>
+      <span>Netskope CLI v0.2.17</span>
+      <span>&middot;</span>
+      <span>MIT License</span>
+    </div>
+    <div class="flex items-center gap-4">
+      <a href="https://pypi.org/project/netskope/" class="hover:text-foreground transition-colors">PyPI</a>
+      <a href="https://github.com/netskopeoss/netskope-cli" class="hover:text-foreground transition-colors">GitHub</a>
+      <a href="https://github.com/netskopeoss/netskope-cli/issues" class="hover:text-foreground transition-colors">Issues</a>
+    </div>
+  </div>
+  <p class="text-center text-xs text-muted-foreground mt-4 mb-8">Built with real API responses from a live Netskope tenant.</p>
+</footer>
+
+</main></div></div>
+<script>
+  // Initialize Mermaid
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'neutral',
+    flowchart: { curve: 'monotoneX', padding: 15 },
+    themeVariables: {
+      fontFamily: 'Inter, system-ui, sans-serif',
+      fontSize: '13px',
+    }
+  });
+
+  // Tab switching
+  function showTab(event, tabId) {
+    const container = event.target.closest('.card');
+    container.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    container.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+    event.target.classList.add('active');
+    container.querySelector('#' + tabId).classList.add('active');
+  }
+
+  // Copy code to clipboard
+  function copyCode(btn) {
+    const codeBlock = btn.closest('.code-block');
+    const code = codeBlock.querySelector('code');
+    const text = code.innerText.replace(/^\$ /gm, '').replace(/^#.*$/gm, '').trim();
+    navigator.clipboard.writeText(text).then(() => {
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+    });
+  }
+
+  // Highlight active TOC item on scroll
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        document.querySelectorAll('.toc-item').forEach(item => item.classList.remove('active'));
+        const link = document.querySelector('.toc-item[href="#' + entry.target.id + '"]');
+        if (link) link.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -60% 0px' });
+
+  document.querySelectorAll('.section-anchor').forEach(section => observer.observe(section));
+</script>
+</body></html>
