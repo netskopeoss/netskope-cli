@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "netskope"
-version = "0.2.16"
+version = "0.2.17"
 description = "The official Netskope CLI — manage your Netskope tenant from the command line"
 authors = ["Netskope"]
 license = "MIT"

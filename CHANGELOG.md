@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.17] - 2026-03-06
+
+- Allow `intel url-lookup` to accept URL as a positional argument (e.g. `ntsk intel url-lookup google.com`) in addition to `--url`
+- Fix `--wide` / `-W` flag not working for events, incidents, and most other commands (only alerts had it wired up)
+- Add `--since` alias for `--period` on `status` command (e.g. `ntsk status --since 7d`)
+- Auto-route `devices list` to `events client-status` endpoint when the devices API returns 404
+- Add record count to stderr for CSV output (matching table/human behavior) for visibility when piping
+- Clarify publishers command hierarchy: top-level `publishers` help now notes it's a shortcut for `npa publishers`
+
 ## [0.2.16] - 2026-03-06
 
 - Improve playwright missing error message: clarify that browser SSO is optional, show correct `netskope-cli[browser]` install command, and suggest API token auth as an alternative

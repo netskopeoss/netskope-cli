@@ -183,6 +183,7 @@ def _run_event_query(
         data = client.request("GET", endpoint, params=params)
 
     # -- Process and render ------------------------------------------------
+    wide = getattr(state, "wide", False) if state is not None else False
     _render_event_response(
         data,
         title=title,
@@ -193,6 +194,7 @@ def _run_event_query(
         count_only=count_only,
         strip_internal=not (state.raw if state else False),
         add_iso_timestamps=not (state.epoch if state else False),
+        wide=wide,
     )
 
 
@@ -247,6 +249,7 @@ def _run_audit_query(
 
     # -- Process and render ------------------------------------------------
     global_count = getattr(state, "count", False) if state is not None else False
+    wide = getattr(state, "wide", False) if state is not None else False
     _render_event_response(
         data,
         title="Audit Events",
@@ -255,6 +258,7 @@ def _run_audit_query(
         selected_fields=selected_fields,
         default_fields=["audit_log_event", "timestamp", "severity_level", "user", "count"],
         count_only=global_count,
+        wide=wide,
     )
 
 
@@ -269,6 +273,7 @@ def _render_event_response(
     count_only: bool = False,
     strip_internal: bool = True,
     add_iso_timestamps: bool = True,
+    wide: bool = False,
 ) -> None:
     """Validate and render an events API response."""
     if not isinstance(data, dict):
@@ -290,7 +295,7 @@ def _render_event_response(
     results = data.get("result", [])
     total = data.get("total")
 
-    formatter = OutputFormatter(no_color=no_color, count_only=count_only)
+    formatter = OutputFormatter(no_color=no_color, count_only=count_only, wide=wide)
 
     display_title = title
     if total is not None:

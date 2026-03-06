@@ -57,7 +57,8 @@ def _build_formatter(ctx: typer.Context) -> OutputFormatter:
     state = ctx.obj
     no_color = state.no_color if state is not None else False
     count_only = getattr(state, "count", False) if state is not None else False
-    return OutputFormatter(no_color=no_color, count_only=count_only)
+    wide = getattr(state, "wide", False) if state is not None else False
+    return OutputFormatter(no_color=no_color, count_only=count_only, wide=wide)
 
 
 def _get_output_format(ctx: typer.Context) -> str:
@@ -133,9 +134,17 @@ def devices_list(
         if "404" in err_msg or "Not Found" in err_msg:
             console.print(
                 "[yellow]The devices list endpoint is not available on this tenant.[/yellow]\n"
-                "Use [bold]'netskope events client-status'[/bold] to view device information."
+                "Falling back to [bold]'events client-status'[/bold] endpoint..."
             )
-            raise typer.Exit(code=1)
+            fallback_params: dict[str, object] = {"limit": limit}
+            try:
+                with spinner("Fetching client-status events...", no_color=no_color):
+                    data = client.request("GET", "/api/v2/events/datasearch/clientstatus", params=fallback_params)
+            except Exception:
+                console.print("[red]Fallback also failed.[/red] Try: netskope events client-status")
+                raise typer.Exit(code=1)
+            formatter.format_output(data, fmt=_get_output_format(ctx), title="Client Status Events (fallback)")
+            return
         raise
 
     formatter.format_output(data, fmt=_get_output_format(ctx), title="Managed Devices")

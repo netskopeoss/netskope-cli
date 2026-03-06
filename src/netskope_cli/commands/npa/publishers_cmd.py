@@ -30,7 +30,9 @@ publishers_app = typer.Typer(
     help=(
         "Manage NPA publishers and their infrastructure.\n\n"
         "Publishers are on-premises or cloud-hosted connectors that enable secure "
-        "access to private applications through the Netskope Security Cloud."
+        "access to private applications through the Netskope Security Cloud.\n\n"
+        "Also available as the top-level shortcut 'netskope publishers' (with "
+        "basic CRUD commands only)."
     ),
     no_args_is_help=True,
 )

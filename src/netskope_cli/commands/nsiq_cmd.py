@@ -46,7 +46,8 @@ def _get_formatter(ctx: typer.Context) -> OutputFormatter:
     state = ctx.obj
     no_color = state.no_color if state is not None else False
     count_only = getattr(state, "count", False) if state is not None else False
-    return OutputFormatter(no_color=no_color, count_only=count_only)
+    wide = getattr(state, "wide", False) if state is not None else False
+    return OutputFormatter(no_color=no_color, count_only=count_only, wide=wide)
 
 
 def _get_output_format(ctx: typer.Context) -> str:
@@ -75,8 +76,13 @@ def _no_color(ctx: typer.Context) -> bool:
 @nsiq_app.command("url-lookup")
 def url_lookup(
     ctx: typer.Context,
-    url: str = typer.Option(
-        ...,
+    url_arg: Optional[str] = typer.Argument(
+        None,
+        metavar="URL",
+        help=("The URL to look up (positional). " "Example: netskope intel url-lookup google.com"),
+    ),
+    url_opt: Optional[str] = typer.Option(
+        None,
         "--url",
         "-u",
         help=(
@@ -101,15 +107,22 @@ def url_lookup(
 
     EXAMPLES
 
-        # Look up a suspicious URL
+        # Look up a URL (positional argument)
+        netskope intel url-lookup google.com
+
+        # Look up a suspicious URL (using --url flag)
         netskope intel url-lookup --url "https://phishing.example.com/login"
 
         # Look up and output as JSON for scripting
-        netskope -o json intel url-lookup --url "https://example.com"
+        netskope -o json intel url-lookup "https://example.com"
 
         # Look up on a specific tenant profile
-        netskope --profile prod intel url-lookup --url "https://suspect.site"
+        netskope --profile prod intel url-lookup "https://suspect.site"
     """
+    url = url_opt or url_arg
+    if not url:
+        raise typer.BadParameter("Provide a URL as an argument or via --url / -u.")
+
     client = _build_client(ctx)
     formatter = _get_formatter(ctx)
     fmt = _get_output_format(ctx)

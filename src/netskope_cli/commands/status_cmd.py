@@ -285,6 +285,7 @@ def status(
     period: str = typer.Option(
         "24h",
         "--period",
+        "--since",
         "-p",
         help="Time period for event counts. Supports relative offsets (e.g. 1h, 24h, 7d) or epoch timestamps.",
     ),
@@ -298,6 +299,7 @@ def status(
 
     Examples:
         netskope status
+        netskope status --since 7d
         netskope status --period 7d
         netskope status -o json
         netskope status -p 1h

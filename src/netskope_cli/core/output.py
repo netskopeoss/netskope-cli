@@ -301,8 +301,8 @@ class OutputFormatter:
                     parts.append(f"{mk}={mv}")
                 self.err_console.print(f"[dim]API metadata: {', '.join(parts)}[/dim]")
 
-            # Show record count for table/human formats when there are results.
-            if fmt in ("table", "human") and isinstance(data, list) and len(data) > 0:
+            # Show record count for table/human/csv formats when there are results.
+            if fmt in ("table", "human", "csv") and isinstance(data, list) and len(data) > 0:
                 total = None
                 if metadata:
                     total = (

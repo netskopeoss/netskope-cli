@@ -65,7 +65,8 @@ def _get_formatter(ctx: typer.Context) -> OutputFormatter:
     state = ctx.obj
     no_color = state.no_color if state is not None else False
     count_only = getattr(state, "count", False) if state is not None else False
-    return OutputFormatter(no_color=no_color, count_only=count_only)
+    wide = getattr(state, "wide", False) if state is not None else False
+    return OutputFormatter(no_color=no_color, count_only=count_only, wide=wide)
 
 
 def _get_output_format(ctx: typer.Context) -> str:
