@@ -24,7 +24,7 @@ from netskope_cli.core.exceptions import NetskopeError
 # ---------------------------------------------------------------------------
 # Version — single source of truth
 # ---------------------------------------------------------------------------
-__version__ = "0.2.12"
+__version__ = "0.2.13"
 
 # ---------------------------------------------------------------------------
 # Global state object threaded through the context
@@ -70,6 +70,7 @@ class State:
 # ---------------------------------------------------------------------------
 app = typer.Typer(
     name="netskope",
+    add_completion=False,
     help=(
         "Netskope CLI — manage your Netskope tenant from the command line.\n\n"
         "Tip: 'ntsk' is a shorthand alias for 'netskope'.\n\n"
@@ -252,7 +253,18 @@ def main(
 # ---------------------------------------------------------------------------
 
 # Commands that do NOT require auth — suppress the setup banner for these.
-_SETUP_COMMANDS = {"config", "auth", "doctor", "tenant", "docs", "commands", "help", "--help", "--version"}
+_SETUP_COMMANDS = {
+    "config",
+    "auth",
+    "completion",
+    "doctor",
+    "tenant",
+    "docs",
+    "commands",
+    "help",
+    "--help",
+    "--version",
+}
 
 
 def _maybe_show_setup_hint(ctx: typer.Context, cli_profile: str | None) -> None:
@@ -600,8 +612,9 @@ def _tenant_cmd(ctx: typer.Context) -> None:
 # Register subcommand groups
 # ---------------------------------------------------------------------------
 
-# Config & Auth — always available
+# Config, Auth & Completion — always available
 from netskope_cli.commands.auth_cmd import auth_app  # noqa: E402
+from netskope_cli.commands.completion_cmd import completion_app  # noqa: E402
 from netskope_cli.commands.config_cmd import config_app  # noqa: E402
 
 app.add_typer(
@@ -614,6 +627,12 @@ app.add_typer(
     auth_app,
     name="auth",
     help="Authenticate with Netskope via browser login, check auth status, and manage tokens.",
+    rich_help_panel="Configuration",
+)
+app.add_typer(
+    completion_app,
+    name="completion",
+    help="Install or display shell completion scripts (bash, zsh, fish, PowerShell).",
     rich_help_panel="Configuration",
 )
 
@@ -952,6 +971,7 @@ def cli() -> None:
                 "npa",
                 "tenant",
                 "commands",
+                "completion",
             ]
             _known_set = set(_known_commands)
             for arg in sys.argv[1:]:

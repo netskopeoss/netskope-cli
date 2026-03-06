@@ -316,6 +316,12 @@ def alert_summary(
         data,
         fmt=fmt,
         title=f"Alert Summary by {by}",
+        empty_hint=(
+            f"The alerts API returned no grouped results for --by '{by}'. "
+            "This can happen when the grouping field doesn't exist in the matching alerts. "
+            "Try a different field (e.g. --by severity, --by user) or use 'alerts list' "
+            "to see individual records."
+        ),
         strip_internal=not (state.raw if state else False),
         add_iso_timestamps=not (state.epoch if state else False),
     )

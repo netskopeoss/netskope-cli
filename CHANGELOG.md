@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.2.13] - 2026-03-06
+
+- Add `completion` command for shell completion installation (bash, zsh, fish, PowerShell)
+- Fix misleading "No matching records found" message in `alerts summary` when groupby field has no data
+
 ## [0.2.12] - 2026-03-06
 
 - Add issue tracker link to README for bug reports and feature requests
