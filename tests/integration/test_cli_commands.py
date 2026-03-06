@@ -573,7 +573,7 @@ class TestPolicyCommands:
             assert mock_req.call_args[0][1] == "/api/v2/policy/urllist"
             # Verify the body was constructed correctly
             body = mock_req.call_args[1]["json_data"]
-            assert body["data"]["name"] == "newlist"
+            assert body["name"] == "newlist"
             assert "evil.com" in body["data"]["urls"]
             assert "bad.com" in body["data"]["urls"]
 

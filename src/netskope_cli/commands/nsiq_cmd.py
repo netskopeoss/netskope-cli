@@ -114,13 +114,13 @@ def url_lookup(
     formatter = _get_formatter(ctx)
     fmt = _get_output_format(ctx)
 
-    params = {"url": url}
+    body = {"query": {"urls": [url]}}
 
     if not _is_quiet(ctx):
         with spinner("Looking up threat data for URL...", no_color=_no_color(ctx)):
-            result = client.request("GET", "/api/v2/nsiq/urllookup", params=params)
+            result = client.request("POST", "/api/v2/nsiq/urllookup", json_data=body)
     else:
-        result = client.request("GET", "/api/v2/nsiq/urllookup", params=params)
+        result = client.request("POST", "/api/v2/nsiq/urllookup", json_data=body)
 
     formatter.format_output(result, fmt=fmt, title="URL Threat Lookup")
 
@@ -201,16 +201,17 @@ def url_recategorize(
     formatter = _get_formatter(ctx)
     fmt = _get_output_format(ctx)
 
-    data: dict[str, object] = {
+    recat_request: dict[str, object] = {
         "url": url,
-        "suggested_category": suggested_category,
+        "suggested_categories": [suggested_category],
     }
-    if current_category is not None:
-        data["current_category"] = current_category
-    if reason is not None:
-        data["reason"] = reason
 
-    body = {"data": data}
+    body: dict[str, object] = {
+        "email": "",
+        "recat_requests": [recat_request],
+    }
+    if reason is not None:
+        body["justification"] = reason
 
     if not _is_quiet(ctx):
         with spinner("Submitting URL recategorization request...", no_color=_no_color(ctx)):

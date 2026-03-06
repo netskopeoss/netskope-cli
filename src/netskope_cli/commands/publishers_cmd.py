@@ -349,7 +349,7 @@ def list_upgrade_profiles(
     fmt = _get_output_format(ctx)
 
     with spinner("Fetching upgrade profiles..."):
-        data = client.request("GET", "/api/v2/infrastructure/publishers/upgradeprofiles")
+        data = client.request("GET", "/api/v2/infrastructure/publisherupgradeprofiles")
 
     formatter.format_output(data, fmt=fmt, title="Publisher Upgrade Profiles")
 

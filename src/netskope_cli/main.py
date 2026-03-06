@@ -8,6 +8,7 @@ handling.
 from __future__ import annotations
 
 import difflib
+import logging
 import sys
 from dataclasses import dataclass, field
 from enum import Enum
@@ -23,7 +24,7 @@ from netskope_cli.core.exceptions import NetskopeError
 # ---------------------------------------------------------------------------
 # Version — single source of truth
 # ---------------------------------------------------------------------------
-__version__ = "0.2.8"
+__version__ = "0.2.9"
 
 # ---------------------------------------------------------------------------
 # Global state object threaded through the context
@@ -220,6 +221,25 @@ def main(
     )
     ctx.obj = state
 
+    # --- Configure logging based on verbosity ---
+    if verbose >= 2:
+        log_level = logging.DEBUG
+    elif verbose == 1:
+        log_level = logging.INFO
+    else:
+        log_level = logging.WARNING
+
+    logging.basicConfig(
+        level=log_level,
+        format="%(levelname)s %(name)s: %(message)s",
+        stream=sys.stderr,
+        force=True,
+    )
+    # Suppress noisy third-party loggers unless at max verbosity
+    if verbose < 2:
+        logging.getLogger("httpx").setLevel(logging.WARNING)
+        logging.getLogger("httpcore").setLevel(logging.WARNING)
+
     # --- First-run welcome banner ---
     # Show a helpful getting-started message when the user has no config and
     # is trying to run a data command (not config/auth/help/doctor).
@@ -263,10 +283,15 @@ def _maybe_show_setup_hint(ctx: typer.Context, cli_profile: str | None) -> None:
     except Exception:
         cfg = None
 
+    from netskope_cli.core.exceptions import ConfigError
+
     if cfg is None:
         # No config at all — definitely first run.
         _print_welcome_banner()
-        raise typer.Exit(code=1)
+        raise ConfigError(
+            "No configuration found.",
+            suggestion="Run `netskope config set-tenant HOSTNAME` then `netskope config set-token` to get started.",
+        )
 
     active = get_active_profile(cfg, cli_profile=cli_profile)
     token = get_api_token(profile=active, cfg=cfg)
@@ -285,6 +310,10 @@ def _maybe_show_setup_hint(ctx: typer.Context, cli_profile: str | None) -> None:
 
         if not has_tenant:
             _print_welcome_banner()
+            raise ConfigError(
+                "No tenant or credentials configured.",
+                suggestion="Run `netskope config set-tenant HOSTNAME` then `netskope config set-token` to get started.",
+            )
         else:
             console.print()
             console.print(
@@ -301,7 +330,10 @@ def _maybe_show_setup_hint(ctx: typer.Context, cli_profile: str | None) -> None:
                 "  [dim]Get a token from: Settings > Tools > REST API v2 in your" " Netskope admin console.[/dim]"
             )
             console.print()
-        raise typer.Exit(code=1)
+            raise ConfigError(
+                f"No credentials configured for profile '{active}'.",
+                suggestion="Run `netskope config set-token` to configure authentication.",
+            )
 
 
 def _print_welcome_banner() -> None:
@@ -531,7 +563,7 @@ def _tenant_cmd(ctx: typer.Context) -> None:
         "api_status": api_status,
     }
 
-    formatter = OutputFormatter(console=console)
+    formatter = OutputFormatter()
     formatter.format_output(
         info,
         fmt=state.output.value,

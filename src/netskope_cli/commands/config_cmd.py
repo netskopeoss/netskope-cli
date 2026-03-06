@@ -147,13 +147,17 @@ def _delete_token(profile: str) -> None:
 def _resolve_profile(ctx: typer.Context) -> str:
     """Return the profile to operate on, respecting the global --profile flag.
 
-    Resolution: explicit --profile flag > active_profile in config > "default".
+    Resolution: explicit --profile flag > NETSKOPE_PROFILE env var >
+    active_profile in config > "default".
     When --profile is not passed, state.profile is None (not "default"), so we
-    fall through to the config file's active_profile setting.
+    fall through to the env var and then the config file's active_profile setting.
     """
     state = ctx.obj
     if state is not None and state.profile is not None:
         return state.profile
+    env_profile = os.environ.get("NETSKOPE_PROFILE")
+    if env_profile:
+        return env_profile
     cfg = _load_config()
     return _active_profile(cfg)
 

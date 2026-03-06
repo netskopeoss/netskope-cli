@@ -119,11 +119,11 @@ def url_list_create(
     url_items = [u.strip() for u in urls.split(",") if u.strip()]
 
     body = {
+        "name": name,
         "data": {
-            "name": name,
             "urls": url_items,
             "type": list_type,
-        }
+        },
     }
 
     result = client.request("POST", "/api/v2/policy/urllist", json_data=body)

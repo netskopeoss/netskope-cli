@@ -336,7 +336,7 @@ _EVENT_TYPE_MAP: dict[str, tuple[str, str, list[str]]] = {
         ["_id", "incident_id", "user", "severity", "status", "timestamp"],
     ),
     "infrastructure": (
-        "/api/v2/events/datasearch/infrastructure",
+        "/api/v2/events/data/infrastructure",
         "Infrastructure Events",
         ["_id", "name", "status", "type", "timestamp"],
     ),
@@ -350,10 +350,12 @@ _EVENT_TYPE_MAP: dict[str, tuple[str, str, list[str]]] = {
         "Endpoint DLP Events",
         ["_id", "user", "file_name", "action", "dlp_rule", "timestamp"],
     ),
+    # NOTE: Transaction events use PubSub streaming and are not available
+    # via REST datasearch. The metrics endpoint provides aggregated stats.
     "transaction": (
-        "/api/v2/events/datasearch/transaction",
-        "Transaction Events",
-        ["_id", "user", "app", "action", "url", "timestamp"],
+        "/api/v2/events/metrics/transactionevents",
+        "Transaction Event Metrics",
+        [],
     ),
 }
 
@@ -947,7 +949,7 @@ def infrastructure(
 ) -> None:
     """Query infrastructure events from the Netskope platform.
 
-    Searches the /api/v2/events/datasearch/infrastructure endpoint for
+    Searches the /api/v2/events/data/infrastructure endpoint for
     infrastructure-level events including publisher connectivity, tunnel status,
     and platform health metrics. Use this to monitor the health and availability
     of your Netskope infrastructure components.
@@ -959,7 +961,7 @@ def infrastructure(
     """
     _run_event_query(
         ctx,
-        "/api/v2/events/datasearch/infrastructure",
+        "/api/v2/events/data/infrastructure",
         query=query,
         fields=fields,
         start=start,
@@ -1155,21 +1157,21 @@ def transaction(
         help=_HELP_ORDER_BY,
     ),
 ) -> None:
-    """Query transaction events from the Netskope platform.
+    """Query transaction event metrics from the Netskope platform.
 
-    Searches the /api/v2/events/datasearch/transaction endpoint for detailed
-    transaction-level events. Transactions represent individual HTTP/HTTPS
-    requests flowing through the Netskope proxy, providing the most granular
-    view of user activity including request/response details.
+    Retrieves aggregated transaction event metrics via
+    /api/v2/events/metrics/transactionevents. Individual transaction events
+    are delivered via PubSub streaming and are not available through the
+    REST datasearch API. This command returns aggregate statistics such as
+    backlog counts and throughput metrics.
 
     Examples:
-        netskope events transaction --query 'app eq "Slack"' --start 1h
-        netskope events transaction --query 'user eq "alice@example.com"' --start 24h --limit 200
-        netskope -o json events transaction --start 7d --group-by app
+        netskope events transaction
+        netskope -o json events transaction
     """
     _run_event_query(
         ctx,
-        "/api/v2/events/datasearch/transaction",
+        "/api/v2/events/metrics/transactionevents",
         query=query,
         fields=fields,
         start=start,
@@ -1177,6 +1179,6 @@ def transaction(
         limit=limit,
         group_by=group_by,
         order_by=order_by,
-        title="Transaction Events",
-        default_fields=["_id", "user", "app", "action", "url", "timestamp"],
+        title="Transaction Event Metrics",
+        default_fields=[],
     )

@@ -384,7 +384,7 @@ def get_delivery_settings(
     fmt = _get_output_format(ctx)
 
     with spinner("Fetching notification delivery settings..."):
-        data = client.request("GET", "/api/v2/notifications/deliverysettings")
+        data = client.request("GET", "/api/v2/notifications/user/deliverysettings")
 
     formatter.format_output(data, fmt=fmt, title="Notification Delivery Settings")
 

@@ -117,6 +117,27 @@ class NetskopeClient:
         status = response.status_code
 
         if 200 <= status < 300:
+            # Some Netskope APIs return HTTP 200 with an error body, e.g.
+            # {"status": "error", "message": "No publisher with id '99999' is found"}.
+            # Detect these and raise the appropriate typed exception.
+            try:
+                body = response.json()
+            except Exception:
+                return
+            if isinstance(body, dict) and body.get("status") == "error":
+                error_msg = body.get("message", "Unknown error")
+                msg_lower = error_msg.lower()
+                if "not found" in msg_lower or ("no " in msg_lower and "found" in msg_lower):
+                    raise NotFoundError(
+                        error_msg,
+                        suggestion="Verify the resource ID exists using the corresponding 'list' command.",
+                        details={"status_code": status, "body": body},
+                    )
+                raise APIError(
+                    f"API error: {error_msg}",
+                    status_code=status,
+                    details={"status_code": status, "body": body},
+                )
             return
 
         # Attempt to pull a human-readable message from the JSON body.
@@ -227,6 +248,7 @@ class NetskopeClient:
         client = await self._get_client()
         url = path if path.startswith("http") else path
 
+        logger.info("HTTP %s %s%s", method.upper(), self.base_url, url)
         logger.debug(
             "HTTP %s %s params=%s json_keys=%s",
             method.upper(),
@@ -255,6 +277,7 @@ class NetskopeClient:
                 details={"method": method, "path": url},
             ) from exc
 
+        logger.info("HTTP %s %s -> %s", method.upper(), url, response.status_code)
         logger.debug(
             "HTTP %s %s -> %s (%d bytes)",
             method.upper(),

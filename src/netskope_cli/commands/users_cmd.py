@@ -214,6 +214,7 @@ def user_list(
     start_index: int = typer.Option(
         1,
         "--start-index",
+        "--offset",
         help=(
             "1-based index of the first result to return. Use with --count for "
             "pagination. For example, --start-index 101 --count 100 returns users "

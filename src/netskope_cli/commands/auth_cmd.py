@@ -308,8 +308,11 @@ def token_info(
         netskope auth token
         netskope auth token --profile production
     """
+    from netskope_cli.core.config import get_api_token, load_config
+
     profile = _resolve_profile(ctx)
-    token = _get_token(profile)
+    cfg = load_config()
+    token = get_api_token(profile=profile, cfg=cfg)
     tenant = _get_tenant(profile)
     console = _get_console(ctx)
 
