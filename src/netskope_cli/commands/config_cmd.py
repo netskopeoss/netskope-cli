@@ -279,6 +279,79 @@ def set_token(
         console.print(f"[green]Token stored for profile[/green] [bold]'{profile}'[/bold].")
 
 
+@config_app.command("set-ca-bundle")
+def set_ca_bundle(
+    ctx: typer.Context,
+    path: Optional[str] = typer.Argument(
+        None,
+        help=(
+            "Path to a CA certificate bundle file (PEM format). "
+            "Used when the Netskope client is performing SSL inspection. "
+            "Pass 'auto' to search well-known paths, or 'clear' to remove."
+        ),
+    ),
+) -> None:
+    """Set a custom CA certificate bundle for SSL verification.
+
+    Required when the Netskope client performs SSL inspection and Python's
+    default certificate store doesn't include the Netskope proxy CA.
+
+    \b
+    Examples:
+        netskope config set-ca-bundle /path/to/nscacert.pem
+        netskope config set-ca-bundle auto          # auto-detect
+        netskope config set-ca-bundle clear          # remove setting
+        export NETSKOPE_CA_BUNDLE=/path/to/cert.pem  # env var alternative
+    """
+    from netskope_cli.core.config import find_netskope_ca_cert
+
+    profile = _resolve_profile(ctx)
+    console = _get_console(ctx)
+    cfg = _load_config()
+    section = _get_profile_section(cfg, profile)
+
+    if path is None:
+        # Interactive: try auto-detect
+        detected = find_netskope_ca_cert()
+        if detected:
+            console.print(f"[green]Found Netskope CA cert:[/green] {detected}")
+            path = detected
+        else:
+            console.print("[yellow]No Netskope CA cert found in well-known paths.[/yellow]")
+            console.print("Please provide the path to your CA bundle file:")
+            console.print("  [cyan]netskope config set-ca-bundle /path/to/nscacert.pem[/cyan]")
+            raise typer.Exit(code=1)
+
+    if path == "clear":
+        section.pop("ca_bundle", None)
+        _save_config(cfg)
+        console.print(f"[green]CA bundle cleared for profile[/green] [bold]'{profile}'[/bold].")
+        return
+
+    if path == "auto":
+        detected = find_netskope_ca_cert()
+        if detected:
+            path = detected
+            console.print(f"[green]Auto-detected:[/green] {path}")
+        else:
+            console.print("[red]Could not find Netskope CA cert in well-known paths.[/red]")
+            console.print("Provide the path manually: netskope config set-ca-bundle /path/to/cert.pem")
+            raise typer.Exit(code=1)
+
+    # Validate the file exists
+    ca_path = Path(path)
+    if not ca_path.is_file():
+        console.print(f"[red]File not found:[/red] {path}")
+        raise typer.Exit(code=1)
+
+    section["ca_bundle"] = str(ca_path.resolve())
+    _save_config(cfg)
+    console.print(
+        f"[green]CA bundle set to[/green] [bold]{ca_path.resolve()}[/bold] "
+        f"[green]for profile[/green] [bold]'{profile}'[/bold]."
+    )
+
+
 @config_app.command("show")
 def show(
     ctx: typer.Context,

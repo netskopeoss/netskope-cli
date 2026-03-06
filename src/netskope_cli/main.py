@@ -24,7 +24,7 @@ from netskope_cli.core.exceptions import NetskopeError
 # ---------------------------------------------------------------------------
 # Version — single source of truth
 # ---------------------------------------------------------------------------
-__version__ = "0.2.10"
+__version__ = "0.2.11"
 
 # ---------------------------------------------------------------------------
 # Global state object threaded through the context
@@ -449,9 +449,23 @@ def _doctor_cmd(ctx: typer.Context) -> None:
     else:
         console.print("  [dim]\u2022[/dim] Session cookie: [dim]not set[/dim] (optional)")
 
-    # 7. API connectivity test
+    # 7. CA bundle / SSL
+    from netskope_cli.core.config import find_netskope_ca_cert, get_ca_bundle
+
+    ca_bundle = get_ca_bundle(profile=active, cfg=cfg)
+    ns_cert = find_netskope_ca_cert()
+    if ca_bundle:
+        console.print(f"  [green]\u2713[/green] CA bundle: {ca_bundle}")
+    elif ns_cert:
+        console.print(f"  [yellow]\u2022[/yellow] Netskope CA cert detected: {ns_cert}")
+        console.print(f'    [dim]Tip: export NETSKOPE_CA_BUNDLE="{ns_cert}" to use it[/dim]')
+    else:
+        console.print("  [dim]\u2022[/dim] CA bundle: [dim]default (certifi)[/dim]")
+
+    # 8. API connectivity test
+    verify: bool | str = ca_bundle if ca_bundle else True
     if has_tenant and (token or session):
-        client = NetskopeClient(base_url=base_url, api_token=token, ci_session=session)
+        client = NetskopeClient(base_url=base_url, api_token=token, ci_session=session, verify=verify)
         now = int(time.time())
         try:
             client.request(
@@ -461,8 +475,16 @@ def _doctor_cmd(ctx: typer.Context) -> None:
             )
             console.print("  [green]\u2713[/green] API connectivity: [green]OK[/green]")
         except Exception as exc:
+            from netskope_cli.core.exceptions import SSLError as NetskopeSSLError
+
             msg = str(exc).split("\n")[0]
             console.print(f"  [red]\u2717[/red] API connectivity: [red]FAILED[/red] — {msg}")
+            if isinstance(exc, NetskopeSSLError):
+                console.print("    [yellow]This looks like an SSL inspection issue.[/yellow]")
+                if ns_cert:
+                    console.print(f'    [dim]Try: export NETSKOPE_CA_BUNDLE="{ns_cert}"[/dim]')
+                else:
+                    console.print("    [dim]Run with -vv for details, or see: netskope docs ssl[/dim]")
             all_ok = False
     elif has_tenant:
         console.print("  [yellow]\u2022[/yellow] API connectivity: [yellow]skipped[/yellow] (no credentials)")

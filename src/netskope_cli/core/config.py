@@ -68,6 +68,7 @@ class ProfileConfig(BaseModel):
     tenant: str = ""
     api_token: Optional[str] = None
     auth_type: str = Field(default="token", pattern=r"^(token|session)$")
+    ca_bundle: Optional[str] = None
 
     model_config = {"extra": "allow"}
 
@@ -104,6 +105,7 @@ class EnvSettings(BaseSettings):
     netskope_profile: Optional[str] = None
     netskope_output_format: Optional[str] = None
     netskope_no_color: Optional[bool] = None
+    netskope_ca_bundle: Optional[str] = None
 
     model_config = SettingsConfigDict(
         env_prefix="",  # variable names already include the prefix
@@ -443,6 +445,67 @@ def delete_session_cookie(
         path.unlink()
         return True
     return False
+
+
+# ---------------------------------------------------------------------------
+# CA bundle helpers
+# ---------------------------------------------------------------------------
+
+# Well-known locations for the Netskope CA certificate by platform.
+_NETSKOPE_CA_PATHS: list[str] = [
+    # macOS
+    "/Library/Application Support/Netskope/STAgent/data/nscacert.pem",
+    "/Library/Application Support/Netskope/STAgent/data/nscacert_combined.pem",
+    # Linux
+    "/opt/netskope/stagent/nsca/nscacert.pem",
+    "/opt/netskope/stagent/nsca/nscacert_combined.pem",
+    # Windows (common paths)
+    r"C:\ProgramData\Netskope\STAgent\data\nscacert.pem",
+    r"C:\ProgramData\Netskope\STAgent\data\nscacert_combined.pem",
+]
+
+
+def find_netskope_ca_cert() -> str | None:
+    """Search well-known paths for a Netskope CA certificate.
+
+    Returns the first existing path, or ``None`` if not found.
+    """
+    for ca_path in _NETSKOPE_CA_PATHS:
+        if Path(ca_path).is_file():
+            return ca_path
+    return None
+
+
+def get_ca_bundle(
+    profile: str | None = None,
+    cfg: NetskopeConfig | None = None,
+) -> str | None:
+    """Return the CA bundle path for SSL verification.
+
+    Resolution order:
+    1. ``NETSKOPE_CA_BUNDLE`` env var
+    2. ``REQUESTS_CA_BUNDLE`` env var (standard Python convention)
+    3. ``SSL_CERT_FILE`` env var (OpenSSL convention)
+    4. Profile ``ca_bundle`` config
+    5. Auto-detected Netskope CA cert (well-known paths)
+    6. ``None`` (use httpx/certifi defaults)
+    """
+    env = _resolve_env()
+    if env.netskope_ca_bundle:
+        return env.netskope_ca_bundle
+
+    # Standard env vars used by requests/urllib3/httpx
+    for env_var in ("REQUESTS_CA_BUNDLE", "SSL_CERT_FILE", "CURL_CA_BUNDLE"):
+        val = os.environ.get(env_var)
+        if val:
+            return val
+
+    # Profile config
+    _, pcfg = _get_profile(profile, cfg)
+    if pcfg.ca_bundle:
+        return pcfg.ca_bundle
+
+    return None
 
 
 # ---------------------------------------------------------------------------

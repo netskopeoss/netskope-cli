@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import ssl
+import sys
 from typing import Any
 
 import httpx
@@ -19,6 +21,7 @@ from netskope_cli.core.exceptions import (
     AuthorizationError,
     NotFoundError,
     RateLimitError,
+    SSLError,
 )
 
 logger = logging.getLogger(__name__)
@@ -35,6 +38,61 @@ _404_SUGGESTIONS: list[tuple[str, str]] = [
 _404_FALLBACK = "This API endpoint may not be available on your tenant or license plan."
 
 
+def _is_ssl_error(exc: Exception) -> bool:
+    """Check if an exception (or its chain) is caused by an SSL error."""
+    cause = exc.__cause__ or exc.__context__
+    while cause is not None:
+        if isinstance(cause, ssl.SSLError):
+            return True
+        cause = getattr(cause, "__cause__", None) or getattr(cause, "__context__", None)
+    # Also check the string representation as a fallback — some httpx
+    # versions flatten the SSL error into the ConnectError message.
+    err_str = str(exc).lower()
+    return "ssl" in err_str and ("certificate" in err_str or "verify" in err_str)
+
+
+def _ssl_suggestion() -> str:
+    """Build a platform-aware suggestion message for SSL certificate errors."""
+    from netskope_cli.core.config import find_netskope_ca_cert
+
+    lines = [
+        "This typically happens when the Netskope client is performing SSL",
+        "inspection and its CA certificate is not in Python's trust store.",
+        "",
+        "To fix this, choose one of these options:",
+        "",
+    ]
+
+    detected = find_netskope_ca_cert()
+    if detected:
+        lines.append(f"  Detected Netskope CA cert: {detected}")
+        lines.append("")
+        lines.append("  Option 1 — Set the env var (recommended):")
+        lines.append(f'    export NETSKOPE_CA_BUNDLE="{detected}"')
+        lines.append("")
+        lines.append("  Option 2 — Set it in your CLI profile:")
+        lines.append(f"    netskope config set ca_bundle {detected}")
+    else:
+        lines.append("  Option 1 — Find and export the Netskope CA certificate:")
+        if sys.platform == "darwin":
+            lines.append("    Look in: /Library/Application Support/Netskope/STAgent/data/nscacert.pem")
+        elif sys.platform == "win32":
+            lines.append(r"    Look in: C:\ProgramData\Netskope\STAgent\data\nscacert.pem")
+        else:
+            lines.append("    Look in: /opt/netskope/stagent/nsca/nscacert.pem")
+        lines.append('    export NETSKOPE_CA_BUNDLE="/path/to/nscacert.pem"')
+        lines.append("")
+        lines.append("  Option 2 — Set it in your CLI profile:")
+        lines.append("    netskope config set ca_bundle /path/to/nscacert.pem")
+
+    lines.append("")
+    lines.append("  Option 3 — Use the combined system + Netskope CA bundle:")
+    lines.append("    pip install pip-system-certs   # auto-uses OS trust store")
+    lines.append("    # or: pip install truststore   # Python 3.10+")
+
+    return "\n".join(lines)
+
+
 class NetskopeClient:
     """HTTP client for communicating with the Netskope REST API.
 
@@ -49,6 +107,10 @@ class NetskopeClient:
         with *api_token*.
     timeout:
         Request timeout in seconds.
+    verify:
+        SSL verification setting.  ``True`` (default) uses the default CA
+        bundle; a string path points to a custom CA bundle file; ``False``
+        disables verification (not recommended).
     """
 
     def __init__(
@@ -58,11 +120,19 @@ class NetskopeClient:
         api_token: str | None = None,
         ci_session: str | None = None,
         timeout: int = 180,
+        verify: bool | str = True,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self._api_token = api_token
         self._ci_session = ci_session
         self._timeout = timeout
+        # Convert string CA bundle path to an SSLContext to avoid httpx
+        # deprecation warning for verify=<str>.
+        if isinstance(verify, str):
+            ssl_ctx = ssl.create_default_context(cafile=verify)
+            self._verify: bool | ssl.SSLContext = ssl_ctx
+        else:
+            self._verify: bool | ssl.SSLContext = verify
         self._client: httpx.AsyncClient | None = None
 
     # ------------------------------------------------------------------
@@ -92,6 +162,7 @@ class NetskopeClient:
                 headers=self._build_headers(),
                 cookies=self._build_cookies(),
                 timeout=httpx.Timeout(self._timeout),
+                verify=self._verify,
             )
         return self._client
 
@@ -271,6 +342,13 @@ class NetskopeClient:
                 details={"method": method, "path": url},
             ) from exc
         except httpx.ConnectError as exc:
+            # Check if this is an SSL certificate verification error.
+            if _is_ssl_error(exc):
+                raise SSLError(
+                    f"SSL certificate verification failed connecting to {self.base_url}",
+                    suggestion=_ssl_suggestion(),
+                    details={"method": method, "path": url, "original_error": str(exc)},
+                ) from exc
             raise APIError(
                 f"Connection failed: {exc}",
                 suggestion=f"Verify that {self.base_url} is reachable.",
@@ -457,6 +535,7 @@ def build_client(ctx: Any) -> "NetskopeClient":
     from netskope_cli.core.config import (
         get_active_profile,
         get_api_token,
+        get_ca_bundle,
         get_session_cookie,
         get_tenant_url,
         load_config,
@@ -486,8 +565,13 @@ def build_client(ctx: Any) -> "NetskopeClient":
             suggestion=_NO_CREDS_SUGGESTION,
         )
 
+    # Resolve CA bundle for SSL verification (supports Netskope client proxy).
+    ca_bundle = get_ca_bundle(profile=active, cfg=cfg)
+    verify: bool | str = ca_bundle if ca_bundle else True
+
     return NetskopeClient(
         base_url=base_url,
         api_token=api_token,
         ci_session=ci_session,
+        verify=verify,
     )

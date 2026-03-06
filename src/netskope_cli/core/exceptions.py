@@ -112,6 +112,25 @@ class RateLimitError(NetskopeError):
         super().__init__(message, suggestion=suggestion, details=details)
 
 
+class SSLError(NetskopeError):
+    """SSL/TLS certificate verification failed.
+
+    Commonly occurs when the Netskope client is performing SSL inspection
+    and the proxy CA certificate is not in Python's trust store.
+    """
+
+    exit_code: int = 6
+
+    def __init__(
+        self,
+        message: str = "SSL certificate verification failed.",
+        *,
+        suggestion: str | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message, suggestion=suggestion, details=details)
+
+
 class ConfigError(NetskopeError):
     """Configuration is missing or invalid."""
 

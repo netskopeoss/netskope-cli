@@ -37,13 +37,13 @@ def _build_client(ctx: typer.Context) -> tuple[NetskopeClient, str]:
 
 
 async def _fetch_event_count(
-    base_url: str, headers: dict, path: str, params: dict, errors: list[str] | None = None
+    base_url: str, headers: dict, path: str, params: dict, errors: list[str] | None = None, cookies: dict | None = None
 ) -> int | None:
     """Fetch event count from a datasearch endpoint."""
     import httpx
 
     try:
-        async with httpx.AsyncClient(base_url=base_url, headers=headers, timeout=60) as c:
+        async with httpx.AsyncClient(base_url=base_url, headers=headers, cookies=cookies, timeout=60) as c:
             resp = await c.get(path, params=params)
             if resp.status_code != 200:
                 if errors is not None:
@@ -66,13 +66,13 @@ async def _fetch_event_count(
 
 
 async def _fetch_resource_total(
-    base_url: str, headers: dict, path: str, params: dict, errors: list[str] | None = None
+    base_url: str, headers: dict, path: str, params: dict, errors: list[str] | None = None, cookies: dict | None = None
 ) -> int | None:
     """Fetch total from a resource endpoint that returns a 'total' field."""
     import httpx
 
     try:
-        async with httpx.AsyncClient(base_url=base_url, headers=headers, timeout=60) as c:
+        async with httpx.AsyncClient(base_url=base_url, headers=headers, cookies=cookies, timeout=60) as c:
             resp = await c.get(path, params=params)
             if resp.status_code != 200:
                 if errors is not None:
@@ -93,13 +93,15 @@ async def _fetch_resource_total(
     return None
 
 
-async def _fetch_publishers(base_url: str, headers: dict, errors: list[str] | None = None) -> dict[str, Any]:
+async def _fetch_publishers(
+    base_url: str, headers: dict, errors: list[str] | None = None, cookies: dict | None = None
+) -> dict[str, Any]:
     """Fetch publisher list with status breakdown."""
     import httpx
 
     result: dict[str, Any] = {"total": None, "connected": None, "not_connected": None}
     try:
-        async with httpx.AsyncClient(base_url=base_url, headers=headers, timeout=60) as c:
+        async with httpx.AsyncClient(base_url=base_url, headers=headers, cookies=cookies, timeout=60) as c:
             resp = await c.get("/api/v2/infrastructure/publishers", params={"limit": 500, "offset": 0})
             if resp.status_code != 200:
                 if errors is not None:
@@ -118,7 +120,9 @@ async def _fetch_publishers(base_url: str, headers: dict, errors: list[str] | No
     return result
 
 
-async def _gather_status(base_url: str, headers: dict, time_params: dict) -> tuple[dict[str, Any], list[str]]:
+async def _gather_status(
+    base_url: str, headers: dict, time_params: dict, cookies: dict | None = None
+) -> tuple[dict[str, Any], list[str]]:
     """Run all API calls concurrently and return (metrics, errors)."""
     event_types = ["alert", "application", "network", "page", "incident"]
     event_params = {**time_params, "limit": _EVENT_LIMIT}
@@ -127,15 +131,21 @@ async def _gather_status(base_url: str, headers: dict, time_params: dict) -> tup
     tasks = []
     # Event counts
     for etype in event_types:
-        tasks.append(_fetch_event_count(base_url, headers, f"/api/v2/events/datasearch/{etype}", event_params, errors))
+        tasks.append(
+            _fetch_event_count(
+                base_url, headers, f"/api/v2/events/datasearch/{etype}", event_params, errors, cookies=cookies
+            )
+        )
     # Publishers (full detail)
-    tasks.append(_fetch_publishers(base_url, headers, errors))
+    tasks.append(_fetch_publishers(base_url, headers, errors, cookies=cookies))
     # Private apps total
     tasks.append(
-        _fetch_resource_total(base_url, headers, "/api/v2/steering/apps/private", {"limit": 1, "offset": 0}, errors)
+        _fetch_resource_total(
+            base_url, headers, "/api/v2/steering/apps/private", {"limit": 1, "offset": 0}, errors, cookies=cookies
+        )
     )
     # Users total
-    tasks.append(_fetch_resource_total(base_url, headers, "/api/v2/scim/Users", {"count": 1}, errors))
+    tasks.append(_fetch_resource_total(base_url, headers, "/api/v2/scim/Users", {"count": 1}, errors, cookies=cookies))
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -298,12 +308,13 @@ def status(
 
     client, base_url = _build_client(ctx)
     headers = client._build_headers()
+    cookies = client._build_cookies()
 
     start_ts, end_ts = validate_time_range(period)
     time_params = {"starttime": start_ts, "endtime": end_ts}
 
     with spinner("Fetching tenant status...", no_color=no_color):
-        metrics, errors = asyncio.run(_gather_status(base_url, headers, time_params))
+        metrics, errors = asyncio.run(_gather_status(base_url, headers, time_params, cookies=cookies))
 
     if errors:
         verbose = getattr(state, "verbose", False) if state else False
