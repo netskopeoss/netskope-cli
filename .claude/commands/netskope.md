@@ -240,20 +240,43 @@ ntsk policy url-list delete <id>
 ntsk policy deploy                   # Deploy pending changes
 ```
 
-### User & Group Provisioning (SCIM)
+### User & Group Management
 ```bash
+# Query users (User Management API — includes group membership)
 ntsk users list --limit 50
-ntsk users get <user_id>
-ntsk users create --given-name John --family-name Doe --email john@example.com
-ntsk users update <id> --given-name Jonathan
-ntsk users delete <id>
+ntsk users list --filter '{"and": [{"emails": {"eq": "alice@example.com"}}]}'
+ntsk users list --filter '{"accounts.active": {"eq": true}}'
+ntsk users get alice@example.com                        # Look up by email
+ntsk users get alice --by username                      # Look up by username
 
+# Query groups (User Management API — includes userCount)
 ntsk users groups list
-ntsk users groups get <group_id>
+ntsk users groups list --filter '{"deleted": {"eq": false}}'
+ntsk users groups get "Engineering"                     # Look up by display name
+
+# List group members
+ntsk users groups members "Engineering" --limit 100
+ntsk users groups members "Sales Team" -o json
+
+# SCIM CRUD (provisioning — unchanged, uses /api/v2/scim/)
+ntsk users create --username alice@example.com --email alice@example.com
+ntsk users update <scimId> --set active=false
+ntsk users delete <scimId>
 ntsk users groups create "Engineering"
-ntsk users groups update <id> --add-members <user_id>
-ntsk users groups delete <id>
+ntsk users groups update <scimId> --name "New Name"
+ntsk users groups delete <scimId>
 ```
+
+**User Management API filter syntax:** `--filter` accepts a JSON dict with operators `eq`, `in`, `sw`, `co`.
+- User filterable fields: `userName`, `emails`, `accounts.deleted`, `accounts.active`, `accounts.parentGroups`, `accounts.ou`, `accounts.provisioner`, `accounts.collectionId`
+- Group filterable fields: `id`, `scimId`, `deleted`, `collectionId`, `parentGroups`, `idps`
+- Common patterns:
+  - Find by email: `'{"and": [{"emails": {"eq": "user@example.com"}}]}'`
+  - Active users: `'{"accounts.active": {"eq": true}}'`
+  - Users in group: `'{"accounts.parentGroups": {"in": ["Engineering"]}}'` or use `ntsk users groups members "Engineering"`
+  - Non-deleted groups: `'{"deleted": {"eq": false}}'`
+
+**Note:** SCIM CRUD commands (create/update/delete) use scimId (UUID), which is available in the `scimId` field of query results. Query commands (list/get/members) use the User Management API which returns richer data including `parentGroups`.
 
 ### Publishers & Private Access
 ```bash

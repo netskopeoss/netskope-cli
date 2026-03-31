@@ -688,14 +688,14 @@ ca_bundle = <span class="string">"/etc/ssl/netskope-ca.pem"</span></code>
         <code><span class="prompt">$</span> ntsk users list <span class="flag">-o</span> <span class="string">json</span> <span class="flag">--limit</span> <span class="string">2</span>
 <span class="output">[
   {
-    "id": "b9fc433a-c9f5-40b4-bd3e-bd9b93160d99",
-    "userName": "aabdelaziz+cfw@netskope.com",
+    "id": "user-123",
+    "userName": "alice@example.com",
+    "email": "alice@example.com",
     "active": true,
-    "externalId": "00u19e1wz27uB8jMY0x8",
-    "givenName": "Ammar",
-    "familyName": "Abdelaziz",
-    "email": "aabdelaziz+cfw@netskope.com",
-    "recordSource": "SCIM"
+    "givenName": "Alice",
+    "familyName": "Smith",
+    "parentGroups": ["Engineering", "All Users"],
+    "provisioner": "SCIM"
   },
   ...
 ]</span></code>
@@ -885,7 +885,7 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
         <span class="w-2 h-2 rounded-full bg-green-500"></span>
         <span class="font-semibold text-sm">Users &amp; Groups</span>
       </div>
-      <p class="text-xs text-muted-foreground">SCIM v2 user/group provisioning</p>
+      <p class="text-xs text-muted-foreground">User/group management with membership data</p>
     </a>
     <a href="#cmd-policy" class="card p-4 hover:border-ns-blue transition-colors">
       <div class="flex items-center gap-2 mb-1">
@@ -1289,20 +1289,20 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
       <h3 class="text-2xl font-bold">users</h3>
       <span class="badge badge-green">Policy &amp; Access</span>
     </div>
-    <p class="text-muted-foreground mb-4">SCIM v2 user and group provisioning for identity-based security policies.</p>
+    <p class="text-muted-foreground mb-4">User and group management with membership data. Query commands use the User Management API for rich data including group membership; CRUD commands use SCIM v2 for provisioning.</p>
 
     <div class="space-y-4">
       <details class="card" open>
         <summary class="p-4 font-semibold text-sm">users list</summary>
         <div class="px-4 pb-4">
-          <p class="text-sm text-muted-foreground mb-3">API: <code>GET /api/v2/scim/Users</code></p>
+          <p class="text-sm text-muted-foreground mb-3">API: <code>POST /api/v2/users/getusers</code> &mdash; Returns rich data including group membership (<code>parentGroups</code>).</p>
           <div class="table-wrapper mb-3">
             <table>
               <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
               <tbody>
-                <tr><td><code class="text-xs">--filter</code></td><td>string</td><td>&mdash;</td><td>SCIM filter. E.g. <code>'userName eq "alice@example.com"'</code></td></tr>
-                <tr><td><code class="text-xs">--limit, --count</code></td><td>int</td><td>100</td><td>Records per page</td></tr>
-                <tr><td><code class="text-xs">--start-index, --offset</code></td><td>int</td><td>1</td><td>1-based pagination start</td></tr>
+                <tr><td><code class="text-xs">--filter</code></td><td>JSON string</td><td>&mdash;</td><td>JSON filter dict. E.g. <code>'{"and": [{"emails": {"eq": "alice@example.com"}}]}'</code></td></tr>
+                <tr><td><code class="text-xs">--limit</code></td><td>int</td><td>100</td><td>Max records to return (max 1000)</td></tr>
+                <tr><td><code class="text-xs">--offset</code></td><td>int</td><td>0</td><td>0-based pagination offset</td></tr>
               </tbody>
             </table>
           </div>
@@ -1311,13 +1311,14 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
             <code><span class="prompt">$</span> ntsk <span class="flag">-o</span> <span class="string">json</span> users list <span class="flag">--limit</span> <span class="string">2</span>
 <span class="output">[
   {
-    "id": "b9fc433a-c9f5-40b4-bd3e-bd9b93160d99",
-    "userName": "aabdelaziz+cfw@netskope.com",
+    "id": "user-123",
+    "userName": "alice@example.com",
+    "email": "alice@example.com",
     "active": true,
-    "givenName": "Ammar",
-    "familyName": "Abdelaziz",
-    "email": "aabdelaziz+cfw@netskope.com",
-    "recordSource": "SCIM"
+    "givenName": "Alice",
+    "familyName": "Smith",
+    "parentGroups": ["Engineering", "All Users"],
+    "provisioner": "SCIM"
   }
 ]</span></code>
           </div>
@@ -1325,32 +1326,43 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
       </details>
 
       <details class="card">
-        <summary class="p-4 font-semibold text-sm">users create / get / update / delete</summary>
+        <summary class="p-4 font-semibold text-sm">users get / create / update / delete</summary>
         <div class="px-4 pb-4">
           <div class="code-block p-3 text-xs">
-            <code><span class="comment"># Create a new user</span>
-<span class="prompt">$</span> ntsk users create <span class="flag">--set</span> <span class="string">userName=alice@example.com</span> <span class="flag">--set</span> <span class="string">active=true</span>
+            <code><span class="comment"># Look up user by email (auto-detected) or username</span>
+<span class="prompt">$</span> ntsk users get <span class="string">alice@example.com</span>
+<span class="prompt">$</span> ntsk users get <span class="string">alice</span> <span class="flag">--by</span> <span class="string">username</span>
 
-<span class="comment"># Get user by ID</span>
-<span class="prompt">$</span> ntsk users get <span class="string">b9fc433a-c9f5-40b4-bd3e-bd9b93160d99</span>
+<span class="comment"># Create a new SCIM user</span>
+<span class="prompt">$</span> ntsk users create <span class="flag">--username</span> <span class="string">alice@example.com</span> <span class="flag">--email</span> <span class="string">alice@example.com</span>
 
-<span class="comment"># Update user</span>
-<span class="prompt">$</span> ntsk users update <span class="string">b9fc433a-...</span> <span class="flag">--set</span> <span class="string">active=false</span>
+<span class="comment"># Update user (uses scimId from query results)</span>
+<span class="prompt">$</span> ntsk users update <span class="string">scim-uuid-...</span> <span class="flag">--set</span> <span class="string">active=false</span>
 
 <span class="comment"># Delete user</span>
-<span class="prompt">$</span> ntsk users delete <span class="string">b9fc433a-...</span></code>
+<span class="prompt">$</span> ntsk users delete <span class="string">scim-uuid-...</span></code>
           </div>
         </div>
       </details>
 
       <details class="card">
-        <summary class="p-4 font-semibold text-sm">users groups (list / create / get / update / delete)</summary>
+        <summary class="p-4 font-semibold text-sm">users groups (list / get / members / create / update / delete)</summary>
         <div class="px-4 pb-4">
-          <p class="text-sm text-muted-foreground mb-3">API: <code>/api/v2/scim/Groups</code></p>
+          <p class="text-sm text-muted-foreground mb-3">Query: <code>POST /api/v2/users/getgroups</code> &mdash; CRUD: <code>/api/v2/scim/Groups</code></p>
           <div class="code-block p-3 text-xs">
-            <code><span class="prompt">$</span> ntsk users groups list
-<span class="prompt">$</span> ntsk users groups create <span class="string">"Engineering"</span> <span class="flag">--members</span> <span class="string">id1,id2</span>
-<span class="prompt">$</span> ntsk users groups update <span class="string">group-id</span> <span class="flag">--name</span> <span class="string">"New Name"</span></code>
+            <code><span class="comment"># List groups with userCount and metadata</span>
+<span class="prompt">$</span> ntsk users groups list
+<span class="prompt">$</span> ntsk users groups list <span class="flag">--filter</span> <span class="string">'{"deleted": {"eq": false}}'</span>
+
+<span class="comment"># Look up group by display name</span>
+<span class="prompt">$</span> ntsk users groups get <span class="string">"Engineering"</span>
+
+<span class="comment"># List all members of a group</span>
+<span class="prompt">$</span> ntsk users groups members <span class="string">"Engineering"</span>
+
+<span class="comment"># SCIM CRUD</span>
+<span class="prompt">$</span> ntsk users groups create <span class="string">"Engineering"</span> <span class="flag">--members</span> <span class="string">scimId1,scimId2</span>
+<span class="prompt">$</span> ntsk users groups update <span class="string">scim-group-id</span> <span class="flag">--name</span> <span class="string">"New Name"</span></code>
           </div>
         </div>
       </details>
@@ -2392,7 +2404,7 @@ ntsk alerts list <span class="flag">-t</span> <span class="string">"Compromised 
 &#9474;   &#9500;&#9472;&#9472; list / create / get / update / revoke
 &#9492;&#9472;&#9472; users
     &#9500;&#9472;&#9472; list / get / create / update / delete
-    &#9492;&#9472;&#9472; groups &#9472; list / get / create / update / delete</span></code>
+    &#9492;&#9472;&#9472; groups &#9472; list / get / members / create / update / delete</span></code>
       </div>
     </div>
   </details>
@@ -2407,7 +2419,7 @@ ntsk alerts list <span class="flag">-t</span> <span class="string">"Compromised 
       <div class="w-6 h-6 rounded bg-ns-blue flex items-center justify-center">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
       </div>
-      <span>Netskope CLI v0.2.21</span>
+      <span>Netskope CLI v0.2.22</span>
       <span>&middot;</span>
       <span>MIT License</span>
     </div>
@@ -2724,19 +2736,25 @@ ntsk policy url-list delete <id>
 ntsk policy deploy                   # Deploy pending changes
 \`\`\`
 
-### User & Group Provisioning (SCIM)
+### User & Group Management
 \`\`\`bash
+# Query users (User Management API — includes group membership)
 ntsk users list --limit 50
-ntsk users get <user_id>
-ntsk users create --given-name John --family-name Doe --email john@example.com
-ntsk users update <id> --given-name Jonathan
-ntsk users delete <id>
+ntsk users list --filter '{"and": [{"emails": {"eq": "alice@example.com"}}]}'
+ntsk users get alice@example.com
 
+# Query groups (includes userCount)
 ntsk users groups list
-ntsk users groups get <group_id>
+ntsk users groups get "Engineering"
+ntsk users groups members "Engineering" --limit 100
+
+# SCIM CRUD (provisioning)
+ntsk users create --username alice@example.com --email alice@example.com
+ntsk users update <scimId> --set active=false
+ntsk users delete <scimId>
 ntsk users groups create "Engineering"
-ntsk users groups update <id> --add-members <user_id>
-ntsk users groups delete <id>
+ntsk users groups update <scimId> --name "New Name"
+ntsk users groups delete <scimId>
 \`\`\`
 
 ### Publishers & Private Access

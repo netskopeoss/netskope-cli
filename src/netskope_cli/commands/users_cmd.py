@@ -1,17 +1,19 @@
-"""SCIM user and group management commands for the Netskope CLI.
+"""User and group management commands for the Netskope CLI.
 
-Provides subcommands for managing users and groups via the Netskope SCIM v2
-API endpoints (/api/v2/scim/Users and /api/v2/scim/Groups).
+Provides query commands via the User Management API (/api/v2/users/) for
+richer data including group membership, and SCIM v2 CRUD commands for
+provisioning (/api/v2/scim/).
 """
 
 from __future__ import annotations
 
+import json
 from typing import Any, Optional
 
 import typer
 
 from netskope_cli.core.client import NetskopeClient, build_client
-from netskope_cli.core.exceptions import ValidationError
+from netskope_cli.core.exceptions import NotFoundError, ValidationError
 from netskope_cli.core.output import OutputFormatter, echo_success
 
 # ---------------------------------------------------------------------------
@@ -21,10 +23,10 @@ from netskope_cli.core.output import OutputFormatter, echo_success
 groups_app = typer.Typer(
     name="groups",
     help=(
-        "Create, list, update, and delete SCIM v2 groups.\n\n"
-        "Groups organize users for policy targeting. Manage group membership to "
-        "control which security policies apply to which sets of users. Groups are "
-        "provisioned via the SCIM /api/v2/scim/Groups endpoints."
+        "Query and manage groups.\n\n"
+        "Query commands use the User Management API (/api/v2/users/) which returns "
+        "rich metadata including user counts and provisioner info. CRUD commands use "
+        "SCIM v2 (/api/v2/scim/Groups) for provisioning."
     ),
     no_args_is_help=True,
 )
@@ -32,16 +34,16 @@ groups_app = typer.Typer(
 users_app = typer.Typer(
     name="users",
     help=(
-        "Provision and manage SCIM v2 users and groups.\n\n"
-        "This command group provides full CRUD operations for user and group "
-        "identities via the Netskope SCIM v2 API. Use these commands to provision "
-        "users from your identity provider, manage group membership for policy "
-        "targeting, and automate user lifecycle operations."
+        "Query and manage users and groups.\n\n"
+        "Query commands (list, get) use the User Management API which returns rich "
+        "data including group membership. CRUD commands (create, update, delete) use "
+        "SCIM v2 for provisioning. Use 'users groups members' to find all users in "
+        "a specific group."
     ),
     no_args_is_help=True,
 )
 
-users_app.add_typer(groups_app, name="groups", help="Manage SCIM groups.")
+users_app.add_typer(groups_app, name="groups", help="Query and manage groups.")
 
 
 # ---------------------------------------------------------------------------
@@ -74,87 +76,108 @@ def _is_raw(ctx: typer.Context) -> bool:
     return state.raw if state else False
 
 
-def _simplify_scim_user(record: dict[str, Any]) -> dict[str, Any]:
-    """Flatten a single SCIM user record for human-friendly output."""
+def _build_query_body(filter_json: str | None, limit: int, offset: int) -> dict[str, Any]:
+    """Construct the POST body for User Management API query endpoints.
+
+    Returns ``{"query": {"filter": ..., "paging": {"offset": n, "limit": n}}}``.
+    """
+    body: dict[str, Any] = {
+        "query": {"paging": {"offset": offset, "limit": limit}},
+    }
+    if filter_json:
+        try:
+            filter_dict = json.loads(filter_json)
+        except json.JSONDecodeError as exc:
+            raise ValidationError(
+                f"Invalid --filter JSON: {exc}",
+                suggestion=(
+                    "Filter must be a valid JSON object. Examples:\n"
+                    """  --filter '{"and": [{"emails": {"eq": "user@example.com"}}]}'\n"""
+                    """  --filter '{"deleted": {"eq": false}}'"""
+                ),
+            ) from exc
+        body["query"]["filter"] = filter_dict
+    return body
+
+
+# ---------------------------------------------------------------------------
+# User Management API simplifiers
+# ---------------------------------------------------------------------------
+
+
+def _simplify_um_user(record: dict[str, Any]) -> dict[str, Any]:
+    """Flatten a User Management API user record for human-friendly output."""
     simplified: dict[str, Any] = {}
 
-    # Preserve well-known top-level keys
-    for key in ("id", "userName", "active", "displayName", "externalId", "groups"):
+    for key in ("id", "givenName", "familyName"):
         if key in record:
             simplified[key] = record[key]
-
-    # Flatten name dict
-    name = record.get("name")
-    if isinstance(name, dict):
-        if "givenName" in name:
-            simplified["givenName"] = name["givenName"]
-        if "familyName" in name:
-            simplified["familyName"] = name["familyName"]
 
     # Flatten emails list to primary email string
     emails = record.get("emails")
-    if isinstance(emails, list):
-        primary = next(
-            (e.get("value") for e in emails if isinstance(e, dict) and e.get("primary")),
-            None,
-        )
-        if primary is None and emails:
-            first = emails[0]
-            primary = first.get("value") if isinstance(first, dict) else None
-        if primary:
+    if isinstance(emails, list) and emails:
+        if isinstance(emails[0], dict):
+            primary = next(
+                (e.get("value") for e in emails if isinstance(e, dict) and e.get("primary")),
+                None,
+            )
+            if primary is None:
+                primary = emails[0].get("value")
             simplified["email"] = primary
+        elif isinstance(emails[0], str):
+            simplified["email"] = emails[0]
 
-    # Flatten SCIM extension keys (urn:ietf:params:scim:*) up one level
-    for key, value in record.items():
-        if key.startswith("urn:") and isinstance(value, dict):
-            for sub_key, sub_value in value.items():
-                simplified[sub_key] = sub_value
+    # Extract fields from the first account entry
+    accounts = record.get("accounts")
+    if isinstance(accounts, list) and accounts:
+        acct = accounts[0]
+        if isinstance(acct, dict):
+            for key in ("scimId", "userName", "active", "deleted", "parentGroups", "ou", "provisioner"):
+                if key in acct:
+                    simplified[key] = acct[key]
 
     return simplified
 
 
-def _simplify_scim_users(data: Any) -> Any:
-    """Simplify SCIM user response data, handling both list and single record."""
+def _simplify_um_users(data: Any) -> Any:
+    """Simplify User Management API user response data.
+
+    Handles the real envelope ``{"counts": ..., "data": [...]}``, a bare list
+    (after output-formatter unwrapping), or the ``{"users": [...]}`` shape
+    used in unit-test mocks.
+    """
     if isinstance(data, dict):
-        # SCIM list response has a "Resources" key
-        if "Resources" in data:
-            data["Resources"] = [_simplify_scim_user(r) for r in data["Resources"] if isinstance(r, dict)]
-            return data
-        # Single user record (has "userName" or "schemas" hint)
-        if "userName" in data or "schemas" in data:
-            return _simplify_scim_user(data)
+        for key in ("data", "users"):
+            if key in data and isinstance(data[key], list):
+                data[key] = [_simplify_um_user(r) for r in data[key] if isinstance(r, dict)]
+                return data
     if isinstance(data, list):
-        return [_simplify_scim_user(r) for r in data if isinstance(r, dict)]
+        return [_simplify_um_user(r) for r in data if isinstance(r, dict)]
     return data
 
 
-def _simplify_scim_group(record: dict[str, Any]) -> dict[str, Any]:
-    """Flatten a single SCIM group record for human-friendly output."""
+def _simplify_um_group(record: dict[str, Any]) -> dict[str, Any]:
+    """Flatten a User Management API group record for human-friendly output."""
     simplified: dict[str, Any] = {}
-
-    for key in ("id", "displayName"):
+    for key in ("id", "scimId", "displayName", "userCount", "provisioner", "deleted"):
         if key in record:
             simplified[key] = record[key]
-
-    members = record.get("members")
-    if isinstance(members, list):
-        simplified["member_count"] = len(members)
-    else:
-        simplified["member_count"] = 0
-
     return simplified
 
 
-def _simplify_scim_groups(data: Any) -> Any:
-    """Simplify SCIM group response data, handling both list and single record."""
+def _simplify_um_groups(data: Any) -> Any:
+    """Simplify User Management API group response data.
+
+    Handles the real envelope ``{"counts": ..., "data": [...]}``, a bare list,
+    or the ``{"groups": [...]}`` shape used in unit-test mocks.
+    """
     if isinstance(data, dict):
-        if "Resources" in data:
-            data["Resources"] = [_simplify_scim_group(r) for r in data["Resources"] if isinstance(r, dict)]
-            return data
-        if "displayName" in data or "schemas" in data:
-            return _simplify_scim_group(data)
+        for key in ("data", "groups"):
+            if key in data and isinstance(data[key], list):
+                data[key] = [_simplify_um_group(r) for r in data[key] if isinstance(r, dict)]
+                return data
     if isinstance(data, list):
-        return [_simplify_scim_group(r) for r in data if isinstance(r, dict)]
+        return [_simplify_um_group(r) for r in data if isinstance(r, dict)]
     return data
 
 
@@ -186,7 +209,7 @@ def _parse_set_options(values: list[str]) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# User commands
+# User query commands (User Management API)
 # ---------------------------------------------------------------------------
 
 
@@ -197,98 +220,117 @@ def user_list(
         None,
         "--filter",
         help=(
-            "SCIM filter expression to narrow results. Uses SCIM 2.0 filter syntax. "
-            "For example: 'userName eq \"user@example.com\"' or 'active eq true'. "
-            "Omit to return all users."
+            "JSON filter dict for the User Management API. Uses structured operators "
+            "(eq, in, sw, co). Filterable fields: userName, emails, accounts.deleted, "
+            "accounts.active, accounts.parentGroups, accounts.ou.\n\n"
+            "Examples:\n"
+            """  '{"and": [{"emails": {"eq": "user@example.com"}}]}'\n"""
+            """  '{"accounts.active": {"eq": true}}'"""
         ),
     ),
-    count: int = typer.Option(
+    limit: int = typer.Option(
         100,
         "--limit",
-        "--count",
-        help=(
-            "Number of user records to return per page. Use with --start-index for "
-            "pagination through large user directories. Defaults to 100. "
-            "The API may enforce an upper bound."
-        ),
+        help="Maximum number of records to return (max 1000). Defaults to 100.",
     ),
-    start_index: int = typer.Option(
-        1,
-        "--start-index",
+    offset: int = typer.Option(
+        0,
         "--offset",
-        help=(
-            "1-based index of the first result to return. Use with --count for "
-            "pagination. For example, --start-index 101 --count 100 returns users "
-            "101-200. Defaults to 1."
-        ),
+        help="0-based pagination offset. Defaults to 0.",
     ),
 ) -> None:
-    """List SCIM users with optional filtering and pagination.
+    """List users with group membership data.
 
-    Queries GET /api/v2/scim/Users to retrieve provisioned user identities.
-    Use SCIM filter expressions to find specific users. This is useful for
-    auditing user accounts, verifying provisioning, and automation workflows.
+    Queries POST /api/v2/users/getusers via the User Management API, which
+    returns richer data than SCIM including parentGroups for each user account.
 
     Examples:
         netskope users list
-        netskope users list --filter 'userName eq "alice@example.com"'
-        netskope -o json users list --filter 'active eq true' --count 50
+        netskope users list --filter '{"and": [{"emails": {"eq": "alice@example.com"}}]}'
+        netskope -o json users list --limit 50 --offset 100
+        netskope users list --filter '{"accounts.parentGroups": {"in": ["Engineering"]}}'
     """
     client = _build_client(ctx)
-    params: dict[str, Any] = {
-        "count": count,
-        "startIndex": start_index,
-    }
-    if filter_:
-        params["filter"] = filter_
-
-    data = client.request("GET", "/api/v2/scim/Users", params=params)
+    body = _build_query_body(filter_, limit, offset)
+    data = client.request("POST", "/api/v2/users/getusers", json_data=body)
 
     if not _is_raw(ctx):
-        data = _simplify_scim_users(data)
+        data = _simplify_um_users(data)
 
     formatter = _get_formatter(ctx)
     formatter.format_output(
         data,
         fmt=_get_output_format(ctx),
-        title="SCIM Users",
-        default_fields=["id", "userName", "active", "displayName", "email"],
+        title="Users",
+        default_fields=["id", "userName", "email", "active", "parentGroups"],
     )
 
 
 @users_app.command("get")
 def user_get(
     ctx: typer.Context,
-    user_id: str = typer.Argument(
+    identifier: str = typer.Argument(
         ...,
         help=(
-            "The SCIM user ID to retrieve. This is the unique identifier assigned by "
-            "Netskope when the user was provisioned. Find IDs via 'netskope users list'."
+            "Email address or username to look up. If the value contains '@', it is "
+            "treated as an email; otherwise as a username. Use --by to override."
         ),
     ),
+    by: Optional[str] = typer.Option(
+        None,
+        "--by",
+        help="Force lookup field: 'email' or 'username'. Auto-detected by default.",
+    ),
 ) -> None:
-    """Retrieve a single SCIM user by their unique ID.
+    """Look up a single user by email or username.
 
-    Queries GET /api/v2/scim/Users/{id} for the full user record including
-    username, email, active status, and group memberships. Use this to verify
-    a user's provisioning state or inspect their attributes.
+    Uses POST /api/v2/users/getusers with a filter to find the user. Returns
+    rich data including group membership (parentGroups).
 
     Examples:
-        netskope users get abc123-def456
-        netskope -o json users get abc123-def456
+        netskope users get alice@example.com
+        netskope users get alice --by username
+        netskope -o json users get alice@example.com
     """
+    if by == "email" or (by is None and "@" in identifier):
+        filter_dict: dict[str, Any] = {"and": [{"emails": {"eq": identifier}}]}
+    elif by == "username":
+        filter_dict = {"and": [{"userName": {"eq": identifier}}]}
+    else:
+        # No @ and no --by flag: default to userName
+        filter_dict = {"and": [{"userName": {"eq": identifier}}]}
+
+    body: dict[str, Any] = {
+        "query": {"filter": filter_dict, "paging": {"offset": 0, "limit": 1}},
+    }
+
     client = _build_client(ctx)
-    data = client.request("GET", f"/api/v2/scim/Users/{user_id}")
+    data = client.request("POST", "/api/v2/users/getusers", json_data=body)
+
+    # Extract the single user from the response
+    users = data if isinstance(data, list) else None
+    if users is None and isinstance(data, dict):
+        users = data.get("users", data.get("data", data.get("result")))
+    if isinstance(users, list) and len(users) == 0:
+        raise NotFoundError(
+            f"No user found matching '{identifier}'.",
+            suggestion="Check the email/username and try again. Use 'netskope users list' to browse.",
+        )
 
     if not _is_raw(ctx):
-        data = _simplify_scim_users(data)
+        data = _simplify_um_users(data)
 
     formatter = _get_formatter(ctx)
     formatter.format_output(
         data,
         fmt=_get_output_format(ctx),
-        title=f"SCIM User {user_id}",
+        title=f"User '{identifier}'",
     )
+
+
+# ---------------------------------------------------------------------------
+# User CRUD commands (SCIM v2)
+# ---------------------------------------------------------------------------
 
 
 @users_app.command("create")
@@ -325,8 +367,8 @@ def user_create(
     """Create a new SCIM user in the Netskope tenant.
 
     Sends POST /api/v2/scim/Users with the SCIM 2.0 User schema. The user will
-    be provisioned and can be added to groups for policy targeting. Use this for
-    automated user onboarding from identity providers or HR systems.
+    be provisioned and can be added to groups for policy targeting. Use
+    'netskope users list' or 'netskope users get' to look up users afterward.
 
     Examples:
         netskope users create --username alice@example.com --email alice@example.com
@@ -366,7 +408,9 @@ def user_update(
     ctx: typer.Context,
     user_id: str = typer.Argument(
         ...,
-        help=("SCIM user ID to update. Find IDs via 'netskope users list' or " "'netskope users get'."),
+        help=(
+            "SCIM user ID (scimId) to update. Find scimId values via " "'netskope users list' or 'netskope users get'."
+        ),
     ),
     set_values: Optional[list[str]] = typer.Option(
         None,
@@ -381,9 +425,8 @@ def user_update(
     """Update one or more fields on an existing SCIM user via PATCH.
 
     Sends PATCH /api/v2/scim/Users/{id} with SCIM PatchOp replace operations.
-    Pass one or more --set key=value flags to specify the fields to modify. Use
-    this for user lifecycle management such as deactivating accounts or updating
-    email addresses.
+    The user_id is the scimId from the User Management API response. Pass one
+    or more --set key=value flags to specify the fields to modify.
 
     Examples:
         netskope users update abc123 --set active=false
@@ -434,8 +477,8 @@ def user_delete(
     user_id: str = typer.Argument(
         ...,
         help=(
-            "SCIM user ID to delete. Find IDs via 'netskope users list'. "
-            "This action permanently removes the user and cannot be undone."
+            "SCIM user ID (scimId) to delete. Find scimId values via "
+            "'netskope users list'. This permanently removes the user."
         ),
     ),
     yes: bool = typer.Option(
@@ -475,7 +518,7 @@ def user_delete(
 
 
 # ---------------------------------------------------------------------------
-# Group commands
+# Group query commands (User Management API)
 # ---------------------------------------------------------------------------
 
 
@@ -486,89 +529,151 @@ def group_list(
         None,
         "--filter",
         help=(
-            "SCIM filter expression to narrow results. Uses SCIM 2.0 filter syntax. "
-            "For example: 'displayName eq \"Engineering\"' or 'displayName co \"Dev\"'. "
-            "Omit to return all groups."
+            "JSON filter dict for the User Management API. Uses structured operators "
+            "(eq, in, sw, co). Filterable fields: id, scimId, deleted, collectionId, "
+            "parentGroups, idps.\n\n"
+            "Examples:\n"
+            """  '{"deleted": {"eq": false}}'\n"""
+            """  '{"id": {"eq": "Engineering"}}'"""
         ),
     ),
-    count: int = typer.Option(
+    limit: int = typer.Option(
         100,
         "--limit",
-        "--count",
-        help=(
-            "Number of group records per page. Use with --start-index for pagination. "
-            "Defaults to 100. The API may enforce an upper limit."
-        ),
+        help="Maximum number of records to return (max 1000). Defaults to 100.",
     ),
-    start_index: int = typer.Option(
-        1,
-        "--start-index",
-        help=("1-based index of the first result to return. Use with --count for " "pagination. Defaults to 1."),
+    offset: int = typer.Option(
+        0,
+        "--offset",
+        help="0-based pagination offset. Defaults to 0.",
     ),
 ) -> None:
-    """List SCIM groups with optional filtering and pagination.
+    """List groups with rich metadata.
 
-    Queries GET /api/v2/scim/Groups to retrieve all provisioned groups. Groups
-    are used to organize users for policy targeting and access control. Use SCIM
-    filter expressions to find specific groups.
+    Queries POST /api/v2/users/getgroups via the User Management API, which
+    returns richer data than SCIM including userCount and provisioner info.
 
     Examples:
         netskope users groups list
-        netskope users groups list --filter 'displayName eq "Engineering"'
-        netskope -o json users groups list --count 50
+        netskope users groups list --filter '{"deleted": {"eq": false}}'
+        netskope -o json users groups list --limit 50
     """
     client = _build_client(ctx)
-    params: dict[str, Any] = {
-        "count": count,
-        "startIndex": start_index,
-    }
-    if filter_:
-        params["filter"] = filter_
-
-    data = client.request("GET", "/api/v2/scim/Groups", params=params)
+    body = _build_query_body(filter_, limit, offset)
+    data = client.request("POST", "/api/v2/users/getgroups", json_data=body)
 
     if not _is_raw(ctx):
-        data = _simplify_scim_groups(data)
+        data = _simplify_um_groups(data)
 
     formatter = _get_formatter(ctx)
     formatter.format_output(
         data,
         fmt=_get_output_format(ctx),
-        title="SCIM Groups",
-        default_fields=["id", "displayName", "member_count"],
+        title="Groups",
+        default_fields=["id", "displayName", "userCount", "provisioner", "deleted"],
     )
 
 
 @groups_app.command("get")
 def group_get(
     ctx: typer.Context,
-    group_id: str = typer.Argument(
+    name: str = typer.Argument(
         ...,
-        help="SCIM group ID to retrieve. Find IDs via 'netskope users groups list'.",
+        help="Group display name to look up. For example: 'Engineering'.",
     ),
 ) -> None:
-    """Retrieve a single SCIM group by its unique ID.
+    """Look up a single group by display name.
 
-    Queries GET /api/v2/scim/Groups/{id} for the full group record including
-    display name and member list. Use this to inspect group membership or
-    verify provisioning state.
+    Uses POST /api/v2/users/getgroups with a filter to find the group. Returns
+    rich data including userCount, provisioner, and modification timestamps.
 
     Examples:
-        netskope users groups get grp-abc123
-        netskope -o json users groups get grp-abc123
+        netskope users groups get "Engineering"
+        netskope -o json users groups get "Sales Team"
     """
+    filter_dict: dict[str, Any] = {"displayName": {"eq": name}}
+    body: dict[str, Any] = {
+        "query": {"filter": filter_dict, "paging": {"offset": 0, "limit": 1}},
+    }
+
     client = _build_client(ctx)
-    data = client.request("GET", f"/api/v2/scim/Groups/{group_id}")
+    data = client.request("POST", "/api/v2/users/getgroups", json_data=body)
+
+    # Check if any group was found
+    groups = data if isinstance(data, list) else None
+    if groups is None and isinstance(data, dict):
+        groups = data.get("groups", data.get("data", data.get("result")))
+    if isinstance(groups, list) and len(groups) == 0:
+        raise NotFoundError(
+            f"No group found matching '{name}'.",
+            suggestion="Check the group name and try again. Use 'netskope users groups list' to browse.",
+        )
 
     if not _is_raw(ctx):
-        data = _simplify_scim_groups(data)
+        data = _simplify_um_groups(data)
 
     formatter = _get_formatter(ctx)
     formatter.format_output(
         data,
         fmt=_get_output_format(ctx),
-        title=f"SCIM Group {group_id}",
+        title=f"Group '{name}'",
     )
+
+
+@groups_app.command("members")
+def group_members(
+    ctx: typer.Context,
+    group_name: str = typer.Argument(
+        ...,
+        help=("Display name of the group to list members for. " "For example: 'Engineering' or 'Sales Team'."),
+    ),
+    limit: int = typer.Option(
+        100,
+        "--limit",
+        help="Maximum number of members to return (max 1000). Defaults to 100.",
+    ),
+    offset: int = typer.Option(
+        0,
+        "--offset",
+        help="0-based pagination offset. Defaults to 0.",
+    ),
+) -> None:
+    """List all users in a specific group.
+
+    Uses POST /api/v2/users/getusers with a pre-built filter to find users
+    whose accounts.parentGroups includes the given group name.
+
+    Examples:
+        netskope users groups members "Engineering"
+        netskope users groups members "Sales Team" --limit 50
+        netskope -o json users groups members "Engineering"
+    """
+    filter_dict: dict[str, Any] = {"accounts.parentGroups": {"in": [group_name]}}
+    body: dict[str, Any] = {
+        "query": {
+            "filter": filter_dict,
+            "paging": {"offset": offset, "limit": limit},
+        },
+    }
+
+    client = _build_client(ctx)
+    data = client.request("POST", "/api/v2/users/getusers", json_data=body)
+
+    if not _is_raw(ctx):
+        data = _simplify_um_users(data)
+
+    formatter = _get_formatter(ctx)
+    formatter.format_output(
+        data,
+        fmt=_get_output_format(ctx),
+        title=f"Members of '{group_name}'",
+        default_fields=["id", "userName", "email", "active"],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Group CRUD commands (SCIM v2)
+# ---------------------------------------------------------------------------
 
 
 @groups_app.command("create")
@@ -585,17 +690,17 @@ def group_create(
         None,
         "--members",
         help=(
-            "Comma-separated list of SCIM user IDs to add as initial members. "
-            "For example: 'uid1,uid2,uid3'. Omit to create an empty group "
-            "(members can be added later via update)."
+            "Comma-separated list of SCIM user IDs (scimId) to add as initial members. "
+            "For example: 'uid1,uid2,uid3'. Find scimId values via 'netskope users list'. "
+            "Omit to create an empty group (members can be added later via update)."
         ),
     ),
 ) -> None:
     """Create a new SCIM group with optional initial members.
 
     Sends POST /api/v2/scim/Groups with the SCIM 2.0 Group schema. Groups
-    organize users for security policy targeting. Use this for automated group
-    provisioning from identity providers.
+    organize users for security policy targeting. Use 'netskope users groups list'
+    to look up groups afterward.
 
     Examples:
         netskope users groups create "Engineering"
@@ -632,19 +737,22 @@ def group_update(
     ctx: typer.Context,
     group_id: str = typer.Argument(
         ...,
-        help="SCIM group ID to update. Find IDs via 'netskope users groups list'.",
+        help=(
+            "SCIM group ID (scimId) to update. Find scimId values via "
+            "'netskope users groups list' or 'netskope users groups get'."
+        ),
     ),
     name: Optional[str] = typer.Option(
         None,
         "--name",
-        help=("New display name for the group. Omit to keep the current name. " "Must be unique within the tenant."),
+        help="New display name for the group. Omit to keep the current name. Must be unique within the tenant.",
     ),
     members: Optional[str] = typer.Option(
         None,
         "--members",
         help=(
-            "Comma-separated list of SCIM user IDs to set as group members. This "
-            "REPLACES the entire member list. Include all desired members. "
+            "Comma-separated list of SCIM user IDs (scimId) to set as group members. "
+            "This REPLACES the entire member list. Include all desired members. "
             "For example: 'uid1,uid2,uid3'."
         ),
     ),
@@ -652,8 +760,8 @@ def group_update(
     """Update a SCIM group's name or member list via PATCH.
 
     Sends PATCH /api/v2/scim/Groups/{id} with SCIM PatchOp replace operations.
-    At least one of --name or --members must be provided. Member updates fully
-    replace the current member list.
+    The group_id is the scimId from the User Management API response. At least
+    one of --name or --members must be provided.
 
     Examples:
         netskope users groups update grp-abc123 --name "New Team Name"
@@ -714,7 +822,8 @@ def group_delete(
     group_id: str = typer.Argument(
         ...,
         help=(
-            "SCIM group ID to delete. Find IDs via 'netskope users groups list'. " "This permanently removes the group."
+            "SCIM group ID (scimId) to delete. Find scimId values via "
+            "'netskope users groups list'. This permanently removes the group."
         ),
     ),
     yes: bool = typer.Option(
@@ -732,6 +841,7 @@ def group_delete(
 
     Sends DELETE /api/v2/scim/Groups/{id}. This removes the group and all
     membership associations. Policies referencing this group may be affected.
+    Use 'netskope users groups members' to review membership before deletion.
     Use --yes to skip confirmation for automation.
 
     Examples:

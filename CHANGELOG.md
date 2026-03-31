@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.22] - 2026-03-31
+
+- Replace SCIM read-only commands with User Management API for richer data including group membership
+- `users list` and `users get` now use `POST /api/v2/users/getusers` — returns `parentGroups`, `scimId`, `provisioner` per user
+- `users groups list` and `users groups get` now use `POST /api/v2/users/getgroups` — returns `userCount`, `provisioner`, `deleted`
+- Add `users groups members` command to list all users in a specific group by display name
+- `users get` now accepts email or username instead of SCIM UUID, with auto-detection
+- `groups get` now accepts display name instead of SCIM UUID
+- `--filter` on user/group queries now accepts JSON dict syntax with operators (`eq`, `in`, `sw`, `co`)
+- SCIM CRUD commands (create/update/delete) unchanged — still use `/api/v2/scim/` endpoints
+- Update AI Agent Skill, README, and interactive HTML guide with new User Management API commands and filter syntax
+- Add 19 unit tests for all new and modified user/group commands
+
 ## [0.2.21] - 2026-03-06
 
 - Add AI Agent Skill (`.claude/commands/netskope.md`) — a Claude Code `/netskope` slash command that teaches AI agents how to use every CLI command, with verified flags, field names, gotchas, and workflow patterns

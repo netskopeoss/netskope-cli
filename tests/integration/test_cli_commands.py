@@ -611,8 +611,16 @@ class TestUsersCommands:
 
     def test_users_list(self):
         mock_response = {
-            "totalResults": 1,
-            "Resources": [{"id": "u1", "userName": "alice@example.com", "active": True}],
+            "users": [
+                {
+                    "id": "u1",
+                    "givenName": "Alice",
+                    "familyName": "Example",
+                    "emails": ["alice@example.com"],
+                    "accounts": [{"userName": "alice@example.com", "active": True, "parentGroups": []}],
+                }
+            ],
+            "total": 1,
         }
 
         with patch.object(
@@ -626,15 +634,20 @@ class TestUsersCommands:
             )
             assert result.exit_code == 0
             mock_req.assert_called_once()
-            assert mock_req.call_args[0][0] == "GET"
-            assert mock_req.call_args[0][1] == "/api/v2/scim/Users"
+            assert mock_req.call_args[0][0] == "POST"
+            assert mock_req.call_args[0][1] == "/api/v2/users/getusers"
             assert "alice@example.com" in result.stdout
 
     def test_users_get(self):
         mock_response = {
-            "id": "u42",
-            "userName": "bob@example.com",
-            "active": True,
+            "users": [
+                {
+                    "id": "u42",
+                    "emails": ["bob@example.com"],
+                    "accounts": [{"userName": "bob@example.com", "active": True}],
+                }
+            ],
+            "total": 1,
         }
 
         with patch.object(
@@ -644,7 +657,7 @@ class TestUsersCommands:
         ):
             result = runner.invoke(
                 app,
-                ["--output", "json", "users", "get", "u42"],
+                ["--output", "json", "users", "get", "bob@example.com"],
             )
             assert result.exit_code == 0
             assert "bob@example.com" in result.stdout

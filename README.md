@@ -121,7 +121,7 @@ ntsk events get --type application --user alice@example.com --since 7d
 # Find blocked page events for a domain
 ntsk events get --type page --domain example.com --action block
 
-# List SCIM users
+# List users (with group membership data)
 ntsk users list
 
 # Export incidents as CSV
@@ -175,7 +175,7 @@ ntsk users list -o csv > users.csv
 | **Events**            | `events get`, `events list --type alert\|application\|network\|...` |
 | **Alerts**            | `alerts get`, `alerts list`, `alerts summary`, `alerts types` |
 | **Incidents**         | `incidents list`, `incidents search`, `incidents uci`      |
-| **Users & RBAC**      | `users list`, `users groups list`, `rbac roles list`       |
+| **Users & RBAC**      | `users list`, `users get`, `users groups list`, `users groups members`, `rbac roles list` |
 | **Policy**            | `policy url-list list`, `policy deploy`                    |
 | **Auth & Config**     | `auth login`, `auth logout`, `config set-tenant`, `config set-token` |
 | **Tokens**            | `tokens list`, `tokens create`, `tokens revoke`            |
