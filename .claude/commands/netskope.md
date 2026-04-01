@@ -351,6 +351,67 @@ ntsk dem probes list
 ntsk dem alerts list
 ```
 
+### DEM (Digital Experience Monitoring)
+
+DEM provides user experience metrics, alert instances, entity lookups, and monitored app visibility.
+
+```bash
+# Discover available fields per data source (start here)
+ntsk dem fields list
+ntsk dem fields list --source rum_steered
+
+# Query metrics — 17 data sources (ux_score, rum_steered, http_steered, traceroute_pop, agent_status, etc.)
+# --select uses JSON with aggregation: '{"alias": ["avg", "metric"]}'
+# --where uses operator-first format: '["=", "field", ["$", "value"]]'
+# --begin/--end are epoch MILLISECONDS
+ntsk dem metrics query -d ux_score \
+    --select '["user_id", {"avg_score": ["avg", "score"]}, {"avg_device": ["avg", "device_score"]}]' \
+    --groupby user_id --begin 1711929600000 --end 1712016000000 --limit 25
+
+ntsk dem metrics query -d rum_steered \
+    --select '["user_id", "application_name"]' \
+    --where '["=", "user_id", ["$", "john@example.com"]]' \
+    --begin 1711929600000 --end 1712016000000
+
+# List users with experience scores (epoch SECONDS, max 48h window)
+ntsk dem entities list --start-time 1710000000 --end-time 1710086400 --limit 25
+ntsk dem entities list --start-time 1710000000 --end-time 1710086400 \
+    --exp-score '0~30' --applications 'Google Gmail,Twitter'
+
+# Query agent/client connection states (no time range — always current state)
+ntsk dem states query -d agent_status -s '["user_id", "status", "agent_version"]' --limit 100
+ntsk dem states query -d client_status -s '["user_id"]'
+
+# Traceroute path data (no limit support — use where filters to control size)
+ntsk dem traceroute query -d traceroute_pop \
+    --where '["=", "user_id", ["$", "john@example.com"]]' \
+    --begin 1711929600000 --end 1712016000000
+
+# Search triggered alert instances (not alert rules)
+ntsk dem experience-alerts search --severity critical,high --limit 10
+ntsk dem experience-alerts search --alert-category 'Network,User Experience'
+
+# Get alert details and impacted entities
+ntsk dem experience-alerts get ALERT_ID
+ntsk dem experience-alerts entities ALERT_ID --limit 25
+
+# List DEM-monitored applications
+ntsk dem apps list
+ntsk dem apps list --type predefined --limit 50
+```
+
+**DEM Key Concepts:**
+- **Data sources for metrics:** ux_score, rum_steered, rum_bypassed, http_steered, http_bypassed, traceroute_pop, traceroute_bypassed, agent_status, client_status, npa_gateway, npa_metric, npa_stitcher, and more (17 total)
+- **Valid state sources:** Only `agent_status` and `client_status` (use `dem metrics query` for others)
+- **Valid traceroute sources:** Only `traceroute_pop` and `traceroute_bypassed`
+- **UX Score fields:** score, device_score, network_score, application_tcp_score, application_http_score (all 0-100)
+- **Time units:** `metrics query` and `traceroute query` use epoch **milliseconds**; `entities list` uses epoch **seconds**
+- **exp_score format:** Integer ranges with `~` separator: `"0~30"` (poor), `"31~70"` (fair), `"71~100"` (good)
+- **select aggregation:** Metrics require `{"alias": ["avg", "metric_name"]}` syntax; keys (user_id, hostname) used directly
+- **where clause:** Operator-first: `["=", "field", ["$", "string_value"]]`. Combiners: `["and", [...], [...]]`
+- **Alert categories:** Network, Platform, Private Apps, User Experience, Site
+- **Alert severities:** info, low, medium, high, critical
+
 ### Configuration Management
 ```bash
 ntsk config show                     # Current profile config
