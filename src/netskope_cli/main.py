@@ -797,7 +797,7 @@ _optional_groups: list[tuple[str, str, str, str]] = [
     (
         "netskope_cli.commands.dem_cmd",
         "dem_app",
-        "Digital Experience Management — application probes, network probes, and alert rules.",
+        "Digital Experience Management — probes, metrics, entities, states, traceroutes, experience alerts, and monitored apps.",
         "Monitoring",
     ),
     # Status / Dashboard
