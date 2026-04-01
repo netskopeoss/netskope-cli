@@ -9,22 +9,58 @@ network paths.
 
 from __future__ import annotations
 
+import json
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 import typer
 
 from netskope_cli.core.client import NetskopeClient, build_client
+from netskope_cli.core.exceptions import ValidationError
 from netskope_cli.core.output import OutputFormatter, echo_success, spinner
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Data source constants
+# ---------------------------------------------------------------------------
+
+QUERY_DATA_SOURCES = [
+    "ux_score",
+    "rum_steered",
+    "rum_bypassed",
+    "traceroute_pop",
+    "traceroute_bypassed",
+    "traceroute_all",
+    "http_steered",
+    "http_bypassed",
+    "http_all",
+    "http",
+    "rum_ux_score_all",
+    "rum_ux_score_steered",
+    "rum_ux_score_bypassed",
+    "npa_gateway",
+    "npa_metric",
+    "npa_stitcher",
+    "agent_status",
+    "client_status",
+]
+
+STATE_DATA_SOURCES = ["agent_status", "client_status"]
+
+TRACEROUTE_DATA_SOURCES = ["traceroute_pop", "traceroute_bypassed"]
+
+MAX_ENTITIES_WINDOW = 48 * 3600  # 48 hours in seconds
 
 # ---------------------------------------------------------------------------
 # Typer sub-apps
 # ---------------------------------------------------------------------------
 dem_app = typer.Typer(
     name="dem",
-    help=("Digital Experience Management — manage application probes, " "network probes, and DEM alert rules."),
+    help=(
+        "Digital Experience Management — probes, metrics, entities, "
+        "states, traceroutes, experience alerts, and monitored apps."
+    ),
     no_args_is_help=True,
 )
 
@@ -49,6 +85,56 @@ alerts_sub_app = typer.Typer(
 dem_app.add_typer(probes_app, name="probes")
 dem_app.add_typer(network_probes_app, name="network-probes")
 dem_app.add_typer(alerts_sub_app, name="alerts")
+
+metrics_app = typer.Typer(
+    name="metrics",
+    help="Query DEM experience metrics from various data sources.",
+    no_args_is_help=True,
+)
+
+entities_app = typer.Typer(
+    name="entities",
+    help="Query DEM user/device entities with experience scores.",
+    no_args_is_help=True,
+)
+
+states_app = typer.Typer(
+    name="states",
+    help="Query current agent or client connection states.",
+    no_args_is_help=True,
+)
+
+traceroute_app = typer.Typer(
+    name="traceroute",
+    help="Query DEM traceroute path data.",
+    no_args_is_help=True,
+)
+
+fields_app = typer.Typer(
+    name="fields",
+    help="List available DEM field definitions for query building.",
+    no_args_is_help=True,
+)
+
+experience_alerts_app = typer.Typer(
+    name="experience-alerts",
+    help="Search and inspect DEM experience alerts (triggered alert instances).",
+    no_args_is_help=True,
+)
+
+apps_app = typer.Typer(
+    name="apps",
+    help="List DEM-monitored applications.",
+    no_args_is_help=True,
+)
+
+dem_app.add_typer(metrics_app, name="metrics")
+dem_app.add_typer(entities_app, name="entities")
+dem_app.add_typer(states_app, name="states")
+dem_app.add_typer(traceroute_app, name="traceroute")
+dem_app.add_typer(fields_app, name="fields")
+dem_app.add_typer(experience_alerts_app, name="experience-alerts")
+dem_app.add_typer(apps_app, name="apps")
 
 
 # ---------------------------------------------------------------------------
@@ -85,6 +171,26 @@ def _no_color(ctx: typer.Context) -> bool:
     """Return the no-color flag from global state."""
     state = ctx.obj
     return state.no_color if state is not None else False
+
+
+def _parse_json_option(value: str | None, option_name: str) -> Any | None:
+    """Parse a CLI option that expects a JSON string."""
+    if value is None:
+        return None
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise ValidationError(
+            f"Invalid JSON for --{option_name}: {exc}",
+            suggestion=f'Provide valid JSON. Example: --{option_name} \'["field1", "field2"]\'',
+        ) from exc
+
+
+def _csv_to_list(value: str | None) -> list[str] | None:
+    """Split a comma-separated string into a list, or return None."""
+    if value is None:
+        return None
+    return [v.strip() for v in value.split(",") if v.strip()]
 
 
 # ---------------------------------------------------------------------------
@@ -524,3 +630,724 @@ def alerts_create(
 
     echo_success(f"DEM alert rule '{name}' created.", no_color=_no_color(ctx))
     formatter.format_output(result, fmt=fmt, title="Created DEM Alert Rule")
+
+
+# ---------------------------------------------------------------------------
+# Metrics commands
+# ---------------------------------------------------------------------------
+
+
+@metrics_app.command("query")
+def metrics_query(
+    ctx: typer.Context,
+    data_source: str = typer.Option(
+        ...,
+        "--data-source",
+        "-d",
+        help=(
+            "Data source to query. Valid values: ux_score, rum_steered, "
+            "rum_bypassed, traceroute_pop, traceroute_bypassed, traceroute_all, "
+            "http_steered, http_bypassed, http_all, http, rum_ux_score_all, "
+            "rum_ux_score_steered, rum_ux_score_bypassed, npa_gateway, "
+            "npa_metric, npa_stitcher, agent_status, client_status."
+        ),
+    ),
+    select: str = typer.Option(
+        ...,
+        "--select",
+        "-s",
+        help=(
+            "JSON array of fields/aggregations to select. Metric fields require "
+            'aggregation: \'{"alias": ["avg", "metric"]}\'. '
+            'Example: \'["user_id", {"avg_score": ["avg", "score"]}]\''
+        ),
+    ),
+    begin: int = typer.Option(
+        ...,
+        "--begin",
+        "-b",
+        help="Start time in epoch milliseconds.",
+    ),
+    end: int = typer.Option(
+        ...,
+        "--end",
+        "-e",
+        help="End time in epoch milliseconds.",
+    ),
+    where: Optional[str] = typer.Option(
+        None,
+        "--where",
+        "-w",
+        help=("JSON where clause (operator-first format). " 'Example: \'["=", "user_id", ["$", "john@example.com"]]\''),
+    ),
+    groupby: Optional[str] = typer.Option(
+        None,
+        "--groupby",
+        "-g",
+        help="Comma-separated list of fields to group by. Example: user_id,hostname",
+    ),
+    orderby: Optional[str] = typer.Option(
+        None,
+        "--orderby",
+        help='JSON orderby clause. Example: \'[["avg_score", "asc"]]\'',
+    ),
+    limit: Optional[int] = typer.Option(None, "--limit", "-l", help="Maximum rows to return (max 50000)."),
+    offset: Optional[int] = typer.Option(None, "--offset", help="Number of rows to skip."),
+) -> None:
+    """Query DEM experience metrics from various data sources.
+
+    Queries RUM, traceroute, HTTP, and UX score metrics from 17 available
+    data sources.  Supports aggregation, filtering, grouping, and ordering.
+
+    Metric fields in --select require aggregation functions with aliases:
+    '{"alias": ["avg", "metric_name"]}'.  Key fields (like user_id) can
+    be used directly.
+
+    The --where clause uses operator-first format with ["$", "value"]
+    for string literals.
+
+    EXAMPLES
+
+        # Query average UX scores per user (last 24h)
+        netskope dem metrics query \\
+            --data-source ux_score \\
+            --select '["user_id", {"avg_score": ["avg", "score"]}]' \\
+            --groupby user_id \\
+            --begin 1711929600000 --end 1712016000000 \\
+            --limit 25
+
+        # Query RUM steered traffic with a where filter
+        netskope dem metrics query \\
+            --data-source rum_steered \\
+            --select '["user_id", "application_name"]' \\
+            --where '["=", "user_id", ["$", "john@example.com"]]' \\
+            --begin 1711929600000 --end 1712016000000
+
+        # Output as JSON
+        netskope -o json dem metrics query \\
+            --data-source ux_score \\
+            --select '["user_id"]' \\
+            --begin 1711929600000 --end 1712016000000
+    """
+    if data_source not in QUERY_DATA_SOURCES:
+        raise ValidationError(
+            f"Invalid data source: '{data_source}'",
+            suggestion=f"Valid data sources: {', '.join(QUERY_DATA_SOURCES)}",
+        )
+
+    client = _build_client(ctx)
+    formatter = _get_formatter(ctx)
+    fmt = _get_output_format(ctx)
+
+    select_parsed = _parse_json_option(select, "select")
+    where_parsed = _parse_json_option(where, "where")
+    orderby_parsed = _parse_json_option(orderby, "orderby")
+    groupby_parsed = _csv_to_list(groupby)
+
+    body: dict[str, Any] = {"from": data_source, "select": select_parsed}
+    if groupby_parsed:
+        body["groupby"] = groupby_parsed
+    if where_parsed is not None:
+        body["where"] = where_parsed
+    if orderby_parsed is not None:
+        body["orderby"] = orderby_parsed
+    body["begin"] = begin
+    body["end"] = end
+    if limit is not None:
+        body["limit"] = min(limit, 50000)
+    if offset is not None:
+        body["offset"] = offset
+
+    if not _is_quiet(ctx):
+        with spinner(f"Querying {data_source} metrics...", no_color=_no_color(ctx)):
+            result = client.request("POST", "/api/v2/dem/query/getdata", json_data=body)
+    else:
+        result = client.request("POST", "/api/v2/dem/query/getdata", json_data=body)
+
+    formatter.format_output(result, fmt=fmt, title=f"DEM Metrics — {data_source}")
+
+
+# ---------------------------------------------------------------------------
+# Entities commands
+# ---------------------------------------------------------------------------
+
+
+@entities_app.command("list")
+def entities_list(
+    ctx: typer.Context,
+    start_time: int = typer.Option(
+        ...,
+        "--start-time",
+        help="Start time in Unix epoch seconds.",
+    ),
+    end_time: int = typer.Option(
+        ...,
+        "--end-time",
+        help="End time in Unix epoch seconds.",
+    ),
+    user: Optional[str] = typer.Option(None, "--user", "-u", help="Filter by user email."),
+    application: Optional[str] = typer.Option(None, "--application", help="Filter by single application name."),
+    applications: Optional[str] = typer.Option(
+        None,
+        "--applications",
+        help="Comma-separated application names to filter by.",
+    ),
+    device_os: Optional[str] = typer.Option(
+        None,
+        "--device-os",
+        help="Comma-separated OS filters. Valid: Windows, MacOS, Android, IOS, ChromeOS, Linux.",
+    ),
+    monitoring: Optional[str] = typer.Option(
+        None,
+        "--monitoring",
+        help="Monitoring type: all, synthetic, or proactive.",
+    ),
+    exp_score: Optional[str] = typer.Option(
+        None,
+        "--exp-score",
+        help="Comma-separated score ranges as 'min~max'. Example: '0~30,31~70'",
+    ),
+    pop: Optional[str] = typer.Option(None, "--pop", help="Comma-separated POP location codes."),
+    source_ip: Optional[str] = typer.Option(None, "--source-ip", help="Filter by source IP address."),
+    limit: Optional[int] = typer.Option(None, "--limit", "-l", help="Maximum entities to return (max 100)."),
+    offset: Optional[int] = typer.Option(None, "--offset", help="Number of entities to skip."),
+    sort_order: Optional[str] = typer.Option(None, "--sort-order", help="Sort order: asc or desc."),
+) -> None:
+    """List users with experience scores and device information.
+
+    Queries DEM user/device entities within a time window (max 48 hours).
+    Returns user experience scores, device details, and location data.
+
+    Time parameters are Unix epoch SECONDS (not milliseconds).  The
+    maximum time window is 48 hours.
+
+    EXAMPLES
+
+        # List all entities in a 24-hour window
+        netskope dem entities list \\
+            --start-time 1710000000 --end-time 1710086400
+
+        # Filter by user and score range
+        netskope dem entities list \\
+            --start-time 1710000000 --end-time 1710086400 \\
+            --user john@example.com \\
+            --exp-score '0~30'
+
+        # Filter by application and output as JSON
+        netskope -o json dem entities list \\
+            --start-time 1710000000 --end-time 1710086400 \\
+            --applications 'Google Gmail,Twitter' \\
+            --limit 25
+    """
+    window = end_time - start_time
+    if window > MAX_ENTITIES_WINDOW:
+        raise ValidationError(
+            f"Time range too large: {window / 3600:.1f} hours (max 48 hours).",
+            suggestion=f"Reduce the time range. Example: --start-time {end_time - 86400} --end-time {end_time}",
+        )
+
+    client = _build_client(ctx)
+    formatter = _get_formatter(ctx)
+    fmt = _get_output_format(ctx)
+
+    params: dict[str, Any] = {}
+    if limit is not None:
+        params["limit"] = min(limit, 100)
+    if offset is not None:
+        params["offset"] = offset
+    if sort_order is not None:
+        params["sortorder"] = sort_order
+
+    body: dict[str, Any] = {
+        "starttime": start_time,
+        "endtime": end_time,
+    }
+    if user:
+        body["user"] = user
+    if application:
+        body["application"] = application
+    if applications:
+        body["applications"] = _csv_to_list(applications)
+    if device_os:
+        body["deviceOs"] = _csv_to_list(device_os)
+    if monitoring:
+        body["monitoring"] = monitoring
+    if exp_score:
+        body["expScore"] = _csv_to_list(exp_score)
+    if pop:
+        body["pop"] = _csv_to_list(pop)
+    if source_ip:
+        body["sourceIp"] = source_ip
+
+    if not _is_quiet(ctx):
+        with spinner("Fetching DEM entities...", no_color=_no_color(ctx)):
+            result = client.request("POST", "/api/v2/dem/query/getentities", params=params or None, json_data=body)
+    else:
+        result = client.request("POST", "/api/v2/dem/query/getentities", params=params or None, json_data=body)
+
+    formatter.format_output(result, fmt=fmt, title="DEM Entities")
+
+
+# ---------------------------------------------------------------------------
+# States commands
+# ---------------------------------------------------------------------------
+
+
+@states_app.command("query")
+def states_query(
+    ctx: typer.Context,
+    data_source: str = typer.Option(
+        ...,
+        "--data-source",
+        "-d",
+        help="Data source to query. Valid: agent_status, client_status.",
+    ),
+    select: str = typer.Option(
+        ...,
+        "--select",
+        "-s",
+        help='JSON array of fields to select. Example: \'["user_id", "status"]\'',
+    ),
+    where: Optional[str] = typer.Option(
+        None,
+        "--where",
+        "-w",
+        help="JSON where clause (operator-first format).",
+    ),
+    groupby: Optional[str] = typer.Option(
+        None,
+        "--groupby",
+        "-g",
+        help="Comma-separated list of fields to group by.",
+    ),
+    orderby: Optional[str] = typer.Option(
+        None,
+        "--orderby",
+        help="JSON orderby clause.",
+    ),
+    limit: Optional[int] = typer.Option(None, "--limit", "-l", help="Maximum rows to return."),
+    offset: Optional[int] = typer.Option(None, "--offset", help="Number of rows to skip."),
+) -> None:
+    """Query current agent or client connection states.
+
+    Queries current device/agent state — does NOT accept time ranges.
+    Only 'agent_status' and 'client_status' data sources are valid.
+
+    EXAMPLES
+
+        # List all connected agents
+        netskope dem states query \\
+            --data-source agent_status \\
+            --select '["user_id", "status", "agent_version"]' \\
+            --limit 100
+
+        # Query client status with a filter
+        netskope dem states query \\
+            --data-source client_status \\
+            --select '["user_id"]' \\
+            --where '["=", "user_id", ["$", "john@example.com"]]'
+    """
+    if data_source not in STATE_DATA_SOURCES:
+        raise ValidationError(
+            f"Invalid data source for states: '{data_source}'",
+            suggestion=f"Only {', '.join(STATE_DATA_SOURCES)} are valid. "
+            f"Use 'dem metrics query' for other data sources.",
+        )
+
+    client = _build_client(ctx)
+    formatter = _get_formatter(ctx)
+    fmt = _get_output_format(ctx)
+
+    select_parsed = _parse_json_option(select, "select")
+    where_parsed = _parse_json_option(where, "where")
+    orderby_parsed = _parse_json_option(orderby, "orderby")
+    groupby_parsed = _csv_to_list(groupby)
+
+    body: dict[str, Any] = {"from": data_source, "select": select_parsed}
+    if groupby_parsed:
+        body["groupby"] = groupby_parsed
+    if where_parsed is not None:
+        body["where"] = where_parsed
+    if orderby_parsed is not None:
+        body["orderby"] = orderby_parsed
+    if limit is not None:
+        body["limit"] = limit
+    if offset is not None:
+        body["offset"] = offset
+
+    if not _is_quiet(ctx):
+        with spinner(f"Querying {data_source} states...", no_color=_no_color(ctx)):
+            result = client.request("POST", "/api/v2/dem/query/getstates", json_data=body)
+    else:
+        result = client.request("POST", "/api/v2/dem/query/getstates", json_data=body)
+
+    formatter.format_output(result, fmt=fmt, title=f"DEM States — {data_source}")
+
+
+# ---------------------------------------------------------------------------
+# Traceroute commands
+# ---------------------------------------------------------------------------
+
+
+@traceroute_app.command("query")
+def traceroute_query(
+    ctx: typer.Context,
+    data_source: str = typer.Option(
+        ...,
+        "--data-source",
+        "-d",
+        help="Data source. Valid: traceroute_pop, traceroute_bypassed.",
+    ),
+    begin: int = typer.Option(
+        ...,
+        "--begin",
+        "-b",
+        help="Start time in epoch milliseconds.",
+    ),
+    end: int = typer.Option(
+        ...,
+        "--end",
+        "-e",
+        help="End time in epoch milliseconds.",
+    ),
+    where: Optional[str] = typer.Option(
+        None,
+        "--where",
+        "-w",
+        help="JSON where clause (operator-first format).",
+    ),
+    orderby: Optional[str] = typer.Option(
+        None,
+        "--orderby",
+        help="JSON orderby clause.",
+    ),
+) -> None:
+    """Query DEM traceroute network path data.
+
+    Returns hop-by-hop network path graph data.  The traceroute API does
+    NOT support a limit parameter; use --where filters and short time
+    ranges to control response size.
+
+    EXAMPLES
+
+        # Query traceroute data for a specific user
+        netskope dem traceroute query \\
+            --data-source traceroute_pop \\
+            --where '["=", "user_id", ["$", "john@example.com"]]' \\
+            --begin 1711929600000 --end 1712016000000
+
+        # Query bypassed traceroute data
+        netskope -o json dem traceroute query \\
+            --data-source traceroute_bypassed \\
+            --begin 1711929600000 --end 1712016000000
+    """
+    if data_source not in TRACEROUTE_DATA_SOURCES:
+        raise ValidationError(
+            f"Invalid data source for traceroute: '{data_source}'",
+            suggestion=f"Only {', '.join(TRACEROUTE_DATA_SOURCES)} are valid.",
+        )
+
+    client = _build_client(ctx)
+    formatter = _get_formatter(ctx)
+    fmt = _get_output_format(ctx)
+
+    where_parsed = _parse_json_option(where, "where")
+    orderby_parsed = _parse_json_option(orderby, "orderby")
+
+    body: dict[str, Any] = {"from": data_source, "begin": begin, "end": end}
+    if where_parsed is not None:
+        body["where"] = where_parsed
+    if orderby_parsed is not None:
+        body["orderby"] = orderby_parsed
+
+    if not _is_quiet(ctx):
+        with spinner(f"Querying {data_source} traceroute...", no_color=_no_color(ctx)):
+            result = client.request("POST", "/api/v2/dem/query/gettraceroute", json_data=body)
+    else:
+        result = client.request("POST", "/api/v2/dem/query/gettraceroute", json_data=body)
+
+    formatter.format_output(result, fmt=fmt, title=f"DEM Traceroute — {data_source}")
+
+
+# ---------------------------------------------------------------------------
+# Fields commands
+# ---------------------------------------------------------------------------
+
+
+@fields_app.command("list")
+def fields_list(
+    ctx: typer.Context,
+    source: Optional[str] = typer.Option(
+        None,
+        "--source",
+        "-s",
+        help="Optional data source to filter definitions. If omitted, returns all.",
+    ),
+) -> None:
+    """List available DEM field definitions for query building.
+
+    Discover which fields, metrics, and aggregation functions are
+    available for each data source.  Use this before constructing
+    metrics queries to find the correct field names.
+
+    EXAMPLES
+
+        # List all field definitions
+        netskope dem fields list
+
+        # List fields for a specific data source
+        netskope dem fields list --source rum_steered
+
+        # Output as JSON
+        netskope -o json dem fields list
+    """
+    client = _build_client(ctx)
+    formatter = _get_formatter(ctx)
+    fmt = _get_output_format(ctx)
+
+    params: dict[str, str] = {}
+    if source:
+        params["source"] = source
+
+    if not _is_quiet(ctx):
+        with spinner("Fetching field definitions...", no_color=_no_color(ctx)):
+            result = client.request("GET", "/api/v2/dem/query/definitions", params=params or None)
+    else:
+        result = client.request("GET", "/api/v2/dem/query/definitions", params=params or None)
+
+    formatter.format_output(result, fmt=fmt, title="DEM Field Definitions")
+
+
+# ---------------------------------------------------------------------------
+# Experience Alerts commands (triggered alert instances)
+# ---------------------------------------------------------------------------
+
+
+@experience_alerts_app.command("search")
+def experience_alerts_search(
+    ctx: typer.Context,
+    alert_category: Optional[str] = typer.Option(
+        None,
+        "--alert-category",
+        help="Comma-separated alert categories: Network, Platform, Private Apps, User Experience, Site.",
+    ),
+    alert_type: Optional[str] = typer.Option(
+        None,
+        "--alert-type",
+        help="Comma-separated alert types: Tunnel Status, Experience Score, etc.",
+    ),
+    severity: Optional[str] = typer.Option(
+        None,
+        "--severity",
+        help="Comma-separated severities: info, low, medium, high, critical.",
+    ),
+    open_time: Optional[int] = typer.Option(
+        None,
+        "--open-time",
+        help="Filter alerts opened after this Unix epoch second.",
+    ),
+    sort_field: Optional[str] = typer.Option(None, "--sort-field", help="Field name to sort by."),
+    sort_desc: bool = typer.Option(True, "--sort-desc/--sort-asc", help="Sort descending (default) or ascending."),
+    limit: Optional[int] = typer.Option(None, "--limit", "-l", help="Maximum alerts to return."),
+    offset: Optional[int] = typer.Option(None, "--offset", help="Number of alerts to skip."),
+) -> None:
+    """Search DEM experience alerts with filters.
+
+    Searches triggered DEM alert instances (not alert rules).  Filter by
+    category, type, and severity to find active or historical alerts.
+
+    NOTE: This searches alert instances.  To manage alert rules
+    (create/list), use 'netskope dem alerts' instead.
+
+    EXAMPLES
+
+        # Search for critical and high severity alerts
+        netskope dem experience-alerts search \\
+            --severity critical,high --limit 10
+
+        # Search by category
+        netskope dem experience-alerts search \\
+            --alert-category 'Network,User Experience'
+
+        # Output as JSON sorted ascending
+        netskope -o json dem experience-alerts search \\
+            --severity critical --sort-asc
+    """
+    client = _build_client(ctx)
+    formatter = _get_formatter(ctx)
+    fmt = _get_output_format(ctx)
+
+    body: dict[str, Any] = {}
+    category_list = _csv_to_list(alert_category)
+    if category_list:
+        body["alertCategory"] = category_list
+    type_list = _csv_to_list(alert_type)
+    if type_list:
+        body["alertType"] = type_list
+    severity_list = _csv_to_list(severity)
+    if severity_list:
+        body["severity"] = severity_list
+    if limit is not None:
+        body["limit"] = limit
+    else:
+        body["limit"] = 10
+    if offset is not None:
+        body["offset"] = offset
+    if open_time is not None:
+        body["openTime"] = open_time
+    if sort_field:
+        body["sortBy"] = {"field": sort_field, "desc": sort_desc}
+
+    if not _is_quiet(ctx):
+        with spinner("Searching DEM experience alerts...", no_color=_no_color(ctx)):
+            result = client.request("POST", "/api/v2/dem/alerts/getalerts", json_data=body)
+    else:
+        result = client.request("POST", "/api/v2/dem/alerts/getalerts", json_data=body)
+
+    formatter.format_output(result, fmt=fmt, title="DEM Experience Alerts")
+
+
+@experience_alerts_app.command("get")
+def experience_alerts_get(
+    ctx: typer.Context,
+    alert_id: str = typer.Argument(..., help="The alert ID to retrieve."),
+) -> None:
+    """Get full details for a specific DEM experience alert.
+
+    Retrieves detailed information about a triggered alert instance
+    including its category, severity, affected metrics, and timeline.
+
+    Use 'netskope dem experience-alerts search' to find alert IDs.
+
+    EXAMPLES
+
+        # Get alert details
+        netskope dem experience-alerts get abc123
+
+        # Output as JSON
+        netskope -o json dem experience-alerts get abc123
+    """
+    client = _build_client(ctx)
+    formatter = _get_formatter(ctx)
+    fmt = _get_output_format(ctx)
+
+    if not _is_quiet(ctx):
+        with spinner(f"Fetching alert {alert_id}...", no_color=_no_color(ctx)):
+            result = client.request("GET", f"/api/v2/dem/alerts/{alert_id}")
+    else:
+        result = client.request("GET", f"/api/v2/dem/alerts/{alert_id}")
+
+    formatter.format_output(result, fmt=fmt, title=f"DEM Alert — {alert_id}")
+
+
+@experience_alerts_app.command("entities")
+def experience_alerts_entities(
+    ctx: typer.Context,
+    alert_id: str = typer.Argument(..., help="The alert ID whose impacted entities to list."),
+    limit: Optional[int] = typer.Option(None, "--limit", "-l", help="Maximum entities to return."),
+    offset: Optional[int] = typer.Option(None, "--offset", help="Number of entities to skip."),
+    sortby: Optional[str] = typer.Option(None, "--sortby", help="Field to sort by."),
+    sort_order: Optional[str] = typer.Option(None, "--sort-order", help="Sort order: asc or desc."),
+) -> None:
+    """Get users and devices impacted by a DEM alert.
+
+    Lists the entities (users, devices) affected by a specific
+    triggered alert instance.
+
+    EXAMPLES
+
+        # List impacted entities
+        netskope dem experience-alerts entities abc123
+
+        # With pagination
+        netskope dem experience-alerts entities abc123 --limit 25 --offset 0
+
+        # Output as JSON
+        netskope -o json dem experience-alerts entities abc123
+    """
+    client = _build_client(ctx)
+    formatter = _get_formatter(ctx)
+    fmt = _get_output_format(ctx)
+
+    params: dict[str, Any] = {}
+    if limit is not None:
+        params["limit"] = limit
+    if offset is not None:
+        params["offset"] = offset
+    if sortby:
+        params["sortby"] = sortby
+    if sort_order:
+        params["sortorder"] = sort_order
+
+    if not _is_quiet(ctx):
+        with spinner(f"Fetching entities for alert {alert_id}...", no_color=_no_color(ctx)):
+            result = client.request("GET", f"/api/v2/dem/alerts/{alert_id}/entities", params=params or None)
+    else:
+        result = client.request("GET", f"/api/v2/dem/alerts/{alert_id}/entities", params=params or None)
+
+    formatter.format_output(result, fmt=fmt, title=f"DEM Alert Entities — {alert_id}")
+
+
+# ---------------------------------------------------------------------------
+# Monitored Apps commands
+# ---------------------------------------------------------------------------
+
+
+@apps_app.command("list")
+def apps_list(
+    ctx: typer.Context,
+    app_type: Optional[str] = typer.Option(
+        None,
+        "--type",
+        "-t",
+        help="Filter by app type: custom or predefined.",
+    ),
+    name: Optional[str] = typer.Option(
+        None,
+        "--name",
+        "-n",
+        help="Filter by application name.",
+    ),
+    limit: Optional[int] = typer.Option(None, "--limit", "-l", help="Maximum apps to return."),
+    offset: Optional[int] = typer.Option(None, "--offset", help="Number of apps to skip."),
+) -> None:
+    """List applications monitored by DEM.
+
+    Retrieves the applications that DEM is actively monitoring,
+    including both predefined (built-in) and custom applications.
+
+    EXAMPLES
+
+        # List all monitored apps
+        netskope dem apps list
+
+        # List only predefined apps
+        netskope dem apps list --type predefined
+
+        # Search by name
+        netskope dem apps list --name Gmail
+
+        # Output as JSON with limit
+        netskope -o json dem apps list --limit 50
+    """
+    client = _build_client(ctx)
+    formatter = _get_formatter(ctx)
+    fmt = _get_output_format(ctx)
+
+    params: dict[str, Any] = {}
+    if app_type:
+        params["type"] = app_type
+    if name:
+        params["name"] = name
+    if limit is not None:
+        params["limit"] = limit
+    if offset is not None:
+        params["offset"] = offset
+
+    if not _is_quiet(ctx):
+        with spinner("Fetching monitored apps...", no_color=_no_color(ctx)):
+            result = client.request("GET", "/api/v2/dem/apps", params=params or None)
+    else:
+        result = client.request("GET", "/api/v2/dem/apps", params=params or None)
+
+    formatter.format_output(result, fmt=fmt, title="DEM Monitored Apps")

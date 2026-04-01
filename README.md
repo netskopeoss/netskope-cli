@@ -193,7 +193,7 @@ ntsk users list -o csv > users.csv
 | **IPS**               | `ips status`, `ips allowlist list`                         |
 | **Threat Intel**      | `intel url-lookup`, `intel recategorize`                   |
 | **RBI**               | `rbi apps list`, `rbi browsers list`                       |
-| **DEM**               | `dem app-probes list`, `dem network-probes list`           |
+| **DEM**               | `dem metrics query`, `dem entities list`, `dem fields list`, `dem experience-alerts search`, `dem apps list`, `dem probes list` |
 | **Notifications**     | `notifications templates list`                             |
 | **Docs**              | `docs open`, `docs search`, `docs jql`                     |
 

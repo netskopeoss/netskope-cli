@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.23] - 2026-04-01
+
+- Add 9 DEM query, alert, and app commands covering the full DEM API surface
+- `dem metrics query` — query RUM, traceroute, HTTP, and UX score metrics from 17 data sources with JSON select/where/groupby/orderby
+- `dem entities list` — list users with experience scores, device info, and location data (max 48h window)
+- `dem states query` — query current agent or client connection states (agent_status, client_status)
+- `dem traceroute query` — get hop-by-hop network path graph data
+- `dem fields list` — discover available fields and metrics per data source
+- `dem experience-alerts search` — search triggered DEM alert instances by category, type, severity
+- `dem experience-alerts get` — get full details for a specific alert
+- `dem experience-alerts entities` — list users/devices impacted by an alert
+- `dem apps list` — list DEM-monitored applications (predefined and custom)
+- Client-side validation for data sources and 48-hour time window constraint
+- Add 39 unit tests and 10 integration tests for all new DEM commands
+- Update README, interactive HTML guide, and AI Agent Skill with new DEM commands
+
 ## [0.2.22] - 2026-03-31
 
 - Replace SCIM read-only commands with User Management API for richer data including group membership
