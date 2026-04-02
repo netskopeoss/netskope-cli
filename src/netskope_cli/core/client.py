@@ -37,6 +37,20 @@ _404_SUGGESTIONS: list[tuple[str, str]] = [
 ]
 _404_FALLBACK = "This API endpoint may not be available on your tenant or license plan."
 
+# Maps URL path substrings to contextual hints for 403 errors.
+_403_SUGGESTIONS: list[tuple[str, str]] = [
+    ("/dspm/", "DSPM requires a Data Security Posture Management license and 'REST API v2 → DSPM' token scopes."),
+    ("/spm/", "SPM requires a SaaS Security Posture Management license and 'REST API v2 → SPM' token scopes."),
+    ("/rbi/", "RBI requires a Remote Browser Isolation license and 'REST API v2 → RBI' token scopes."),
+    ("/dem/", "DEM requires a Digital Experience Management license and a 'DEM Admin' or 'Tenant Admin' role."),
+    ("/policy/npa/", "NPA policy management requires an NPA license and 'REST API v2 → Steering' token scopes."),
+    ("/steering/", "Steering endpoints require 'REST API v2 → Steering' token scopes."),
+    ("/npa/", "NPA requires a Netskope Private Access license and appropriate API token scopes."),
+    ("/dns/", "DNS Security requires a DNS Security license."),
+    ("/ips/", "IPS requires the Intrusion Prevention System add-on license."),
+]
+_403_FALLBACK = "Verify your API token has the required scopes and your account has sufficient permissions."
+
 
 def _is_ssl_error(exc: Exception) -> bool:
     """Check if an exception (or its chain) is caused by an SSL error."""
@@ -258,8 +272,14 @@ class NetskopeClient:
                 details=details,
             )
         if status == 403:
+            suggestion_403 = _403_FALLBACK
+            for pattern, hint in _403_SUGGESTIONS:
+                if pattern in request_path:
+                    suggestion_403 = hint
+                    break
             raise AuthorizationError(
                 f"Forbidden (HTTP {status}): {message}",
+                suggestion=suggestion_403,
                 details=details,
             )
         if status == 404:

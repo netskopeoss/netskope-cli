@@ -25,6 +25,30 @@ policy_app.add_typer(rules_app, name="rules")
 policy_app.add_typer(groups_app, name="groups")
 
 
+@policy_app.command("list")
+def policy_list(ctx: typer.Context) -> None:
+    """Show available policy subcommands.
+
+    The 'npa policy' group does not have a direct 'list' command.
+    Policy data is organized under 'rules' and 'groups' subcommands.
+
+    Examples:
+        ntsk npa policy rules list    # List policy rules
+        ntsk npa policy groups list   # List policy groups
+    """
+    from rich.console import Console
+
+    state = ctx.obj
+    no_color = state.no_color if state is not None else False
+    console = Console(no_color=no_color, stderr=True)
+    console.print(
+        "[yellow]'npa policy' does not have a direct 'list' command.[/yellow]\n"
+        "Use one of these instead:\n"
+        "  [bold]ntsk npa policy rules list[/bold]   — List policy rules\n"
+        "  [bold]ntsk npa policy groups list[/bold]  — List policy groups"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Rules commands
 # ---------------------------------------------------------------------------

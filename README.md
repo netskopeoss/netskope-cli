@@ -159,7 +159,7 @@ ntsk users list -o csv > users.csv
 |----------------|----------------------------------------------------|
 | `-W` / `--wide`| Show all table columns without truncation           |
 | `--raw`        | Include internal `_`-prefixed fields in output      |
-| `--count`      | Print only the total record count                   |
+| `--count`      | Print the record count (subject to `--limit`)       |
 | `--epoch`      | Keep timestamps as raw Unix epoch integers          |
 | `-q` / `--quiet` | Suppress spinners and informational messages     |
 | `--no-color`   | Disable coloured output                             |
@@ -198,6 +198,16 @@ ntsk users list -o csv > users.csv
 | **Docs**              | `docs open`, `docs search`, `docs jql`                     |
 
 Run `ntsk --help` or `ntsk <command> --help` for full details.
+
+### Discoverability
+
+```bash
+ntsk commands                # Browse the full command tree with argument signatures
+ntsk commands --json         # Machine-readable JSON tree — ideal for AI agents
+ntsk dspm list-types         # List valid DSPM resource types
+```
+
+The `commands --json` output includes every command, subcommand, positional argument, option, and description in one call.
 
 ---
 

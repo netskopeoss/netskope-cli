@@ -25,7 +25,7 @@ from netskope_cli.core.exceptions import NetskopeError
 # ---------------------------------------------------------------------------
 # Version — single source of truth
 # ---------------------------------------------------------------------------
-__version__ = "0.2.23"
+__version__ = "0.2.24"
 
 # ---------------------------------------------------------------------------
 # Global state object threaded through the context
@@ -202,9 +202,10 @@ def main(
         False,
         "--count",
         help=(
-            "Print only the total record count instead of full results. "
-            "Works with any command that returns a list of records. "
-            "Saves bandwidth by skipping full record retrieval when you only need the count."
+            "Print only the record count instead of full results. Returns the count "
+            "of records fetched, which may be limited by --limit. For some endpoints "
+            "the API provides a total field and --count returns that instead. "
+            "Use 'ntsk status' for tenant-wide event totals."
         ),
     ),
     wide: bool = typer.Option(

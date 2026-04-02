@@ -46,13 +46,21 @@ _config_app = typer.Typer(
         "View and update the global steering configuration.\n\n"
         "The global steering configuration controls how the Netskope Client steers "
         "traffic. Use 'get' to view the current configuration and 'update' to modify "
-        "settings using key=value pairs."
+        "settings using key=value pairs.\n\n"
+        "Running 'steering config' with no subcommand defaults to 'get'."
     ),
-    no_args_is_help=True,
+    invoke_without_command=True,
 )
 
 steering_app.add_typer(_private_apps_app, name="private-apps")
 steering_app.add_typer(_config_app, name="config")
+
+
+@_config_app.callback(invoke_without_command=True)
+def _config_default(ctx: typer.Context) -> None:
+    """When no subcommand is given, default to 'get'."""
+    if ctx.invoked_subcommand is None:
+        config_get(ctx, scope=None)
 
 
 # ---------------------------------------------------------------------------

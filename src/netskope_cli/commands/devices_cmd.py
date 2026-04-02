@@ -93,6 +93,14 @@ def devices_list(
             "Number of records to skip for pagination. Combine with --limit " "to page through results. Defaults to 0."
         ),
     ),
+    no_fallback: bool = typer.Option(
+        False,
+        "--no-fallback",
+        help=(
+            "Error instead of silently falling back to the 'events client-status' "
+            "endpoint when the devices API is unavailable on this tenant."
+        ),
+    ),
 ) -> None:
     """List managed devices enrolled in your Netskope tenant.
 
@@ -102,9 +110,11 @@ def devices_list(
     inventory, compliance checks, or to identify devices that have
     not checked in recently.
 
-    Note: If the steering/devices endpoint is not available on your
-    tenant, use 'netskope events client-status' to query device
-    connectivity events instead.
+    Fallback: If the steering/devices endpoint returns 404 (not available
+    on your tenant), this command automatically falls back to the
+    'events client-status' endpoint. The fallback response uses a
+    different schema with different field names. Use --no-fallback to
+    disable this and get an error instead.
 
     Examples:
         # List all devices as a table
@@ -113,8 +123,8 @@ def devices_list(
         # Output as JSON for integration with a CMDB
         netskope -o json devices list
 
-        # Export as CSV for a spreadsheet
-        netskope -o csv devices list
+        # Disable fallback — error if devices API unavailable
+        netskope devices list --no-fallback
 
         # Paginate through results
         netskope devices list --limit 50 --offset 100
@@ -132,9 +142,19 @@ def devices_list(
     except Exception as exc:
         err_msg = str(exc)
         if "404" in err_msg or "Not Found" in err_msg:
+            if no_fallback:
+                from netskope_cli.core.output import echo_error
+
+                echo_error(
+                    "The devices list endpoint is not available on this tenant (HTTP 404).\n"
+                    "Try 'netskope events client-status' instead, or remove --no-fallback to auto-fallback.",
+                    no_color=no_color,
+                )
+                raise typer.Exit(code=1)
             console.print(
                 "[yellow]The devices list endpoint is not available on this tenant.[/yellow]\n"
-                "Falling back to [bold]'events client-status'[/bold] endpoint..."
+                "Falling back to [bold]'events client-status'[/bold] endpoint...\n"
+                "[dim]Warning: The fallback response uses a different schema with different field names.[/dim]"
             )
             fallback_params: dict[str, object] = {"limit": limit}
             try:

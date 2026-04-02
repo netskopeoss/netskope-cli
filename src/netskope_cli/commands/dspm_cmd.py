@@ -116,6 +116,24 @@ def _get_output_format(ctx: typer.Context) -> str:
 # ---------------------------------------------------------------------------
 
 
+@dspm_app.command("list-types")
+def list_resource_types(ctx: typer.Context) -> None:
+    """List all valid DSPM resource types for the 'resources' command.
+
+    Prints every accepted RESOURCE_TYPE value so you don't have to guess.
+    Use these values as the positional argument to 'dspm resources'.
+
+    Examples:
+        netskope dspm list-types
+        netskope dspm resources connected_datastores
+    """
+    console = _get_console(ctx)
+    console.print("[bold]Valid DSPM resource types[/bold] (use with 'dspm resources <TYPE>'):\n")
+    for rt in ResourceType:
+        console.print(f"  {rt.value}")
+    console.print()
+
+
 @dspm_app.command("resources")
 def resources(
     ctx: typer.Context,
@@ -226,9 +244,9 @@ def analytics(
     metric_type: str = typer.Argument(
         ...,
         help=(
-            "The analytics metric type to retrieve. Available metrics depend on your "
-            "DSPM configuration and may include summary statistics, trend data, and "
-            "risk scores across your datastores."
+            "The analytics metric type to retrieve (e.g. summary, risk_score, "
+            "sensitivity_trends). Available metrics depend on your DSPM configuration. "
+            "Run the command with an invalid type to see what your tenant supports."
         ),
     ),
 ) -> None:

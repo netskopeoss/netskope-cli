@@ -37,7 +37,7 @@ These flags can appear **before or after** the subcommand:
 |------|-------------|
 | `-o json\|table\|csv\|yaml\|jsonl` | Output format (default: table for TTY, json for piped) |
 | `-W` / `--wide` | Show all table columns (no truncation) |
-| `--count` | Print only the total record count |
+| `--count` | Print the record count (subject to `--limit`, not always the true total) |
 | `-v` / `-vv` | Verbose / debug output |
 | `-q` / `--quiet` | Suppress spinners and progress indicators (errors still print to stderr) |
 | `--raw` | Include internal `_`-prefixed fields |
@@ -52,6 +52,7 @@ These flags can appear **before or after** the subcommand:
 - TTY: prints metadata lines + bare integer (e.g. `1616 results\nTime range: ...\n1616`)
 - With `-o json`: prints just the bare integer (`1616`) — best for scripting
 - For reliable scripting: `ntsk alerts list --start 24h --count -o json` gives a clean number
+- **Note:** `--count` returns the count of records fetched, which is subject to `--limit`. For some endpoints the API provides a `total` field and `--count` returns that instead. Use `ntsk status` for tenant-wide event totals.
 
 **`-q` behavior:** Suppresses spinners and progress indicators only. Errors still print to stderr. Exit codes are unchanged. Safe to use in scripts.
 
@@ -308,14 +309,17 @@ ntsk dns categories
 ntsk dns groups list
 
 ntsk devices list --limit 50
+ntsk devices list --no-fallback         # Error instead of falling back to client-status
 ntsk devices tags list
 ntsk devices supported-os
 ```
 
 ### DSPM & SPM
 ```bash
-ntsk dspm resources list --type datastores
-ntsk dspm analytics --type overview
+ntsk dspm list-types                    # List valid resource types
+ntsk dspm resources connected_datastores
+ntsk dspm resources assessment_summary
+ntsk dspm analytics summary
 
 ntsk spm posture-score
 ntsk spm apps list
@@ -426,11 +430,15 @@ ntsk config create-profile staging   # Create new profile
 
 ### Misc
 ```bash
-ntsk commands                        # Print full command tree
+ntsk commands                        # Print full command tree (shows arg signatures)
+ntsk commands --json                 # Machine-readable JSON tree — enumerate all commands in one call
+ntsk dspm list-types                 # List valid DSPM resource types
 ntsk completion install zsh          # Install shell completion
 ntsk docs jql                        # JQL syntax reference
 ntsk docs api                        # API reference link
 ```
+
+**Agent tip:** Start with `ntsk commands --json` to discover the full CLI surface in one call. The JSON output includes every command, subcommand, positional argument, option, and description.
 
 ## Workflow Patterns
 
@@ -464,8 +472,11 @@ ntsk alerts list --start 30d --limit 5000 -o jsonl > alerts.jsonl
 6. **JQL queries** must be single-quoted in the shell: `--query 'field eq "value"'`
 7. **Piping:** Output auto-switches to JSON when piped. You never need `-o json` explicitly when piping.
 8. **No auto-pagination:** The CLI sends a single API request with your `--limit` value. There is no automatic multi-page fetching for events/alerts/incidents. The API may cap results regardless of `--limit`.
-9. **License-dependent features:** DSPM, SPM, RBI, IPS, DEM require the corresponding license. A 404 usually means the feature is not licensed on this tenant.
+9. **License-dependent features:** DSPM, SPM, RBI, IPS, DEM require the corresponding license. A 404 means the feature is not licensed. A 403 now includes a hint about which license/scope is needed (e.g. "DEM requires a Digital Experience Management license and a 'DEM Admin' role").
 10. **`events list` requires `--type`/`-t`.** Prefer the specific subcommands (`events alerts`, `events application`) instead.
+11. **`devices list` fallback:** If the steering/devices endpoint returns 404, the CLI falls back to `events client-status` with a **different schema**. Use `--no-fallback` to get an error instead.
+12. **`steering config`** with no subcommand defaults to `get` — no need to type `steering config get`.
+13. **`npa policy list`** does not exist — use `npa policy rules list` or `npa policy groups list`.
 11. **`alerts summary` uses `--by` or `--group-by`** (NOT `--field`). Example: `ntsk alerts summary --by severity --since 7d`
 
 Now, understand the user's request in "$ARGUMENTS" and use the CLI to accomplish it. If the request is ambiguous, ask what they want. Prefer `-o json` for your own parsing, and table format for direct display to the user. Always show the commands you're running so the user can learn.
