@@ -27,6 +27,7 @@ from netskope_cli.core.exceptions import (
 logger = logging.getLogger(__name__)
 
 # Maps URL path substrings to contextual hints for 404 errors.
+# More specific paths must come before broader prefixes.
 _404_SUGGESTIONS: list[tuple[str, str]] = [
     ("/steering/globalconfig", "The Steering Global Config API may not be available on this tenant or license."),
     ("/spm/", "SPM requires a SaaS Security Posture Management license."),
@@ -34,10 +35,16 @@ _404_SUGGESTIONS: list[tuple[str, str]] = [
     ("/devices/", "The Devices API may not be available on this tenant or license."),
     ("/rbi/", "RBI requires a Remote Browser Isolation license."),
     ("/dem/", "DEM requires a Digital Experience Management license."),
+    ("/rbac/", "RBAC may require an admin role or may not be available on your license plan."),
+    ("/ipsec/", "IPsec requires an IPsec VPN license."),
 ]
-_404_FALLBACK = "This API endpoint may not be available on your tenant or license plan."
+_404_FALLBACK = (
+    "This API endpoint may not be available on your tenant or license plan. "
+    "Check your license or contact your Netskope administrator."
+)
 
 # Maps URL path substrings to contextual hints for 403 errors.
+# More specific paths must come before broader prefixes.
 _403_SUGGESTIONS: list[tuple[str, str]] = [
     ("/dspm/", "DSPM requires a Data Security Posture Management license and 'REST API v2 → DSPM' token scopes."),
     ("/spm/", "SPM requires a SaaS Security Posture Management license and 'REST API v2 → SPM' token scopes."),
@@ -46,10 +53,20 @@ _403_SUGGESTIONS: list[tuple[str, str]] = [
     ("/policy/npa/", "NPA policy management requires an NPA license and 'REST API v2 → Steering' token scopes."),
     ("/steering/", "Steering endpoints require 'REST API v2 → Steering' token scopes."),
     ("/npa/", "NPA requires a Netskope Private Access license and appropriate API token scopes."),
-    ("/dns/", "DNS Security requires a DNS Security license."),
-    ("/ips/", "IPS requires the Intrusion Prevention System add-on license."),
+    ("/dns/", "DNS Security requires a DNS Security license and 'REST API v2 → DNS Security' token scopes."),
+    ("/ips/", "IPS requires the Intrusion Prevention System add-on license and 'REST API v2 → IPS' token scopes."),
+    ("/rbac/", "RBAC endpoints require 'REST API v2 → RBAC' token scopes."),
+    ("/devices/", "Device endpoints require 'REST API v2 → Client and Devices' token scopes."),
+    ("/ipsec/", "IPsec endpoints require 'REST API v2 → IPsec' token scopes."),
+    ("/enrollment/", "Enrollment endpoints require 'REST API v2 → Enrollment' token scopes."),
+    ("/events/", "Events endpoints require 'REST API v2 → Events' token scopes."),
+    ("/notifications/", "Notification endpoints require 'REST API v2 → Notifications' token scopes."),
+    ("/atp/", "ATP endpoints require 'REST API v2 → Threat Protection' token scopes."),
 ]
-_403_FALLBACK = "Verify your API token has the required scopes and your account has sufficient permissions."
+_403_FALLBACK = (
+    "Verify your API token has the required scopes and your account has sufficient permissions. "
+    "Check Settings > Tools > REST API v2 to verify your token scopes."
+)
 
 
 def _is_ssl_error(exc: Exception) -> bool:

@@ -96,6 +96,14 @@ app = typer.Typer(
         "[bold]Getting started:[/bold]\n\n"
         "  netskope config setup                          # one-step wizard\n"
         "  netskope alerts list --limit 10\n\n"
+        "[bold]Quick start for scripting / AI agents:[/bold]\n\n"
+        "  ntsk status -o json                            # tenant health overview\n"
+        "  ntsk commands --flat                           # all executable commands\n"
+        "  ntsk alerts list --limit 100 -o json           # recent alerts\n"
+        "  ntsk events application --limit 50 -o json     # app events\n"
+        "  ntsk publishers list -o json                   # all publishers\n"
+        "  ntsk services private-apps list -o json        # all private apps\n"
+        "  ntsk users list --limit 50 -o json             # SCIM users\n\n"
         "[bold]Output formats:[/bold]  --output json | table | csv | yaml | jsonl\n\n"
         "[bold]Environment variables:[/bold]\n\n"
         "  NETSKOPE_TENANT     Tenant hostname (overrides profile config).\n"
@@ -926,6 +934,30 @@ def _hoist_global_options(argv: list[str]) -> list[str]:
     return result + hoisted + rest
 
 
+def _show_group_hint(ctx: click.Context) -> None:
+    """Print available subcommands when a group is invoked without a subcommand."""
+    group = ctx.command
+    if not isinstance(group, click.Group):
+        return
+    # Build full command path from context chain
+    parts: list[str] = []
+    c: click.Context | None = ctx
+    while c is not None:
+        if c.info_name:
+            parts.append(c.info_name)
+        c = c.parent
+    cmd_path = " ".join(reversed(parts))
+    console = Console(stderr=True)
+    console.print(f"\n[yellow]'{cmd_path}' is a command group. Available subcommands:[/yellow]\n")
+    for name in sorted(group.list_commands(ctx)):
+        cmd = group.get_command(ctx, name)
+        if cmd is None or cmd.hidden:
+            continue
+        first_line = (cmd.help or "").strip().split("\n")[0]
+        console.print(f"  [bold]{name:<24}[/bold] {first_line}")
+    console.print(f"\n[dim]Run: {cmd_path} --help[/dim]\n")
+
+
 def cli() -> None:
     """Entry point that wraps the Typer app with clean error handling.
 
@@ -957,7 +989,9 @@ def cli() -> None:
         # "Missing command".  Treat this like --help: show help and exit 0.
         if not msg or "Missing command" in msg or "missing command" in msg.lower():
             # Help was already displayed by no_args_is_help or we triggered it.
-            # Exit cleanly with code 0 — showing help is not an error.
+            # Show available subcommands as a hint before exiting.
+            if exc.ctx and isinstance(exc.ctx.command, click.Group):
+                _show_group_hint(exc.ctx)
             raise SystemExit(0)
         console = Console(stderr=True)
         # Use the actual command name from sys.argv[0] (e.g. "ntsk" or "netskope")

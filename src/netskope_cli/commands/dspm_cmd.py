@@ -198,6 +198,8 @@ def resources(
     and pagination. Use this to explore your data security posture, find sensitive
     data, review scan results, and audit policy violations.
 
+    Tip: Run 'ntsk dspm list-types' for the full list of valid resource types.
+
     Examples:
         netskope dspm resources connected_datastores
         netskope dspm resources tables --filter 'name eq "users"' --limit 20

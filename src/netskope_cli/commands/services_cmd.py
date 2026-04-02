@@ -99,12 +99,12 @@ def _output_format(ctx: typer.Context) -> str:
 @services_app.command("cci")
 def cci(
     ctx: typer.Context,
-    app_name: str = typer.Argument(
-        ...,
+    app_name: Optional[str] = typer.Argument(
+        None,
         help=(
             "Name of the cloud application to look up. Must match the application name "
-            "as indexed by Netskope CCI (e.g. 'Box', 'Dropbox', 'Slack'). Use partial "
-            "names or wildcards for broader searches."
+            "as indexed by Netskope CCI (e.g. 'Box', 'Dropbox', 'Slack'). The CCI API "
+            "requires an exact app name — partial names and wildcards are not supported."
         ),
     ),
     category: Optional[str] = typer.Option(
@@ -171,11 +171,33 @@ def cci(
     and security attributes of cloud applications. The CCI score helps security
     teams assess whether an app is safe to use and which policies to apply.
 
+    The CCI API requires an exact application name — it does not support
+    listing all apps or partial/wildcard searches. To browse apps, use the
+    Netskope admin console or query application events with
+    'ntsk events application'.
+
     Examples:
         netskope services cci Dropbox
         netskope -o json services cci Box --ccl excellent
         netskope services cci Slack --category Collaboration --limit 5
     """
+    if app_name is None:
+        from rich.console import Console
+
+        state = ctx.obj
+        no_color = state.no_color if state is not None else False
+        console = Console(no_color=no_color, stderr=True)
+        console.print(
+            "[yellow]CCI lookup requires an application name.[/yellow]\n\n"
+            "The CCI API does not support listing all apps. You must specify an\n"
+            "exact application name (e.g. 'Dropbox', 'Box', 'Slack').\n\n"
+            "Examples:\n"
+            "  [bold]ntsk services cci Dropbox[/bold]\n"
+            "  [bold]ntsk services cci Box --ccl excellent -o json[/bold]\n\n"
+            "[dim]To browse discovered apps, use: ntsk events application --limit 50[/dim]"
+        )
+        raise typer.Exit(code=1)
+
     client = _build_client(ctx)
     fmt = _get_formatter(ctx)
 

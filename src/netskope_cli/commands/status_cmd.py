@@ -120,8 +120,78 @@ async def _fetch_publishers(
     return result
 
 
+async def _fetch_list_count(
+    base_url: str,
+    headers: dict,
+    path: str,
+    params: dict,
+    errors: list[str] | None = None,
+    cookies: dict | None = None,
+    count_key: str | None = None,
+) -> int | None:
+    """Fetch a count from an endpoint that returns a list or total field.
+
+    Tries, in order: ``count_key`` in the response dict, ``total``, ``totalResults``,
+    ``len(data)``, ``len(result)``, ``len(Resources)``.
+    """
+    import httpx
+
+    try:
+        async with httpx.AsyncClient(base_url=base_url, headers=headers, cookies=cookies, timeout=60) as c:
+            resp = await c.get(path, params=params)
+            if resp.status_code != 200:
+                if errors is not None:
+                    errors.append(f"{path}: HTTP {resp.status_code}")
+                return None
+            data = resp.json()
+            if isinstance(data, dict):
+                if count_key and count_key in data:
+                    return int(data[count_key])
+                for key in ("total", "totalResults", "count"):
+                    if key in data:
+                        return int(data[key])
+                for key in ("data", "result", "Resources", "roles", "tunnels"):
+                    if key in data and isinstance(data[key], list):
+                        return len(data[key])
+            if isinstance(data, list):
+                return len(data)
+    except Exception as exc:
+        if errors is not None:
+            errors.append(f"{path}: {exc}")
+    return None
+
+
+async def _fetch_ips_enabled(
+    base_url: str, headers: dict, errors: list[str] | None = None, cookies: dict | None = None
+) -> bool | None:
+    """Check whether IPS is enabled on the tenant."""
+    import httpx
+
+    try:
+        async with httpx.AsyncClient(base_url=base_url, headers=headers, cookies=cookies, timeout=60) as c:
+            resp = await c.get("/api/v2/ips/status")
+            if resp.status_code != 200:
+                if errors is not None:
+                    errors.append(f"/api/v2/ips/status: HTTP {resp.status_code}")
+                return None
+            data = resp.json()
+            if isinstance(data, dict):
+                ips_data = data.get("data", {})
+                if isinstance(ips_data, dict):
+                    return bool(ips_data.get("web", False) or ips_data.get("nonweb", False))
+                return bool(data.get("enabled", False))
+    except Exception as exc:
+        if errors is not None:
+            errors.append(f"/api/v2/ips/status: {exc}")
+    return None
+
+
 async def _gather_status(
-    base_url: str, headers: dict, time_params: dict, cookies: dict | None = None
+    base_url: str,
+    headers: dict,
+    time_params: dict,
+    cookies: dict | None = None,
+    extended: bool = False,
 ) -> tuple[dict[str, Any], list[str]]:
     """Run all API calls concurrently and return (metrics, errors)."""
     event_types = ["alert", "application", "network", "page", "incident"]
@@ -147,6 +217,24 @@ async def _gather_status(
     # Users total
     tasks.append(_fetch_resource_total(base_url, headers, "/api/v2/scim/Users", {"count": 1}, errors, cookies=cookies))
 
+    # Extended metrics
+    ext_keys: list[str] = []
+    if extended:
+        ext_endpoints: list[tuple[str, str, dict, str | None]] = [
+            ("groups_scim", "/api/v2/scim/Groups", {"count": 1}, None),
+            ("url_lists", "/api/v2/policy/urllist", {}, None),
+            ("npa_policy_rules", "/api/v2/policy/npa/rules", {"limit": 1, "offset": 0}, None),
+            ("ipsec_tunnels", "/api/v2/steering/ipsec/tunnels", {"limit": 1, "offset": 0}, None),
+            ("rbac_roles", "/api/v2/rbac/roles", {}, None),
+        ]
+        for key, path, params, count_key in ext_endpoints:
+            ext_keys.append(key)
+            tasks.append(
+                _fetch_list_count(base_url, headers, path, params, errors, cookies=cookies, count_key=count_key)
+            )
+        ext_keys.append("ips_enabled")
+        tasks.append(_fetch_ips_enabled(base_url, headers, errors, cookies=cookies))
+
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     metrics: dict[str, Any] = {}
@@ -154,14 +242,25 @@ async def _gather_status(
         val = results[i]
         metrics[f"{etype}_events_24h"] = val if isinstance(val, int) else None
 
-    pub_result = results[len(event_types)]
+    base_idx = len(event_types)
+    pub_result = results[base_idx]
     metrics["publishers"] = pub_result if isinstance(pub_result, dict) else {"total": None}
 
-    priv_apps = results[len(event_types) + 1]
+    priv_apps = results[base_idx + 1]
     metrics["private_apps"] = priv_apps if isinstance(priv_apps, int) else None
 
-    users = results[len(event_types) + 2]
+    users = results[base_idx + 2]
     metrics["users"] = users if isinstance(users, int) else None
+
+    # Extended metrics
+    if extended:
+        ext_start = base_idx + 3
+        for i, key in enumerate(ext_keys):
+            val = results[ext_start + i]
+            if isinstance(val, BaseException):
+                metrics[key] = None
+            else:
+                metrics[key] = val
 
     return metrics, errors
 
@@ -198,7 +297,7 @@ def _color_status(connected: int | None, total: int | None) -> Text:
     return parts
 
 
-def _render_table(base_url: str, metrics: dict[str, Any], period: str, no_color: bool) -> None:
+def _render_table(base_url: str, metrics: dict[str, Any], period: str, no_color: bool, extended: bool = False) -> None:
     """Render the status dashboard as a Rich table."""
     console = Console(no_color=no_color, stderr=True)
 
@@ -244,14 +343,40 @@ def _render_table(base_url: str, metrics: dict[str, Any], period: str, no_color:
     output.add_row(Text(f"\nEvents (last {period})", style="bold magenta"))
     output.add_row(events_table)
 
+    # Extended configuration section
+    if extended:
+        config_table = Table(show_header=True, header_style="bold cyan", box=None, pad_edge=False, show_edge=False)
+        config_table.add_column("Resource", style="bold", min_width=20)
+        config_table.add_column("Count")
+
+        config_labels = [
+            ("groups_scim", "SCIM Groups"),
+            ("url_lists", "URL Lists"),
+            ("npa_policy_rules", "NPA Policy Rules"),
+            ("ipsec_tunnels", "IPsec Tunnels"),
+            ("rbac_roles", "RBAC Roles"),
+        ]
+        for key, label in config_labels:
+            config_table.add_row(label, Text(_fmt(metrics.get(key))))
+
+        ips_val = metrics.get("ips_enabled")
+        if ips_val is not None:
+            ips_text = Text("Enabled" if ips_val else "Disabled", style="green" if ips_val else "dim")
+        else:
+            ips_text = Text("N/A", style="dim")
+        config_table.add_row("IPS", ips_text)
+
+        output.add_row(Text("\nConfiguration", style="bold magenta"))
+        output.add_row(config_table)
+
     panel = Panel(output, title="[bold]Tenant Status[/bold]", border_style="blue", expand=False, padding=(1, 2))
     console.print(panel)
 
 
-def _render_json(base_url: str, metrics: dict[str, Any], period: str) -> None:
+def _render_json(base_url: str, metrics: dict[str, Any], period: str, extended: bool = False) -> None:
     """Render the status as JSON."""
     pub = metrics.get("publishers", {})
-    output = {
+    output: dict[str, Any] = {
         "tenant": base_url,
         "period": period,
         "infrastructure": {
@@ -271,6 +396,15 @@ def _render_json(base_url: str, metrics: dict[str, Any], period: str) -> None:
             "page": metrics.get("page_events_24h"),
         },
     }
+    if extended:
+        output["configuration"] = {
+            "groups_scim": metrics.get("groups_scim"),
+            "url_lists": metrics.get("url_lists"),
+            "npa_policy_rules": metrics.get("npa_policy_rules"),
+            "ipsec_tunnels": metrics.get("ipsec_tunnels"),
+            "rbac_roles": metrics.get("rbac_roles"),
+            "ips_enabled": metrics.get("ips_enabled"),
+        }
     print(json.dumps(output, indent=2))
 
 
@@ -289,6 +423,12 @@ def status(
         "-p",
         help="Time period for event counts. Supports relative offsets (e.g. 1h, 24h, 7d) or epoch timestamps.",
     ),
+    extended: bool = typer.Option(
+        False,
+        "--extended",
+        "-x",
+        help="Fetch additional resource counts: SCIM groups, URL lists, NPA rules, IPsec tunnels, RBAC roles, IPS.",
+    ),
 ) -> None:
     """Show a quick tenant health overview.
 
@@ -297,12 +437,17 @@ def status(
     in a single dashboard view. Useful as a first command to check tenant
     status.
 
+    Use --extended / -x to include additional resource counts (SCIM groups,
+    URL lists, NPA policy rules, IPsec tunnels, RBAC roles, IPS status).
+
     Examples:
         netskope status
         netskope status --since 7d
         netskope status --period 7d
         netskope status -o json
         netskope status -p 1h
+        netskope status --extended
+        netskope status -x -o json
     """
     state = ctx.obj
     no_color = state.no_color if state else False
@@ -316,7 +461,9 @@ def status(
     time_params = {"starttime": start_ts, "endtime": end_ts}
 
     with spinner("Fetching tenant status...", no_color=no_color):
-        metrics, errors = asyncio.run(_gather_status(base_url, headers, time_params, cookies=cookies))
+        metrics, errors = asyncio.run(
+            _gather_status(base_url, headers, time_params, cookies=cookies, extended=extended)
+        )
 
     if errors:
         verbose = getattr(state, "verbose", False) if state else False
@@ -336,6 +483,6 @@ def status(
                 err_console.print("[dim]Use --verbose for details.[/dim]")
 
     if fmt == "json":
-        _render_json(base_url, metrics, period)
+        _render_json(base_url, metrics, period, extended=extended)
     else:
-        _render_table(base_url, metrics, period, no_color)
+        _render_table(base_url, metrics, period, no_color, extended=extended)
