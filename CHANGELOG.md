@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.0.2] - 2026-04-02
+
+- Fix README links: point Claude Code skills URL to https://code.claude.com/docs/en/skills and use full GitHub URL for netskope.md so it renders correctly on PyPI
+
 ## [1.0.1] - 2026-04-02
 
 - Add troubleshooting guide for redacted user fields in alerts and events (API-side anonymization)
