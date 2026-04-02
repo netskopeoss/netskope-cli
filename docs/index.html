@@ -384,7 +384,7 @@ Time range: 2026-02-24 23:11 UTC &rarr; 2026-02-24 23:11 UTC
     </ul>
   </div>
   <div class="mt-3 p-4 rounded-lg bg-blue-50 border border-blue-200">
-    <p class="text-sm text-blue-900"><strong>Agent discovery:</strong> AI agents can run <code class="bg-blue-100 px-1.5 py-0.5 rounded text-xs">ntsk commands --json</code> to get a machine-readable JSON tree of all available commands, subcommands, and argument signatures for dynamic capability discovery.</p>
+    <p class="text-sm text-blue-900"><strong>Agent discovery:</strong> AI agents can run <code class="bg-blue-100 px-1.5 py-0.5 rounded text-xs">ntsk commands --flat</code> to list all executable commands one per line, or <code class="bg-blue-100 px-1.5 py-0.5 rounded text-xs">ntsk commands --flat --json</code> for a machine-readable flat JSON array. Use <code class="bg-blue-100 px-1.5 py-0.5 rounded text-xs">ntsk commands --json</code> for the full tree with argument signatures.</p>
   </div>
 </section>
 
@@ -1478,9 +1478,9 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
 
     <div class="space-y-4">
       <details class="card" open>
-        <summary class="p-4 font-semibold text-sm">services cci APP_NAME</summary>
+        <summary class="p-4 font-semibold text-sm">services cci [APP_NAME]</summary>
         <div class="px-4 pb-4">
-          <p class="text-sm text-muted-foreground mb-3">Look up CCI risk data for any cloud application. API: <code>GET /api/v2/services/cci/app</code></p>
+          <p class="text-sm text-muted-foreground mb-3">Look up CCI risk data for a cloud application by exact name. Run without an argument for usage guidance. API: <code>GET /api/v2/services/cci/app</code></p>
           <div class="code-block p-4 relative text-xs">
             <button class="copy-btn" onclick="copyCode(this)">Copy</button>
             <code><span class="prompt">$</span> ntsk <span class="flag">-o</span> <span class="string">json</span> services cci <span class="string">"Slack"</span>
@@ -1831,9 +1831,11 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
       <!-- Status -->
       <div class="card p-5">
         <h4 class="font-semibold mb-2">status <span class="text-xs text-muted-foreground font-normal">&mdash; Tenant Health Overview</span></h4>
-        <p class="text-xs text-muted-foreground mb-2">Concurrent fetch of alerts, events, publishers, private apps, and SCIM users.</p>
+        <p class="text-xs text-muted-foreground mb-2">Concurrent fetch of alerts, events, publishers, private apps, and SCIM users. Use <code>--extended</code> / <code>-x</code> to also fetch SCIM groups, URL lists, NPA policy rules, IPsec tunnels, RBAC roles, and IPS status.</p>
         <div class="code-block p-3 text-xs">
-          <code><span class="prompt">$</span> ntsk status</code>
+          <code><span class="prompt">$</span> ntsk status
+<span class="prompt">$</span> ntsk status <span class="flag">--extended</span>   <span class="comment"># include config resource counts</span>
+<span class="prompt">$</span> ntsk status <span class="flag">-x</span> <span class="flag">-o</span> <span class="string">json</span>   <span class="comment"># extended as JSON</span></code>
         </div>
       </div>
     </div>
@@ -1859,9 +1861,11 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
       </div>
       <div class="card p-5">
         <h4 class="font-semibold mb-2">commands</h4>
-        <p class="text-xs text-muted-foreground mb-2">Print the full command tree with argument signatures (e.g. <code>resources &lt;RESOURCE_TYPE&gt;</code>) for discoverability. Use <code>--json</code> for machine-readable output.</p>
+        <p class="text-xs text-muted-foreground mb-2">Print the full command tree with argument signatures (e.g. <code>resources &lt;RESOURCE_TYPE&gt;</code>) for discoverability. Use <code>--flat</code> for a one-per-line list of executable commands, or <code>--json</code> for machine-readable output.</p>
         <div class="code-block p-3 text-xs"><code><span class="prompt">$</span> ntsk commands
-<span class="prompt">$</span> ntsk commands <span class="flag">--json</span>   <span class="comment"># machine-readable JSON tree</span></code></div>
+<span class="prompt">$</span> ntsk commands <span class="flag">--flat</span>   <span class="comment"># one command per line (best for scripting)</span>
+<span class="prompt">$</span> ntsk commands <span class="flag">--flat</span> <span class="flag">--json</span>   <span class="comment"># flat JSON array</span>
+<span class="prompt">$</span> ntsk commands <span class="flag">--json</span>   <span class="comment"># full JSON tree with args &amp; options</span></code></div>
       </div>
       <div class="card p-5">
         <h4 class="font-semibold mb-2">docs</h4>
@@ -2634,6 +2638,7 @@ Note: piped output is automatically JSON, so \`-o json\` is optional in these ex
 ### Quick Health Check
 \`\`\`bash
 ntsk status                          # Tenant overview dashboard (alerts, publishers, events)
+ntsk status --extended               # Include SCIM groups, URL lists, NPA rules, IPsec, RBAC, IPS
 ntsk status --since 7d               # Events in last 7 days
 ntsk doctor                          # Diagnose CLI setup issues
 ntsk tenant                          # Show tenant info & connectivity
@@ -2966,7 +2971,9 @@ ntsk config create-profile staging   # Create new profile
 ### Misc
 \`\`\`bash
 ntsk commands                        # Print full command tree (with arg signatures)
-ntsk commands --json                 # Machine-readable JSON tree (for agent discovery)
+ntsk commands --flat                 # List all executable commands, one per line
+ntsk commands --flat --json          # Flat JSON array (best for agent discovery)
+ntsk commands --json                 # Full JSON tree with args, options, descriptions
 ntsk completion install zsh          # Install shell completion
 ntsk docs jql                        # JQL syntax reference
 ntsk docs api                        # API reference link
