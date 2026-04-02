@@ -8,6 +8,7 @@ inline JQL syntax reference.
 from __future__ import annotations
 
 import os
+import ssl
 import struct
 import webbrowser
 from functools import lru_cache
@@ -230,6 +231,16 @@ def search_docs(
     formatter = _get_formatter(ctx)
     fmt = _get_output_format(ctx)
 
+    # Resolve CA bundle so the request honours custom certificates (e.g. Netskope
+    # SSL inspection).
+    from netskope_cli.core.config import get_ca_bundle
+
+    state = ctx.obj
+    ca_bundle = get_ca_bundle(profile=state.profile if state else None)
+    ssl_verify: bool | ssl.SSLContext = True
+    if ca_bundle:
+        ssl_verify = ssl.create_default_context(cafile=ca_bundle)
+
     algolia_key = os.environ.get("NETSKOPE_ALGOLIA_KEY", "") or _resolve_search_config()
 
     url = f"https://{_ALGOLIA_APP_ID}-dsn.algolia.net/1/indexes/{_ALGOLIA_INDEX}/query"
@@ -245,7 +256,7 @@ def search_docs(
 
     with spinner(f"Searching documentation for '{query}'..."):
         try:
-            response = httpx.post(url, json=payload, headers=headers, timeout=30)
+            response = httpx.post(url, json=payload, headers=headers, timeout=30, verify=ssl_verify)
             response.raise_for_status()
             data = response.json()
         except httpx.HTTPStatusError as exc:

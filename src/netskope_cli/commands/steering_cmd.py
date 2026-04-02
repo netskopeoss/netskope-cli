@@ -6,6 +6,7 @@ steering configuration.
 
 from __future__ import annotations
 
+import urllib.parse
 from typing import Optional
 
 import typer
@@ -219,7 +220,7 @@ def private_apps_get(
     formatter = _build_formatter(ctx)
     no_color = ctx.obj.no_color if ctx.obj is not None else False
 
-    path = f"/api/v2/steering/apps/private/{id}"
+    path = f"/api/v2/steering/apps/private/{urllib.parse.quote(id, safe='')}"
 
     with spinner(f"Fetching private application {id}...", no_color=no_color):
         data = client.request("GET", path)

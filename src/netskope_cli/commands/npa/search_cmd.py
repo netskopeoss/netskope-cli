@@ -6,6 +6,7 @@ rather than having their own Typer sub-app.
 
 from __future__ import annotations
 
+import urllib.parse
 from typing import Annotated
 
 import typer
@@ -123,6 +124,7 @@ def search_resources(
     params: dict[str, object] = {"query": query}
 
     with spinner(f"Searching {resource_type} for '{query}'..."):
-        data = client.request("GET", f"/api/v2/infrastructure/npa/search/{resource_type}", params=params)
+        path = f"/api/v2/infrastructure/npa/search/{urllib.parse.quote(resource_type, safe='')}"
+        data = client.request("GET", path, params=params)
 
     formatter.format_output(data, fmt=fmt, title=f"NPA Search Results — {resource_type}")

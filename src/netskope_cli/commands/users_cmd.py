@@ -8,6 +8,7 @@ provisioning (/api/v2/scim/).
 from __future__ import annotations
 
 import json
+import urllib.parse
 from typing import Any, Optional
 
 import typer
@@ -456,7 +457,7 @@ def user_update(
     }
 
     client = _build_client(ctx)
-    data = client.request("PATCH", f"/api/v2/scim/Users/{user_id}", json_data=body)
+    data = client.request("PATCH", f"/api/v2/scim/Users/{urllib.parse.quote(user_id, safe='')}", json_data=body)
 
     echo_success(
         f"User '{user_id}' updated.",
@@ -509,7 +510,7 @@ def user_delete(
         )
 
     client = _build_client(ctx)
-    client.request("DELETE", f"/api/v2/scim/Users/{user_id}")
+    client.request("DELETE", f"/api/v2/scim/Users/{urllib.parse.quote(user_id, safe='')}")
 
     echo_success(
         f"User '{user_id}' deleted.",
@@ -801,7 +802,7 @@ def group_update(
     }
 
     client = _build_client(ctx)
-    data = client.request("PATCH", f"/api/v2/scim/Groups/{group_id}", json_data=body)
+    data = client.request("PATCH", f"/api/v2/scim/Groups/{urllib.parse.quote(group_id, safe='')}", json_data=body)
 
     echo_success(
         f"Group '{group_id}' updated.",
@@ -855,7 +856,7 @@ def group_delete(
         )
 
     client = _build_client(ctx)
-    client.request("DELETE", f"/api/v2/scim/Groups/{group_id}")
+    client.request("DELETE", f"/api/v2/scim/Groups/{urllib.parse.quote(group_id, safe='')}")
 
     echo_success(
         f"Group '{group_id}' deleted.",

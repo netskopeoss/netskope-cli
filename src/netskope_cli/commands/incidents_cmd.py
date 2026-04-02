@@ -6,6 +6,7 @@ retrieving DLP forensics, and searching incident events.
 
 from __future__ import annotations
 
+import urllib.parse
 from typing import Optional
 
 import typer
@@ -333,7 +334,7 @@ def forensics(
     formatter = _get_formatter(ctx)
     fmt = _get_output_format(ctx)
 
-    path = f"/api/v2/incidents/dlpincidents/{dlp_incident_id}/forensics"
+    path = f"/api/v2/incidents/dlpincidents/{urllib.parse.quote(dlp_incident_id, safe='')}/forensics"
 
     with spinner("Fetching DLP forensics...", no_color=state.no_color):
         data = client.request("GET", path)

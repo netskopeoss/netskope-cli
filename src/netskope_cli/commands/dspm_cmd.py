@@ -6,6 +6,7 @@ triggering scans, and retrieving analytics metrics.
 
 from __future__ import annotations
 
+import urllib.parse
 from enum import Enum
 from typing import Optional
 
@@ -267,7 +268,7 @@ def analytics(
     formatter = _build_formatter(ctx)
     no_color = ctx.obj.no_color if ctx.obj is not None else False
 
-    path = f"/api/v2/dspm/analytics/{metric_type}"
+    path = f"/api/v2/dspm/analytics/{urllib.parse.quote(metric_type, safe='')}"
 
     with spinner(f"Fetching analytics ({metric_type})...", no_color=no_color):
         data = client.request("GET", path)

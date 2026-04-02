@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import base64
 import logging
+import urllib.parse
 from pathlib import Path
 
 import typer
@@ -242,9 +243,9 @@ def report(
 
     if not _is_quiet(ctx):
         with spinner(f"Fetching report for job '{job_id}'...", no_color=_no_color(ctx)):
-            result = client.request("GET", f"/api/v2/atp/scans/reports/{job_id}")
+            result = client.request("GET", f"/api/v2/atp/scans/reports/{urllib.parse.quote(job_id, safe='')}")
     else:
-        result = client.request("GET", f"/api/v2/atp/scans/reports/{job_id}")
+        result = client.request("GET", f"/api/v2/atp/scans/reports/{urllib.parse.quote(job_id, safe='')}")
 
     formatter.format_output(result, fmt=fmt, title=f"ATP Scan Report — {job_id}")
 
@@ -296,12 +297,12 @@ def submission(
         ):
             result = client.request(
                 "GET",
-                f"/api/v2/atp/tpaas/submission/{submission_id}/reports",
+                f"/api/v2/atp/tpaas/submission/{urllib.parse.quote(submission_id, safe='')}/reports",
             )
     else:
         result = client.request(
             "GET",
-            f"/api/v2/atp/tpaas/submission/{submission_id}/reports",
+            f"/api/v2/atp/tpaas/submission/{urllib.parse.quote(submission_id, safe='')}/reports",
         )
 
     formatter.format_output(result, fmt=fmt, title=f"TPaaS Submission Report — {submission_id}")

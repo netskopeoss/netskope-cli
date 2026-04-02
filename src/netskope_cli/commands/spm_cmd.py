@@ -8,6 +8,7 @@ posture, identify misconfigured applications, and track drift over time.
 
 from __future__ import annotations
 
+import urllib.parse
 from typing import Optional
 
 import typer
@@ -145,7 +146,7 @@ def apps_get(
     no_color = ctx.obj.no_color if ctx.obj is not None else False
 
     with spinner(f"Fetching details for {app_name}...", no_color=no_color):
-        data = client.request("GET", f"/api/v2/spm/apps/{app_name}")
+        data = client.request("GET", f"/api/v2/spm/apps/{urllib.parse.quote(app_name, safe='')}")
 
     formatter.format_output(data, fmt=_get_output_format(ctx), title=f"SPM — {app_name}")
 
