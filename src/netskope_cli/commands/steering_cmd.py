@@ -56,7 +56,7 @@ steering_app.add_typer(_private_apps_app, name="private-apps")
 steering_app.add_typer(_config_app, name="config")
 
 
-@_config_app.callback(invoke_without_command=True)
+@_config_app.callback()
 def _config_default(ctx: typer.Context) -> None:
     """When no subcommand is given, default to 'get'."""
     if ctx.invoked_subcommand is None:

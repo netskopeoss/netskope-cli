@@ -477,6 +477,6 @@ ntsk alerts list --start 30d --limit 5000 -o jsonl > alerts.jsonl
 11. **`devices list` fallback:** If the steering/devices endpoint returns 404, the CLI falls back to `events client-status` with a **different schema**. Use `--no-fallback` to get an error instead.
 12. **`steering config`** with no subcommand defaults to `get` — no need to type `steering config get`.
 13. **`npa policy list`** does not exist — use `npa policy rules list` or `npa policy groups list`.
-11. **`alerts summary` uses `--by` or `--group-by`** (NOT `--field`). Example: `ntsk alerts summary --by severity --since 7d`
+14. **`alerts summary` uses `--by` or `--group-by`** (NOT `--field`). Example: `ntsk alerts summary --by severity --since 7d`
 
 Now, understand the user's request in "$ARGUMENTS" and use the CLI to accomplish it. If the request is ambiguous, ask what they want. Prefer `-o json` for your own parsing, and table format for direct display to the user. Always show the commands you're running so the user can learn.

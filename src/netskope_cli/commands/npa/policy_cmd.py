@@ -47,6 +47,7 @@ def policy_list(ctx: typer.Context) -> None:
         "  [bold]ntsk npa policy rules list[/bold]   — List policy rules\n"
         "  [bold]ntsk npa policy groups list[/bold]  — List policy groups"
     )
+    raise typer.Exit(code=1)
 
 
 # ---------------------------------------------------------------------------

@@ -15,7 +15,7 @@ import typer
 from rich.console import Console
 
 from netskope_cli.core.client import NetskopeClient, build_client
-from netskope_cli.core.output import OutputFormatter, echo_success, spinner
+from netskope_cli.core.output import OutputFormatter, echo_error, echo_success, spinner
 
 # ---------------------------------------------------------------------------
 # Typer sub-apps
@@ -143,8 +143,6 @@ def devices_list(
         err_msg = str(exc)
         if "404" in err_msg or "Not Found" in err_msg:
             if no_fallback:
-                from netskope_cli.core.output import echo_error
-
                 echo_error(
                     "The devices list endpoint is not available on this tenant (HTTP 404).\n"
                     "Try 'netskope events client-status' instead, or remove --no-fallback to auto-fallback.",
