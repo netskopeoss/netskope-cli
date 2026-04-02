@@ -96,6 +96,28 @@ class TestRaiseForStatus:
             self._client(api_token="tok")._raise_for_status(response)
         assert exc_info.value.details["status_code"] == 403
 
+    @pytest.mark.parametrize(
+        "path, expected_fragment",
+        [
+            ("/api/v2/dspm/resources", "Data Security Posture Management"),
+            ("/api/v2/spm/apps", "SaaS Security Posture Management"),
+            ("/api/v2/dem/probes", "Digital Experience Management"),
+            ("/api/v2/steering/config", "Steering"),
+            ("/api/v2/npa/publishers", "Netskope Private Access"),
+            ("/api/v2/policy/npa/rules", "NPA license"),
+            ("/api/v2/rbi/apps", "Remote Browser Isolation"),
+            ("/api/v2/dns/profiles", "DNS Security"),
+            ("/api/v2/ips/rules", "Intrusion Prevention"),
+            ("/api/v2/alerts/list", "required scopes"),  # fallback
+        ],
+    )
+    def test_403_includes_license_hint(self, path: str, expected_fragment: str) -> None:
+        """403 errors should include a contextual license/scope hint based on the URL path."""
+        response = httpx.Response(403, json={"message": "forbidden"})
+        with pytest.raises(AuthorizationError) as exc_info:
+            self._client(api_token="tok")._raise_for_status(response, request_path=path)
+        assert expected_fragment in (exc_info.value.suggestion or "")
+
     def test_404_raises_not_found_error(self) -> None:
         response = httpx.Response(404, json={"message": "not found"})
         with pytest.raises(NotFoundError) as exc_info:

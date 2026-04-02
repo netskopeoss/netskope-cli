@@ -98,7 +98,7 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
         </div>
         <span class="font-bold text-lg tracking-tight">Netskope CLI</span>
-        <span class="badge badge-blue ml-1">v0.2.20</span>
+        <span class="badge badge-blue ml-1">v0.2.24</span>
       </div>
       <div class="hidden md:flex items-center gap-6 text-sm">
         <a href="#getting-started" class="nav-link text-muted-foreground">Getting Started</a>
@@ -382,6 +382,9 @@ Time range: 2026-02-24 23:11 UTC &rarr; 2026-02-24 23:11 UTC
       <li><code class="bg-purple-100 px-1 py-0.5 rounded text-xs">/netskope investigate user alice@example.com</code></li>
       <li><code class="bg-purple-100 px-1 py-0.5 rounded text-xs">/netskope export application events from last 7 days as CSV</code></li>
     </ul>
+  </div>
+  <div class="mt-3 p-4 rounded-lg bg-blue-50 border border-blue-200">
+    <p class="text-sm text-blue-900"><strong>Agent discovery:</strong> AI agents can run <code class="bg-blue-100 px-1.5 py-0.5 rounded text-xs">ntsk commands --json</code> to get a machine-readable JSON tree of all available commands, subcommands, and argument signatures for dynamic capability discovery.</p>
   </div>
 </section>
 
@@ -824,7 +827,7 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
         <tr>
           <td><code class="text-xs font-semibold">--count</code></td>
           <td><span class="badge badge-gray">flag</span></td>
-          <td>Print only the total record count. Saves bandwidth by skipping full record retrieval.</td>
+          <td>Print only the record count (subject to <code class="text-xs">--limit</code>). Saves bandwidth by skipping full record retrieval.</td>
         </tr>
         <tr>
           <td><code class="text-xs font-semibold">--no-color</code></td>
@@ -1601,6 +1604,7 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
     <p class="text-muted-foreground mb-4">List managed devices, manage tags, and check supported OS versions. API: <code>/api/v2/steering/devices</code></p>
     <div class="code-block p-4 text-xs">
       <code><span class="prompt">$</span> ntsk devices list <span class="flag">--limit</span> <span class="string">25</span>
+<span class="prompt">$</span> ntsk devices list <span class="flag">--no-fallback</span>          <span class="comment"># disable v1 API fallback</span>
 <span class="prompt">$</span> ntsk devices supported-os
 
 <span class="comment"># Device tags management</span>
@@ -1608,6 +1612,7 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
 <span class="prompt">$</span> ntsk devices tags create <span class="string">"Corporate Laptops"</span>
 <span class="prompt">$</span> ntsk devices tags delete <span class="string">TAG_ID</span></code>
     </div>
+    <p class="text-xs text-muted-foreground mt-2"><code>--no-fallback</code> disables the automatic v1 API fallback. Note that the fallback schema may differ from the v2 response (different field names and structure).</p>
   </div>
 
   <!-- ==================== CLOUD SECURITY ==================== -->
@@ -1624,12 +1629,13 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
       <div class="card p-5">
         <h4 class="font-semibold mb-2">dspm <span class="text-xs text-muted-foreground font-normal">&mdash; Data Security Posture Management</span></h4>
         <div class="code-block p-3 text-xs">
-          <code><span class="prompt">$</span> ntsk dspm resources <span class="string">tables</span> <span class="flag">--limit</span> <span class="string">10</span>
+          <code><span class="prompt">$</span> ntsk dspm list-types                          <span class="comment"># list valid resource types</span>
+<span class="prompt">$</span> ntsk dspm resources <span class="string">tables</span> <span class="flag">--limit</span> <span class="string">10</span>       <span class="comment"># positional RESOURCE_TYPE arg</span>
 <span class="prompt">$</span> ntsk dspm datastores connect <span class="string">DS_ID</span>
 <span class="prompt">$</span> ntsk dspm datastores scan <span class="string">DS_ID</span>
-<span class="prompt">$</span> ntsk dspm analytics <span class="string">classification</span></code>
+<span class="prompt">$</span> ntsk dspm analytics <span class="string">classification</span>              <span class="comment"># metric types are API-dependent</span></code>
         </div>
-        <p class="text-xs text-muted-foreground mt-2">Resource types: connected_datastores, databases, schemas, tables, columns, scans, policy_violations, etc.</p>
+        <p class="text-xs text-muted-foreground mt-2">Use <code>ntsk dspm list-types</code> to discover valid resource types. The <code>resources</code> subcommand takes a positional <code>RESOURCE_TYPE</code> argument. Analytics metric types are API-dependent and vary by tenant configuration.</p>
       </div>
 
       <!-- SPM -->
@@ -1853,8 +1859,9 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
       </div>
       <div class="card p-5">
         <h4 class="font-semibold mb-2">commands</h4>
-        <p class="text-xs text-muted-foreground mb-2">Print the full command tree for discoverability.</p>
-        <div class="code-block p-3 text-xs"><code><span class="prompt">$</span> ntsk commands</code></div>
+        <p class="text-xs text-muted-foreground mb-2">Print the full command tree with argument signatures (e.g. <code>resources &lt;RESOURCE_TYPE&gt;</code>) for discoverability. Use <code>--json</code> for machine-readable output.</p>
+        <div class="code-block p-3 text-xs"><code><span class="prompt">$</span> ntsk commands
+<span class="prompt">$</span> ntsk commands <span class="flag">--json</span>   <span class="comment"># machine-readable JSON tree</span></code></div>
       </div>
       <div class="card p-5">
         <h4 class="font-semibold mb-2">docs</h4>
@@ -1985,7 +1992,7 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
           <td><code class="text-xs">AuthorizationError</code></td>
           <td>403</td>
           <td>Permission denied</td>
-          <td>Verify account permissions / RBAC role</td>
+          <td>Verify account permissions / RBAC role. Error now includes license/scope hints when available.</td>
         </tr>
         <tr>
           <td><code class="font-bold">5</code></td>
@@ -2373,7 +2380,8 @@ ntsk alerts list <span class="flag">-t</span> <span class="string">"Compromised 
 &#9500;&#9472;&#9472; dspm
 &#9474;   &#9500;&#9472;&#9472; analytics       DSPM analytics
 &#9474;   &#9500;&#9472;&#9472; datastores &#9472; connect / scan
-&#9474;   &#9492;&#9472;&#9472; resources       List DSPM resources
+&#9474;   &#9500;&#9472;&#9472; list-types      List valid resource types
+&#9474;   &#9492;&#9472;&#9472; resources &lt;RESOURCE_TYPE&gt;  List DSPM resources
 &#9500;&#9472;&#9472; enrollment
 &#9474;   &#9492;&#9472;&#9472; tokens &#9472; list / create / delete
 &#9500;&#9472;&#9472; events
@@ -2453,7 +2461,7 @@ ntsk alerts list <span class="flag">-t</span> <span class="string">"Compromised 
       <div class="w-6 h-6 rounded bg-ns-blue flex items-center justify-center">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
       </div>
-      <span>Netskope CLI v0.2.23</span>
+      <span>Netskope CLI v0.2.24</span>
       <span>&middot;</span>
       <span>MIT License</span>
     </div>
@@ -2567,7 +2575,7 @@ These flags can appear **before or after** the subcommand:
 |------|-------------|
 | \`-o json\\|table\\|csv\\|yaml\\|jsonl\` | Output format (default: table for TTY, json for piped) |
 | \`-W\` / \`--wide\` | Show all table columns (no truncation) |
-| \`--count\` | Print only the total record count |
+| \`--count\` | Print only the record count (subject to \`--limit\`) |
 | \`-v\` / \`-vv\` | Verbose / debug output |
 | \`-q\` / \`--quiet\` | Suppress spinners and progress indicators (errors still print to stderr) |
 | \`--raw\` | Include internal \`_\`-prefixed fields |
@@ -2844,8 +2852,9 @@ ntsk devices supported-os
 
 ### DSPM & SPM
 \`\`\`bash
-ntsk dspm resources list --type datastores
-ntsk dspm analytics --type overview
+ntsk dspm list-types                          # list valid resource types
+ntsk dspm resources datastores                # positional RESOURCE_TYPE arg
+ntsk dspm analytics overview                  # metric types are API-dependent
 
 ntsk spm posture-score
 ntsk spm apps list
@@ -2956,7 +2965,8 @@ ntsk config create-profile staging   # Create new profile
 
 ### Misc
 \`\`\`bash
-ntsk commands                        # Print full command tree
+ntsk commands                        # Print full command tree (with arg signatures)
+ntsk commands --json                 # Machine-readable JSON tree (for agent discovery)
 ntsk completion install zsh          # Install shell completion
 ntsk docs jql                        # JQL syntax reference
 ntsk docs api                        # API reference link

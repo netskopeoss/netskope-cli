@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.2.24] - 2026-04-02
+
+### Discoverability & Help Improvements
+
+Based on feedback from an AI agent discovery session, 10 improvements to help text, error messages, and command discoverability:
+
+- `ntsk commands` now shows positional argument signatures (e.g. `resources <RESOURCE_TYPE>`) in the tree
+- `ntsk commands --json` outputs a machine-readable JSON tree of all commands, args, options, and descriptions — ideal for AI agent enumeration
+- `ntsk dspm list-types` lists all valid DSPM resource types for the `resources` command
+- `ntsk dspm analytics` help text now includes example metric types
+- `ntsk npa policy list` now prints a helpful redirect to `rules list` and `groups list` instead of a generic error
+- `ntsk steering config` (bare, no subcommand) now defaults to `get` instead of printing help
+- `ntsk devices list --no-fallback` errors instead of silently falling back to `events client-status` with a different schema
+- `ntsk devices list` fallback warning now notes the schema difference
+- `--count` help text clarified: returns fetched count (subject to `--limit`), not the true total
+- 403 errors now include license/scope hints (e.g. "DEM requires a Digital Experience Management license and a 'DEM Admin' role")
+- 404 error hints already existed; 403 hints now use the same path-based suggestion pattern
+
 ## [0.2.23] - 2026-04-01
 
 - Add 9 DEM query, alert, and app commands covering the full DEM API surface
