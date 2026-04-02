@@ -107,10 +107,14 @@ class TestDetectInstallMethod:
     def test_pipx_path(self, monkeypatch):
         monkeypatch.setattr("sys.executable", "/home/user/.local/pipx/venvs/netskope/bin/python")
         # Ensure INSTALLER check doesn't interfere
-        monkeypatch.setattr(
-            "netskope_cli.core.version_check.distribution",
-            None,
-        ) if False else None
+        (
+            monkeypatch.setattr(
+                "netskope_cli.core.version_check.distribution",
+                None,
+            )
+            if False
+            else None
+        )
         with patch("netskope_cli.core.version_check._detect_install_method") as _:
             pass
         # Just test the path heuristic by mocking the metadata lookup to fail
@@ -224,10 +228,14 @@ class TestBackgroundFetch:
     def test_fetch_writes_cache(self, cache_dir):
         from netskope_cli.core.version_check import _fetch_latest_version
 
-        fake_response = type("Resp", (), {
-            "raise_for_status": lambda self: None,
-            "json": lambda self: {"info": {"version": "1.0.0"}},
-        })()
+        fake_response = type(
+            "Resp",
+            (),
+            {
+                "raise_for_status": lambda self: None,
+                "json": lambda self: {"info": {"version": "1.0.0"}},
+            },
+        )()
 
         with patch("httpx.get", return_value=fake_response):
             _fetch_latest_version()
@@ -247,10 +255,14 @@ class TestBackgroundFetch:
     def test_fetch_malformed_response(self, cache_dir):
         from netskope_cli.core.version_check import _fetch_latest_version
 
-        fake_response = type("Resp", (), {
-            "raise_for_status": lambda self: None,
-            "json": lambda self: {"unexpected": "data"},
-        })()
+        fake_response = type(
+            "Resp",
+            (),
+            {
+                "raise_for_status": lambda self: None,
+                "json": lambda self: {"unexpected": "data"},
+            },
+        )()
 
         with patch("httpx.get", return_value=fake_response):
             _fetch_latest_version()  # Should not raise

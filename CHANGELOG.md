@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.25] - 2026-04-02
+
+- Add background version update check — notifies users when a newer release is available on PyPI
+- Auto-detects install method (pip, pipx, brew, uv) and shows the exact upgrade command
+- Never blocks CLI startup — cache misses trigger a background daemon thread; notice appears on next invocation
+- Suppress with `NETSKOPE_NO_UPDATE_CHECK=1`, `--quiet`, or non-TTY stderr
+
 ## [0.2.24] - 2026-04-02
 
 ### Discoverability & Help Improvements

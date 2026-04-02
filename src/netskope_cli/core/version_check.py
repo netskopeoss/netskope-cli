@@ -41,6 +41,7 @@ def _parse_version(v: str) -> tuple[int, ...]:
 # Cache I/O
 # ---------------------------------------------------------------------------
 
+
 def _cache_path() -> Path:
     return cache_dir() / "version_check.json"
 
@@ -61,10 +62,14 @@ def _write_cache(latest_version: str) -> None:
     try:
         path = _cache_path()
         path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        path.write_text(json.dumps({
-            "last_check": time.time(),
-            "latest_version": latest_version,
-        }))
+        path.write_text(
+            json.dumps(
+                {
+                    "last_check": time.time(),
+                    "latest_version": latest_version,
+                }
+            )
+        )
     except Exception:
         pass
 
@@ -72,6 +77,7 @@ def _write_cache(latest_version: str) -> None:
 # ---------------------------------------------------------------------------
 # Background PyPI fetch
 # ---------------------------------------------------------------------------
+
 
 def _fetch_latest_version() -> None:
     """Fetch the latest version from PyPI and write to cache. Never raises."""
@@ -89,6 +95,7 @@ def _fetch_latest_version() -> None:
 # ---------------------------------------------------------------------------
 # Install-method detection
 # ---------------------------------------------------------------------------
+
 
 def _detect_install_method() -> str:
     """Return the appropriate upgrade command for the user's install method."""
@@ -125,6 +132,7 @@ def _stderr_is_tty() -> bool:
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def maybe_show_update_notice(console: Console, current_version: str, quiet: bool = False) -> None:
     """Show a one-liner upgrade notice if an update is available.
