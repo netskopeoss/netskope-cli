@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.27] - 2026-04-02
+
+- Tag every command as `[read]` or `[write]` in `ntsk commands --flat` output so AI agents can distinguish safe queries from mutating operations
+- Add `"mode"` and `"supports_yes_flag"` fields to `ntsk commands --flat --json` for programmatic safety checks
+- Promote `ntsk commands --flat --json` as the primary agent discovery command in `--help`
+- Add `ntsk status --extended -o json` as a prominent help item
+- Add "Write command safety" section to main help explaining `--yes` flag behavior
+
 ## [0.2.26] - 2026-04-02
 
 ### Discoverability & Help Improvements (Round 2)

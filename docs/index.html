@@ -98,7 +98,7 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
         </div>
         <span class="font-bold text-lg tracking-tight">Netskope CLI</span>
-        <span class="badge badge-blue ml-1">v0.2.26</span>
+        <span class="badge badge-blue ml-1">v0.2.27</span>
       </div>
       <div class="hidden md:flex items-center gap-6 text-sm">
         <a href="#getting-started" class="nav-link text-muted-foreground">Getting Started</a>
@@ -250,7 +250,7 @@
     <div class="code-block p-4 relative">
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
       <code><span class="prompt">$</span> ntsk --version
-<span class="output">netskope-cli 0.2.26</span>
+<span class="output">netskope-cli 0.2.27</span>
 <span class="prompt">$</span> ntsk --help</code>
     </div>
   </div>
@@ -384,7 +384,7 @@ Time range: 2026-02-24 23:11 UTC &rarr; 2026-02-24 23:11 UTC
     </ul>
   </div>
   <div class="mt-3 p-4 rounded-lg bg-blue-50 border border-blue-200">
-    <p class="text-sm text-blue-900"><strong>Agent discovery:</strong> AI agents can run <code class="bg-blue-100 px-1.5 py-0.5 rounded text-xs">ntsk commands --flat</code> to list all executable commands one per line, or <code class="bg-blue-100 px-1.5 py-0.5 rounded text-xs">ntsk commands --flat --json</code> for a machine-readable flat JSON array. Use <code class="bg-blue-100 px-1.5 py-0.5 rounded text-xs">ntsk commands --json</code> for the full tree with argument signatures.</p>
+    <p class="text-sm text-blue-900"><strong>Agent discovery:</strong> Run <code class="bg-blue-100 px-1.5 py-0.5 rounded text-xs">ntsk commands --flat --json</code> to get all commands with <code class="bg-blue-100 px-1.5 py-0.5 rounded text-xs">"mode": "read"|"write"</code> tags and <code class="bg-blue-100 px-1.5 py-0.5 rounded text-xs">"supports_yes_flag"</code> metadata. Commands tagged <code class="bg-blue-100 px-1.5 py-0.5 rounded text-xs">[write]</code> modify tenant state — pass <code class="bg-blue-100 px-1.5 py-0.5 rounded text-xs">--yes</code> to skip confirmation prompts.</p>
   </div>
 </section>
 
@@ -2465,7 +2465,7 @@ ntsk alerts list <span class="flag">-t</span> <span class="string">"Compromised 
       <div class="w-6 h-6 rounded bg-ns-blue flex items-center justify-center">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
       </div>
-      <span>Netskope CLI v0.2.26</span>
+      <span>Netskope CLI v0.2.27</span>
       <span>&middot;</span>
       <span>MIT License</span>
     </div>
@@ -2971,8 +2971,8 @@ ntsk config create-profile staging   # Create new profile
 ### Misc
 \`\`\`bash
 ntsk commands                        # Print full command tree (with arg signatures)
-ntsk commands --flat                 # List all executable commands, one per line
-ntsk commands --flat --json          # Flat JSON array (best for agent discovery)
+ntsk commands --flat                 # All commands with [read]/[write] tags
+ntsk commands --flat --json          # Flat JSON with mode + supports_yes_flag (best for agents)
 ntsk commands --json                 # Full JSON tree with args, options, descriptions
 ntsk completion install zsh          # Install shell completion
 ntsk docs jql                        # JQL syntax reference

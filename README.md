@@ -206,13 +206,13 @@ Run `ntsk --help` or `ntsk <command> --help` for full details.
 
 ```bash
 ntsk commands                # Browse the full command tree with argument signatures
-ntsk commands --flat         # List all executable commands, one per line
-ntsk commands --flat --json  # Flat JSON array — ideal for AI agents
+ntsk commands --flat         # All commands with [read]/[write] safety tags
+ntsk commands --flat --json  # Flat JSON with mode + supports_yes_flag (best for agents)
 ntsk commands --json         # Full JSON tree with args, options, and descriptions
 ntsk dspm list-types         # List valid DSPM resource types
 ```
 
-The `commands --flat` output lists every leaf command with a short description — the fastest way for a script or AI agent to discover all available commands. The `--json` variants provide machine-readable output.
+The `commands --flat` output lists every leaf command with `[read]`/`[write]` tags — the fastest way for a script or AI agent to discover all available commands and their safety level. The `--flat --json` variant adds `"mode"` and `"supports_yes_flag"` fields for programmatic use. Write commands prompt for confirmation; pass `--yes` to skip.
 
 ---
 

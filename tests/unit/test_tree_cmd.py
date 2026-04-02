@@ -6,7 +6,7 @@ import json
 
 import click
 
-from netskope_cli.commands.tree_cmd import _arg_signature, _walk_flat, _walk_json, _WRITE_COMMAND_NAMES
+from netskope_cli.commands.tree_cmd import _WRITE_COMMAND_NAMES, _arg_signature, _walk_flat, _walk_json
 
 
 def _make_group() -> click.Group:

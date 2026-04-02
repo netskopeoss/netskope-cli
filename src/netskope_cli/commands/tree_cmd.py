@@ -16,18 +16,29 @@ from rich.tree import Tree
 # Command leaf names that indicate a mutating (write) operation.
 # Used to tag commands in --flat output so AI agents can distinguish
 # safe read-only commands from state-changing ones.
-_WRITE_COMMAND_NAMES: frozenset[str] = frozenset({
-    "create", "update", "delete", "deploy", "revoke",
-    "bulk-delete",
-    "add", "replace", "remove",
-    "assign",
-    "upgrade",
-    "connect", "scan",
-    "scan-file", "scan-url",
-    "url-recategorize", "false-positive",
-    "config-update",
-    "registration-token",
-})
+_WRITE_COMMAND_NAMES: frozenset[str] = frozenset(
+    {
+        "create",
+        "update",
+        "delete",
+        "deploy",
+        "revoke",
+        "bulk-delete",
+        "add",
+        "replace",
+        "remove",
+        "assign",
+        "upgrade",
+        "connect",
+        "scan",
+        "scan-file",
+        "scan-url",
+        "url-recategorize",
+        "false-positive",
+        "config-update",
+        "registration-token",
+    }
+)
 
 
 def _has_yes_flag(cmd: click.Command) -> bool:
