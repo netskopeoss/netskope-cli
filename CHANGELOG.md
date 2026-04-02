@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.0.1] - 2026-04-02
+
+- Add troubleshooting guide for redacted user fields in alerts and events (API-side anonymization)
+- Add troubleshooting subsection to Error Handling in documentation
+
 ## [1.0.0] - 2026-04-02
 
 First public stable release. Promotes the CLI from beta to v1.0.0 with a stable command surface, comprehensive API coverage, and production-ready features:

@@ -98,7 +98,7 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
         </div>
         <span class="font-bold text-lg tracking-tight">Netskope CLI</span>
-        <span class="badge badge-blue ml-1">v1.0.0</span>
+        <span class="badge badge-blue ml-1">v1.0.1</span>
       </div>
       <div class="hidden md:flex items-center gap-6 text-sm">
         <a href="#getting-started" class="nav-link text-muted-foreground">Getting Started</a>
@@ -186,6 +186,7 @@
           <a href="#cmd-utility" class="toc-item block py-1 pl-4 text-muted-foreground hover:text-foreground">Utility</a>
           <a href="#jql" class="toc-item block py-1 text-muted-foreground hover:text-foreground">JQL Query Syntax</a>
           <a href="#error-handling" class="toc-item block py-1 text-muted-foreground hover:text-foreground">Error Handling</a>
+          <a href="#troubleshooting" class="toc-item block py-1 pl-4 text-muted-foreground hover:text-foreground">Troubleshooting</a>
           <a href="#workflows" class="toc-item block py-1 text-muted-foreground hover:text-foreground">Workflows &amp; Recipes</a>
           <a href="#env-vars" class="toc-item block py-1 text-muted-foreground hover:text-foreground">Environment Variables</a>
           <a href="#shell-completion" class="toc-item block py-1 text-muted-foreground hover:text-foreground">Shell Completion</a>
@@ -250,7 +251,7 @@
     <div class="code-block p-4 relative">
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
       <code><span class="prompt">$</span> ntsk --version
-<span class="output">netskope-cli 1.0.0</span>
+<span class="output">netskope-cli 1.0.1</span>
 <span class="prompt">$</span> ntsk --help</code>
     </div>
   </div>
@@ -2062,6 +2063,28 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
     echo <span class="string">"CLI failed with exit code $?"</span>
 <span style="color:#93c5fd">fi</span></code>
   </div>
+
+  <div id="troubleshooting" class="section-anchor"></div>
+  <h3 class="text-2xl font-bold tracking-tight mt-10 mb-4">Troubleshooting</h3>
+
+  <div class="card p-5 mb-6">
+    <h3 class="font-semibold mb-3">User field shows &ldquo;redacted&rdquo; in alerts &amp; events</h3>
+    <p class="text-sm text-muted-foreground mb-3">
+      When running commands like <code>ntsk alerts list</code> or <code>ntsk events list</code>, the <code>user</code> field may appear as <strong>&ldquo;redacted&rdquo;</strong>.
+      This is <em>not</em> a CLI issue &mdash; the Netskope API itself returns the redacted value. It is caused by a tenant-level <strong>anonymization / de-identification</strong> policy configured in the Netskope admin console.
+    </p>
+    <p class="text-sm text-muted-foreground mb-3">You can confirm this by inspecting the raw API response:</p>
+    <div class="code-block p-3 text-xs mb-4">
+      <code><span class="prompt">$</span> ntsk alerts list <span class="flag">--since</span> <span class="string">24h</span> <span class="flag">--limit</span> <span class="string">1</span> <span class="flag">-o</span> json <span class="flag">--raw</span>
+<span class="comment"># If the "user" field is "redacted" in the raw JSON, the API is redacting it server-side</span></code>
+    </div>
+    <p class="text-sm font-semibold mb-2">How to resolve</p>
+    <ul class="text-sm text-muted-foreground space-y-2 list-disc pl-5">
+      <li><strong>Disable or adjust anonymization</strong> &mdash; In the Netskope admin console, go to <em>Settings &rarr; Security Cloud Platform &rarr; Data Protection &rarr; Anonymization</em> and disable or modify the anonymization policy for the relevant data types.</li>
+      <li><strong>Check API token privileges</strong> &mdash; Some tenants require a dedicated <em>de-anonymization</em> scope on the API token. Verify your token has the necessary privileges to view unredacted PII.</li>
+      <li><strong>Use a reporting token</strong> &mdash; Certain tenants issue separate &ldquo;reporting&rdquo; API tokens with full visibility. Ask your Netskope administrator if a different token type is available.</li>
+    </ul>
+  </div>
 </section>
 
 <!-- ============================================================ -->
@@ -2465,7 +2488,7 @@ ntsk alerts list <span class="flag">-t</span> <span class="string">"Compromised 
       <div class="w-6 h-6 rounded bg-ns-blue flex items-center justify-center">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
       </div>
-      <span>Netskope CLI v1.0.0</span>
+      <span>Netskope CLI v1.0.1</span>
       <span>&middot;</span>
       <span>MIT License</span>
     </div>
