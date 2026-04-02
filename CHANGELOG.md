@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.28] - 2026-04-02
+
+- URL-encode all string-typed user inputs interpolated into API URL paths to prevent path traversal and parameter injection
+- Thread configured CA bundle through browser-based login session validation so `netskope auth login` works behind Netskope SSL inspection
+- Thread configured CA bundle through `netskope docs search` Algolia requests so documentation search works behind SSL inspection
+
 ## [0.2.27] - 2026-04-02
 
 - Tag every command as `[read]` or `[write]` in `ntsk commands --flat` output so AI agents can distinguish safe queries from mutating operations
