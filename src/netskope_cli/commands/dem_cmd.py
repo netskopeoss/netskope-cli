@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import urllib.parse
 from typing import Any, Optional
 
 import typer
@@ -1233,9 +1234,9 @@ def experience_alerts_get(
 
     if not _is_quiet(ctx):
         with spinner(f"Fetching alert {alert_id}...", no_color=_no_color(ctx)):
-            result = client.request("GET", f"/api/v2/dem/alerts/{alert_id}")
+            result = client.request("GET", f"/api/v2/dem/alerts/{urllib.parse.quote(alert_id, safe='')}")
     else:
-        result = client.request("GET", f"/api/v2/dem/alerts/{alert_id}")
+        result = client.request("GET", f"/api/v2/dem/alerts/{urllib.parse.quote(alert_id, safe='')}")
 
     formatter.format_output(result, fmt=fmt, title=f"DEM Alert — {alert_id}")
 
@@ -1279,11 +1280,13 @@ def experience_alerts_entities(
     if sort_order:
         params["sortorder"] = sort_order
 
+    alert_path = f"/api/v2/dem/alerts/{urllib.parse.quote(alert_id, safe='')}/entities"
+
     if not _is_quiet(ctx):
         with spinner(f"Fetching entities for alert {alert_id}...", no_color=_no_color(ctx)):
-            result = client.request("GET", f"/api/v2/dem/alerts/{alert_id}/entities", params=params or None)
+            result = client.request("GET", alert_path, params=params or None)
     else:
-        result = client.request("GET", f"/api/v2/dem/alerts/{alert_id}/entities", params=params or None)
+        result = client.request("GET", alert_path, params=params or None)
 
     formatter.format_output(result, fmt=fmt, title=f"DEM Alert Entities — {alert_id}")
 

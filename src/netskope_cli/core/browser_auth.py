@@ -6,6 +6,7 @@ successful authentication, and captures the ci_session cookie for API use.
 
 from __future__ import annotations
 
+import ssl
 import sys
 import time
 from urllib.parse import unquote
@@ -19,13 +20,23 @@ from netskope_cli.core.config import (
 from netskope_cli.core.exceptions import AuthError, ConfigError
 
 
-def _is_session_authenticated(tenant_url: str, ci_session: str) -> bool:
+def _is_session_authenticated(
+    tenant_url: str,
+    ci_session: str,
+    verify: bool | str = True,
+) -> bool:
     """Check if a ci_session cookie represents an authenticated session.
 
     Makes a lightweight API call to the tenant and checks for a non-login
     response (e.g. 200 on an API endpoint vs. a redirect to a login page).
     """
     import httpx
+
+    # Convert a CA bundle path to an SSLContext (same approach as NetskopeClient).
+    if isinstance(verify, str):
+        ssl_verify: bool | ssl.SSLContext = ssl.create_default_context(cafile=verify)
+    else:
+        ssl_verify = verify
 
     try:
         resp = httpx.get(
@@ -34,6 +45,7 @@ def _is_session_authenticated(tenant_url: str, ci_session: str) -> bool:
             headers={"Accept": "application/json", "User-Agent": "netskope-cli"},
             timeout=10,
             follow_redirects=False,
+            verify=ssl_verify,
         )
         # Authenticated sessions return 200; unauthenticated ones return
         # 401, 403, or a 3xx redirect to the login page.
@@ -47,6 +59,7 @@ def browser_login(
     profile: str | None = None,
     headless: bool = False,
     timeout_seconds: int = 120,
+    verify: bool | str = True,
 ) -> str:
     """Open a browser to the Netskope tenant login page and capture ci_session.
 
@@ -62,6 +75,10 @@ def browser_login(
         providers require a visible browser).
     timeout_seconds:
         Maximum time (in seconds) to wait for the user to complete login.
+    verify:
+        SSL verification setting passed to the session validation request.
+        ``True`` (default) uses the default CA bundle; a string path points
+        to a custom CA bundle file.
 
     Returns
     -------
@@ -137,7 +154,7 @@ def browser_login(
                     # Only validate if the value changed since last check
                     if value != last_checked_value:
                         last_checked_value = value
-                        if _is_session_authenticated(login_url, value):
+                        if _is_session_authenticated(login_url, value, verify=verify):
                             ci_session = value
                             break
             if ci_session:
@@ -167,6 +184,7 @@ def browser_login_with_credentials(
     profile: str | None = None,
     headless: bool = True,
     timeout_seconds: int = 60,
+    verify: bool | str = True,
 ) -> str:
     """Automated login using username/password (for testing/CI).
 
@@ -232,7 +250,7 @@ def browser_login_with_credentials(
         _try_fill_credentials(page, username, password)
 
         # Wait for navigation after login
-        ci_session = _wait_for_session(context, page, timeout_seconds, tenant_url=login_url)
+        ci_session = _wait_for_session(context, page, timeout_seconds, tenant_url=login_url, verify=verify)
 
         browser.close()
 
@@ -328,7 +346,13 @@ def _try_fill_credentials(page, username: str, password: str) -> None:
             continue
 
 
-def _wait_for_session(context, page, timeout_seconds: int, tenant_url: str | None = None) -> str | None:
+def _wait_for_session(
+    context,
+    page,
+    timeout_seconds: int,
+    tenant_url: str | None = None,
+    verify: bool | str = True,
+) -> str | None:
     """Poll for ci_session cookie after login form submission."""
     deadline = time.time() + timeout_seconds
     last_checked_value: str | None = None
@@ -342,7 +366,7 @@ def _wait_for_session(context, page, timeout_seconds: int, tenant_url: str | Non
                 # the logic in browser_login() to avoid saving pre-auth cookies.
                 if value != last_checked_value:
                     last_checked_value = value
-                    if tenant_url and _is_session_authenticated(tenant_url, value):
+                    if tenant_url and _is_session_authenticated(tenant_url, value, verify=verify):
                         return value
                     elif not tenant_url:
                         return value

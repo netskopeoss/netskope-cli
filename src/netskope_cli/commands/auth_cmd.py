@@ -170,11 +170,17 @@ def login(
     console.print(f"Logging in to [bold]{tenant}[/bold] (profile: {profile})...")
     console.print("[dim]A browser window will open. Complete the login there.[/dim]")
 
+    from netskope_cli.core.config import get_ca_bundle
+
+    ca_bundle = get_ca_bundle(profile=profile)
+    verify: bool | str = ca_bundle if ca_bundle else True
+
     browser_login(
         tenant_url=f"https://{tenant}",
         profile=profile,
         headless=headless,
         timeout_seconds=timeout,
+        verify=verify,
     )
 
     console.print(f"[green]Login successful![/green] Session saved for profile '{profile}'.")
