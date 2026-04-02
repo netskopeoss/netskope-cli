@@ -13,6 +13,27 @@ import typer
 from rich.console import Console
 from rich.tree import Tree
 
+# Command leaf names that indicate a mutating (write) operation.
+# Used to tag commands in --flat output so AI agents can distinguish
+# safe read-only commands from state-changing ones.
+_WRITE_COMMAND_NAMES: frozenset[str] = frozenset({
+    "create", "update", "delete", "deploy", "revoke",
+    "bulk-delete",
+    "add", "replace", "remove",
+    "assign",
+    "upgrade",
+    "connect", "scan",
+    "scan-file", "scan-url",
+    "url-recategorize", "false-positive",
+    "config-update",
+    "registration-token",
+})
+
+
+def _has_yes_flag(cmd: click.Command) -> bool:
+    """Return True if the command has a --yes / -y option."""
+    return any(isinstance(p, click.Option) and "--yes" in (p.opts or []) for p in cmd.params)
+
 
 def _arg_signature(cmd: click.Command) -> str:
     """Build a string like '<RESOURCE_TYPE>' from a command's positional args."""
@@ -82,13 +103,15 @@ def _walk_json(group: click.Group, ctx: click.Context) -> list[dict]:
     return result
 
 
-def _walk_flat(group: click.Group, ctx: click.Context, prefix: str = "") -> list[tuple[str, str, str]]:
+def _walk_flat(group: click.Group, ctx: click.Context, prefix: str = "") -> list[tuple[str, str, str, str, bool]]:
     """Recursively collect leaf (executable) commands with their full path.
 
-    Returns a list of (full_command, arg_signature, help_line) tuples.
+    Returns a list of (full_command, arg_signature, help_line, mode, has_yes) tuples.
     Only non-Group commands are included — groups are traversed but not emitted.
+    ``mode`` is ``"write"`` for commands whose leaf name is in
+    :data:`_WRITE_COMMAND_NAMES`, otherwise ``"read"``.
     """
-    result: list[tuple[str, str, str]] = []
+    result: list[tuple[str, str, str, str, bool]] = []
     for name in sorted(group.list_commands(ctx)):
         cmd = group.get_command(ctx, name)
         if cmd is None or cmd.hidden:
@@ -100,7 +123,9 @@ def _walk_flat(group: click.Group, ctx: click.Context, prefix: str = "") -> list
         else:
             arg_sig = _arg_signature(cmd)
             first_line = (cmd.help or "").strip().split("\n")[0]
-            result.append((full_name, arg_sig, first_line))
+            mode = "write" if name in _WRITE_COMMAND_NAMES else "read"
+            has_yes = _has_yes_flag(cmd)
+            result.append((full_name, arg_sig, first_line, mode, has_yes))
     return result
 
 
@@ -149,21 +174,30 @@ def tree_command(
         leaves = _walk_flat(root_group, root_ctx, prefix="ntsk ") if isinstance(root_group, click.Group) else []
         if json_output:
             data = []
-            for cmd_path, arg_sig, help_line in leaves:
-                entry: dict = {"command": f"{cmd_path} {arg_sig}".strip() if arg_sig else cmd_path, "help": help_line}
+            for cmd_path, arg_sig, help_line, mode, has_yes in leaves:
+                entry: dict = {
+                    "command": f"{cmd_path} {arg_sig}".strip() if arg_sig else cmd_path,
+                    "help": help_line,
+                    "mode": mode,
+                }
+                if has_yes:
+                    entry["supports_yes_flag"] = True
                 data.append(entry)
             print(json_mod.dumps(data, indent=2))
         else:
-            # Calculate column width for alignment
+            # Calculate column widths for alignment
             lines = []
-            for cmd_path, arg_sig, help_line in leaves:
+            for cmd_path, arg_sig, help_line, mode, _has_yes in leaves:
                 display = f"{cmd_path} {arg_sig}".strip() if arg_sig else cmd_path
-                lines.append((display, help_line))
+                tag = f"[{mode}]"
+                lines.append((display, help_line, tag))
             if lines:
-                max_cmd_len = max(len(cmd) for cmd, _ in lines)
-                pad = max_cmd_len + 4
-                for cmd, desc in lines:
-                    print(f"{cmd:<{pad}}{desc}")
+                max_cmd_len = max(len(cmd) for cmd, _, _ in lines)
+                max_help_len = max(len(h) for _, h, _ in lines)
+                cmd_pad = max_cmd_len + 4
+                help_pad = max_help_len + 2
+                for cmd, desc, tag in lines:
+                    print(f"{cmd:<{cmd_pad}}{desc:<{help_pad}}{tag}")
         return
 
     if json_output:

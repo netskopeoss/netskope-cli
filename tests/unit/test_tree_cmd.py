@@ -6,7 +6,7 @@ import json
 
 import click
 
-from netskope_cli.commands.tree_cmd import _arg_signature, _walk_json
+from netskope_cli.commands.tree_cmd import _arg_signature, _walk_flat, _walk_json, _WRITE_COMMAND_NAMES
 
 
 def _make_group() -> click.Group:
@@ -25,6 +25,12 @@ def _make_group() -> click.Group:
     @grp.command("hidden", hidden=True)
     def hidden_cmd():
         """Should be skipped."""
+
+    @grp.command("delete")
+    @click.argument("resource_id")
+    @click.option("--yes", "-y", is_flag=True, help="Skip confirmation.")
+    def delete_cmd(resource_id, yes):
+        """Delete a resource."""
 
     sub = click.Group("sub", help="A subgroup.")
 
@@ -95,3 +101,48 @@ class TestWalkJson:
         output = json.dumps(result, indent=2)
         parsed = json.loads(output)
         assert isinstance(parsed, list)
+
+
+class TestWalkFlat:
+    def test_leaf_commands_only(self) -> None:
+        grp = _make_group()
+        ctx = click.Context(grp, info_name="root")
+        result = _walk_flat(grp, ctx, prefix="ntsk ")
+        commands = [r[0] for r in result]
+        # "sub" is a group — should not appear as a leaf
+        assert not any(c.endswith(" sub") for c in commands)
+        # "nested" (under sub) should appear
+        assert any("nested" in c for c in commands)
+
+    def test_write_classification(self) -> None:
+        grp = _make_group()
+        ctx = click.Context(grp, info_name="root")
+        result = _walk_flat(grp, ctx, prefix="ntsk ")
+        by_name = {r[0].split()[-1]: r for r in result}
+        assert by_name["delete"][3] == "write"
+        assert by_name["simple"][3] == "read"
+
+    def test_has_yes_flag(self) -> None:
+        grp = _make_group()
+        ctx = click.Context(grp, info_name="root")
+        result = _walk_flat(grp, ctx, prefix="ntsk ")
+        by_name = {r[0].split()[-1]: r for r in result}
+        assert by_name["delete"][4] is True
+        assert by_name["simple"][4] is False
+
+    def test_hidden_excluded(self) -> None:
+        grp = _make_group()
+        ctx = click.Context(grp, info_name="root")
+        result = _walk_flat(grp, ctx, prefix="ntsk ")
+        commands = [r[0] for r in result]
+        assert not any("hidden" in c for c in commands)
+
+
+class TestWriteCommandNames:
+    def test_expected_names_present(self) -> None:
+        for name in ("create", "delete", "deploy", "update", "revoke"):
+            assert name in _WRITE_COMMAND_NAMES
+
+    def test_read_names_absent(self) -> None:
+        for name in ("list", "get", "show", "status", "search"):
+            assert name not in _WRITE_COMMAND_NAMES
