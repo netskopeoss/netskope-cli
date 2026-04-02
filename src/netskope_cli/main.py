@@ -269,6 +269,31 @@ def main(
     # is trying to run a data command (not config/auth/help/doctor).
     if not quiet:
         _maybe_show_setup_hint(ctx, profile)
+        _maybe_show_update_notice(ctx)
+
+
+# ---------------------------------------------------------------------------
+# Update notice
+# ---------------------------------------------------------------------------
+
+
+def _maybe_show_update_notice(ctx: typer.Context) -> None:
+    """Show a one-liner upgrade notice when a newer CLI version exists."""
+    subcommand = ctx.invoked_subcommand
+    if subcommand is None:
+        for arg in sys.argv[1:]:
+            if not arg.startswith("-"):
+                subcommand = arg
+                break
+    if subcommand in _SETUP_COMMANDS:
+        return
+    try:
+        from netskope_cli.core.version_check import maybe_show_update_notice
+
+        state: State = ctx.obj
+        maybe_show_update_notice(state.console, __version__, quiet=state.quiet)
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------
