@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.26] - 2026-04-02
+
+### Discoverability & Help Improvements (Round 2)
+
+Based on a real AI agent session that attempted to auto-discover and call every CLI subcommand:
+
+- `ntsk commands --flat` prints only leaf (executable) commands, one per line with descriptions — the fastest way for scripts and AI agents to discover all 231 commands
+- `ntsk commands --flat --json` outputs a flat JSON array for machine consumption
+- Universal "did you mean?" hints on all group commands — invoking any group without a subcommand (e.g. `ntsk users`) now lists available subcommands after the help text
+- `ntsk status --extended` / `-x` fetches additional resource counts: SCIM groups, URL lists, NPA policy rules, IPsec tunnels, RBAC roles, and IPS enabled status
+- `ntsk services cci` (no argument) now prints helpful guidance instead of "Missing argument", explaining the API requires an exact app name
+- Added "Quick start for scripting / AI agents" section to `ntsk --help`
+- Added DSPM cross-reference tip: "Run 'ntsk dspm list-types'" in the `resources` command help
+- Expanded 403/404 error hints with endpoint-specific scope/license messages for RBAC, devices, IPsec, enrollment, events, notifications, ATP, DNS, and IPS
+- Improved 403/404 fallback messages to reference Settings > Tools > REST API v2
+
 ## [0.2.25] - 2026-04-02
 
 - Add background version update check — notifies users when a newer release is available on PyPI

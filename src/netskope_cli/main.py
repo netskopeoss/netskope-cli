@@ -25,7 +25,7 @@ from netskope_cli.core.exceptions import NetskopeError
 # ---------------------------------------------------------------------------
 # Version — single source of truth
 # ---------------------------------------------------------------------------
-__version__ = "0.2.25"
+__version__ = "0.2.26"
 
 # ---------------------------------------------------------------------------
 # Global state object threaded through the context
