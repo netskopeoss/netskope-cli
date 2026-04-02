@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.0.0] - 2026-04-02
+
+First public stable release. Promotes the CLI from beta to v1.0.0 with a stable command surface, comprehensive API coverage, and production-ready features:
+
+- 25+ command groups covering alerts, events, incidents, users, policy, NPA, DEM, DSPM, SPM, ATP, IPS, RBI, and more
+- Async HTTP client with token and browser SSO authentication
+- JSON, table, CSV, YAML, and JSONL output formats with TTY auto-detection
+- AI agent discoverability via `commands --flat --json` with read/write safety tags
+- Shell completion for bash, zsh, fish, and PowerShell
+- XDG-compliant config with system keyring credential storage
+- SSL/TLS CA bundle support for environments behind Netskope SSL inspection
+- Background version update notifications
+- Homebrew tap, pip, and pipx installation support
+- Interactive HTML guide and Claude Code AI agent skill
+
 ## [0.2.28] - 2026-04-02
 
 - URL-encode all string-typed user inputs interpolated into API URL paths to prevent path traversal and parameter injection
