@@ -82,12 +82,39 @@ def _walk_json(group: click.Group, ctx: click.Context) -> list[dict]:
     return result
 
 
+def _walk_flat(group: click.Group, ctx: click.Context, prefix: str = "") -> list[tuple[str, str, str]]:
+    """Recursively collect leaf (executable) commands with their full path.
+
+    Returns a list of (full_command, arg_signature, help_line) tuples.
+    Only non-Group commands are included — groups are traversed but not emitted.
+    """
+    result: list[tuple[str, str, str]] = []
+    for name in sorted(group.list_commands(ctx)):
+        cmd = group.get_command(ctx, name)
+        if cmd is None or cmd.hidden:
+            continue
+        full_name = f"{prefix}{name}"
+        if isinstance(cmd, click.Group):
+            child_ctx = click.Context(cmd, parent=ctx, info_name=name)
+            result.extend(_walk_flat(cmd, child_ctx, prefix=f"{full_name} "))
+        else:
+            arg_sig = _arg_signature(cmd)
+            first_line = (cmd.help or "").strip().split("\n")[0]
+            result.append((full_name, arg_sig, first_line))
+    return result
+
+
 def tree_command(
     ctx: typer.Context,
     json_output: bool = typer.Option(
         False,
         "--json",
         help="Output the command tree as machine-readable JSON for agent consumption.",
+    ),
+    flat: bool = typer.Option(
+        False,
+        "--flat",
+        help="Print only leaf (executable) commands, one per line — ideal for scripting and AI agents.",
     ),
 ) -> None:
     """Print the full command tree for discoverability.
@@ -100,9 +127,14 @@ def tree_command(
     arguments, options, and descriptions — ideal for AI agents that need
     to enumerate the full CLI surface in one call.
 
+    Use --flat to print only leaf (executable) commands, one per line,
+    with a short description. Combine with --json for a flat JSON array.
+
     Examples:
         netskope commands
         netskope commands --json
+        netskope commands --flat
+        netskope commands --flat --json
     """
     state = ctx.obj
     no_color = state.no_color if state is not None else False
@@ -112,6 +144,27 @@ def tree_command(
     while root_ctx.parent is not None:
         root_ctx = root_ctx.parent
     root_group = root_ctx.command
+
+    if flat:
+        leaves = _walk_flat(root_group, root_ctx, prefix="ntsk ") if isinstance(root_group, click.Group) else []
+        if json_output:
+            data = []
+            for cmd_path, arg_sig, help_line in leaves:
+                entry: dict = {"command": f"{cmd_path} {arg_sig}".strip() if arg_sig else cmd_path, "help": help_line}
+                data.append(entry)
+            print(json_mod.dumps(data, indent=2))
+        else:
+            # Calculate column width for alignment
+            lines = []
+            for cmd_path, arg_sig, help_line in leaves:
+                display = f"{cmd_path} {arg_sig}".strip() if arg_sig else cmd_path
+                lines.append((display, help_line))
+            if lines:
+                max_cmd_len = max(len(cmd) for cmd, _ in lines)
+                pad = max_cmd_len + 4
+                for cmd, desc in lines:
+                    print(f"{cmd:<{pad}}{desc}")
+        return
 
     if json_output:
         if isinstance(root_group, click.Group):

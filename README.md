@@ -100,6 +100,9 @@ ntsk doctor
 # Tenant health overview
 ntsk status
 
+# Extended status with SCIM groups, URL lists, NPA rules, IPsec, RBAC, IPS
+ntsk status --extended
+
 # List recent alerts
 ntsk alerts list --since 24h --limit 10
 
@@ -171,7 +174,7 @@ ntsk users list -o csv > users.csv
 
 | Category              | Commands                                                   |
 |-----------------------|------------------------------------------------------------|
-| **Status & Setup**    | `doctor`, `tenant`, `status`, `commands`                   |
+| **Status & Setup**    | `doctor`, `tenant`, `status`, `status --extended`, `commands`, `commands --flat` |
 | **Events**            | `events get`, `events list --type alert\|application\|network\|...` |
 | **Alerts**            | `alerts get`, `alerts list`, `alerts summary`, `alerts types` |
 | **Incidents**         | `incidents list`, `incidents search`, `incidents uci`      |
@@ -203,11 +206,13 @@ Run `ntsk --help` or `ntsk <command> --help` for full details.
 
 ```bash
 ntsk commands                # Browse the full command tree with argument signatures
-ntsk commands --json         # Machine-readable JSON tree — ideal for AI agents
+ntsk commands --flat         # List all executable commands, one per line
+ntsk commands --flat --json  # Flat JSON array — ideal for AI agents
+ntsk commands --json         # Full JSON tree with args, options, and descriptions
 ntsk dspm list-types         # List valid DSPM resource types
 ```
 
-The `commands --json` output includes every command, subcommand, positional argument, option, and description in one call.
+The `commands --flat` output lists every leaf command with a short description — the fastest way for a script or AI agent to discover all available commands. The `--json` variants provide machine-readable output.
 
 ---
 
