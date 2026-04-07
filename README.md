@@ -2,6 +2,8 @@
 
 **[Read the full guide](https://netskopeoss.github.io/netskope-cli/)** | [Report an issue](https://github.com/netskopeoss/netskope-cli/issues)
 
+> **Need help?** Support for the Netskope CLI is provided through the [Netskope Community](https://community.netskope.com/). Ask questions, share feedback, and connect with other Netskope users and experts.
+
 The official command-line interface for the [Netskope](https://www.netskope.com/) platform. Manage your tenant, query events, investigate alerts, configure policies, and more — all from your terminal.
 
 Available as both `netskope` and the shorter alias `ntsk`.
@@ -197,6 +199,7 @@ ntsk users list -o csv > users.csv
 | **Threat Intel**      | `intel url-lookup`, `intel recategorize`                   |
 | **RBI**               | `rbi apps list`, `rbi browsers list`                       |
 | **DEM**               | `dem metrics query`, `dem entities list`, `dem fields list`, `dem experience-alerts search`, `dem apps list`, `dem probes list` |
+| **DEM User Telemetry**| `dem users devices`, `dem users info`, `dem users rca`, `dem users scores`, `dem users network`, `dem users traceroute` |
 | **Notifications**     | `notifications templates list`                             |
 | **Docs**              | `docs open`, `docs search`, `docs jql`                     |
 

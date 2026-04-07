@@ -115,8 +115,20 @@
   </div>
 </nav>
 
+<!-- Community Support Banner -->
+<div class="fixed top-14 left-0 right-0 z-40 bg-gradient-to-r from-ns-blue to-indigo-600 text-white">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5 flex items-center justify-center gap-3 text-sm">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+    <span><strong>Need help?</strong> Support is provided through the Netskope Community.</span>
+    <a href="https://community.netskope.com/" target="_blank" rel="noopener" class="inline-flex items-center gap-1 px-3 py-1 bg-white/20 hover:bg-white/30 rounded-full text-xs font-semibold transition-colors">
+      Visit Community
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M7 17 17 7M7 7h10v10"/></svg>
+    </a>
+  </div>
+</div>
+
 <!-- Hero -->
-<section class="relative pt-14">
+<section class="relative pt-14" style="margin-top: 2.75rem;">
   <div class="hero-grid absolute inset-0 opacity-50"></div>
   <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-16">
     <div class="max-w-3xl">
@@ -938,7 +950,7 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
         <span class="w-2 h-2 rounded-full bg-pink-500"></span>
         <span class="font-semibold text-sm">Monitoring</span>
       </div>
-      <p class="text-xs text-muted-foreground">DEM (metrics, alerts, entities, apps), notifications, status, tokens</p>
+      <p class="text-xs text-muted-foreground">DEM (metrics, alerts, entities, apps, user/device telemetry), notifications, status, tokens</p>
     </a>
     <a href="#cmd-utility" class="card p-4 hover:border-ns-blue transition-colors">
       <div class="flex items-center gap-2 mb-1">
@@ -1771,7 +1783,7 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
       <!-- DEM -->
       <div class="card p-5">
         <h4 class="font-semibold mb-2">dem <span class="text-xs text-muted-foreground font-normal">&mdash; Digital Experience Management</span></h4>
-        <p class="text-xs text-muted-foreground mb-2">Metrics queries, experience alerts, entities, states, traceroutes, field definitions, monitored apps, probes, and alert rules.</p>
+        <p class="text-xs text-muted-foreground mb-2">Metrics queries, experience alerts, entities, states, traceroutes, field definitions, monitored apps, probes, alert rules, and per-user/device telemetry (CPU, memory, disk, network, RCA).</p>
         <div class="code-block p-3 text-xs">
           <code><span class="comment"># Query UX scores per user</span>
 <span class="prompt">$</span> ntsk dem metrics query <span class="flag">-d</span> ux_score \
@@ -1803,7 +1815,37 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
 <span class="comment"># Probe and alert rule management</span>
 <span class="prompt">$</span> ntsk dem probes list
 <span class="prompt">$</span> ntsk dem network-probes list
-<span class="prompt">$</span> ntsk dem alerts list</code>
+<span class="prompt">$</span> ntsk dem alerts list
+
+<span class="comment"># --- ADEM User/Device Telemetry ---</span>
+
+<span class="comment"># List devices for a user (get device IDs)</span>
+<span class="prompt">$</span> ntsk dem users devices <span class="flag">-u</span> alice@example.com \
+    <span class="flag">--start-time</span> 1710000000 <span class="flag">--end-time</span> 1710086400
+
+<span class="comment"># Root cause analysis — CPU, memory, disk</span>
+<span class="prompt">$</span> ntsk dem users rca <span class="flag">-u</span> alice@example.com <span class="flag">-d</span> DEVICE-UUID \
+    <span class="flag">--start-time</span> 1710000000 <span class="flag">--end-time</span> 1710086400
+
+<span class="comment"># Aggregated scores (app, device, network, experience)</span>
+<span class="prompt">$</span> ntsk dem users scores <span class="flag">-u</span> alice@example.com <span class="flag">-d</span> DEVICE-UUID \
+    <span class="flag">--start-time</span> 1710000000 <span class="flag">--end-time</span> 1710086400
+
+<span class="comment"># Network latency &amp; packet loss timeseries</span>
+<span class="prompt">$</span> ntsk dem users network <span class="flag">-u</span> alice@example.com <span class="flag">-d</span> DEVICE-UUID \
+    <span class="flag">--start-time</span> 1710000000 <span class="flag">--end-time</span> 1710086400
+
+<span class="comment"># User info, locations, experience score timeseries</span>
+<span class="prompt">$</span> ntsk dem users info <span class="flag">-u</span> alice@example.com \
+    <span class="flag">--start-time</span> 1710000000 <span class="flag">--end-time</span> 1710086400
+<span class="prompt">$</span> ntsk dem users exp-score <span class="flag">-u</span> alice@example.com <span class="flag">-d</span> DEVICE-UUID \
+    <span class="flag">--start-time</span> 1710000000 <span class="flag">--end-time</span> 1710086400
+
+<span class="comment"># Traceroute — list timestamps, then fetch path</span>
+<span class="prompt">$</span> ntsk dem users traceroute-ts <span class="flag">-u</span> alice@example.com <span class="flag">-d</span> DEVICE-UUID \
+    <span class="flag">--start-time</span> 1710000000 <span class="flag">--end-time</span> 1710086400
+<span class="prompt">$</span> ntsk dem users traceroute <span class="flag">-u</span> alice@example.com <span class="flag">-d</span> DEVICE-UUID \
+    <span class="flag">--start-time</span> 1710050000 <span class="flag">--end-time</span> 1710050000</code>
         </div>
       </div>
 
@@ -2390,7 +2432,12 @@ ntsk alerts list <span class="flag">-t</span> <span class="string">"Compromised 
 &#9474;   &#9500;&#9472;&#9472; network-probes &#9472; list
 &#9474;   &#9500;&#9472;&#9472; probes &#9472; list / create
 &#9474;   &#9500;&#9472;&#9472; states &#9472; query                  (agent/client)
-&#9474;   &#9492;&#9472;&#9472; traceroute &#9472; query              (network paths)
+&#9474;   &#9500;&#9472;&#9472; traceroute &#9472; query              (network paths)
+&#9474;   &#9492;&#9472;&#9472; users                              (ADEM telemetry)
+&#9474;       &#9500;&#9472;&#9472; devices / info / locations
+&#9474;       &#9500;&#9472;&#9472; scores / exp-score / rca
+&#9474;       &#9500;&#9472;&#9472; network / npa-hosts
+&#9474;       &#9492;&#9472;&#9472; traceroute / traceroute-ts
 &#9500;&#9472;&#9472; devices
 &#9474;   &#9500;&#9472;&#9472; list            List managed devices
 &#9474;   &#9500;&#9472;&#9472; supported-os    Supported OS versions
@@ -2978,6 +3025,58 @@ ntsk dem apps list --type predefined --limit 50
 - **where clause:** Operator-first: \`["=", "field", ["$", "string_value"]]\`. Combiners: \`["and", [...], [...]]\`
 - **Alert categories:** Network, Platform, Private Apps, User Experience, Site
 - **Alert severities:** info, low, medium, high, critical
+
+### DEM User/Device Telemetry (ADEM)
+
+Per-user, per-device telemetry via the ADEM API. Provides device health (CPU, memory, disk), experience scores, network metrics, root cause analysis, and traceroute data.
+
+**Workflow:** Start with \`dem users devices\` to discover device IDs, then use those IDs with other commands.
+
+\`\`\`bash
+# List devices for a user (get device IDs for other commands)
+ntsk dem users devices -u alice@example.com \\
+    --start-time 1710000000 --end-time 1710086400
+
+# User info summary (experience score, location, devices)
+ntsk dem users info -u alice@example.com \\
+    --start-time 1710000000 --end-time 1710086400
+
+# Root cause analysis — CPU utilization, top processes, memory, disk
+ntsk dem users rca -u alice@example.com -d DEVICE-UUID \\
+    --start-time 1710000000 --end-time 1710086400
+
+# Aggregated scores (app, device, experience, network, NPA host)
+ntsk dem users scores -u alice@example.com -d DEVICE-UUID \\
+    --start-time 1710000000 --end-time 1710086400
+
+# Experience score timeseries
+ntsk dem users exp-score -u alice@example.com -d DEVICE-UUID \\
+    --start-time 1710000000 --end-time 1710086400
+
+# Network latency & packet loss timeseries
+ntsk dem users network -u alice@example.com -d DEVICE-UUID \\
+    --start-time 1710000000 --end-time 1710086400
+
+# NPA hosts for a user+device
+ntsk dem users npa-hosts -u alice@example.com -d DEVICE-UUID \\
+    --start-time 1710000000 --end-time 1710086400
+
+# All user locations
+ntsk dem users locations --start-time 1710000000 --end-time 1710086400
+
+# Traceroute — list available timestamps, then fetch path data
+ntsk dem users traceroute-ts -u alice@example.com -d DEVICE-UUID \\
+    --start-time 1710000000 --end-time 1710086400
+ntsk dem users traceroute -u alice@example.com -d DEVICE-UUID \\
+    --start-time 1710050000 --end-time 1710050000
+\`\`\`
+
+**ADEM Key Concepts:**
+- **Time units:** All \`dem users\` commands use epoch **seconds** (same as \`entities list\`, NOT milliseconds)
+- **Device ID required:** Most commands need \`--device-id\` / \`-d\` — get it from \`dem users devices\`
+- **RCA output:** Returns CPU_SCORE (utilization + top processes), DISK_SCORE (usage_kb + utilization), MEMORY_SCORE (utilization + top processes), plus app and network scores
+- **Aggregated scores:** Five dimensions — appScore, deviceScore, expScore, networkScore, npaHostScore
+- **Traceroute workflow:** First call \`traceroute-ts\` to get available timestamps, then call \`traceroute\` with a specific timestamp as both \`--start-time\` and \`--end-time\`
 
 ### Configuration Management
 \`\`\`bash
