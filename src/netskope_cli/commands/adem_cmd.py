@@ -212,9 +212,7 @@ def users_scores(
     user: str = typer.Option(..., "--user", "-u", help="User email address."),
     start_time: int = typer.Option(..., "--start-time", help="Start time in Unix epoch seconds."),
     end_time: int = typer.Option(..., "--end-time", help="End time in Unix epoch seconds."),
-    device_id: str = typer.Option(
-        ..., "--device-id", "-d", help="Device ID (from 'dem users devices')."
-    ),
+    device_id: str = typer.Option(..., "--device-id", "-d", help="Device ID (from 'dem users devices')."),
     aggregation_type: str = typer.Option(
         "avg",
         "--aggregation-type",
@@ -243,9 +241,7 @@ def users_scores(
     formatter = _get_formatter(ctx)
     fmt = _get_output_format(ctx)
 
-    body = _build_user_body(
-        start_time, end_time, user=user, device_id=device_id, aggregationType=aggregation_type
-    )
+    body = _build_user_body(start_time, end_time, user=user, device_id=device_id, aggregationType=aggregation_type)
 
     if not _is_quiet(ctx):
         with spinner("Fetching aggregated scores...", no_color=_no_color(ctx)):
@@ -267,9 +263,7 @@ def users_exp_score(
     user: str = typer.Option(..., "--user", "-u", help="User email address."),
     start_time: int = typer.Option(..., "--start-time", help="Start time in Unix epoch seconds."),
     end_time: int = typer.Option(..., "--end-time", help="End time in Unix epoch seconds."),
-    device_id: str = typer.Option(
-        ..., "--device-id", "-d", help="Device ID (from 'dem users devices')."
-    ),
+    device_id: str = typer.Option(..., "--device-id", "-d", help="Device ID (from 'dem users devices')."),
 ) -> None:
     """Get experience score timeseries for a device.
 
@@ -309,9 +303,7 @@ def users_rca(
     user: str = typer.Option(..., "--user", "-u", help="User email address."),
     start_time: int = typer.Option(..., "--start-time", help="Start time in Unix epoch seconds."),
     end_time: int = typer.Option(..., "--end-time", help="End time in Unix epoch seconds."),
-    device_id: str = typer.Option(
-        ..., "--device-id", "-d", help="Device ID (from 'dem users devices')."
-    ),
+    device_id: str = typer.Option(..., "--device-id", "-d", help="Device ID (from 'dem users devices')."),
 ) -> None:
     """Root cause analysis for a device — CPU, memory, and disk telemetry.
 
@@ -357,9 +349,7 @@ def users_network(
     user: str = typer.Option(..., "--user", "-u", help="User email address."),
     start_time: int = typer.Option(..., "--start-time", help="Start time in Unix epoch seconds."),
     end_time: int = typer.Option(..., "--end-time", help="End time in Unix epoch seconds."),
-    device_id: str = typer.Option(
-        ..., "--device-id", "-d", help="Device ID (from 'dem users devices')."
-    ),
+    device_id: str = typer.Option(..., "--device-id", "-d", help="Device ID (from 'dem users devices')."),
     metric_type: str = typer.Option(
         "all",
         "--metric-type",
@@ -410,9 +400,7 @@ def users_npa_hosts(
     user: str = typer.Option(..., "--user", "-u", help="User email address."),
     start_time: int = typer.Option(..., "--start-time", help="Start time in Unix epoch seconds."),
     end_time: int = typer.Option(..., "--end-time", help="End time in Unix epoch seconds."),
-    device_id: str = typer.Option(
-        ..., "--device-id", "-d", help="Device ID (from 'dem users devices')."
-    ),
+    device_id: str = typer.Option(..., "--device-id", "-d", help="Device ID (from 'dem users devices')."),
 ) -> None:
     """Get NPA hosts for a user and device.
 
@@ -452,9 +440,7 @@ def users_traceroute_ts(
     user: str = typer.Option(..., "--user", "-u", help="User email address."),
     start_time: int = typer.Option(..., "--start-time", help="Start time in Unix epoch seconds."),
     end_time: int = typer.Option(..., "--end-time", help="End time in Unix epoch seconds."),
-    device_id: str = typer.Option(
-        ..., "--device-id", "-d", help="Device ID (from 'dem users devices')."
-    ),
+    device_id: str = typer.Option(..., "--device-id", "-d", help="Device ID (from 'dem users devices')."),
 ) -> None:
     """List available traceroute timestamps for a device.
 
@@ -495,9 +481,7 @@ def users_traceroute(
     user: str = typer.Option(..., "--user", "-u", help="User email address."),
     start_time: int = typer.Option(..., "--start-time", help="Start time in Unix epoch seconds."),
     end_time: int = typer.Option(..., "--end-time", help="End time in Unix epoch seconds."),
-    device_id: str = typer.Option(
-        ..., "--device-id", "-d", help="Device ID (from 'dem users devices')."
-    ),
+    device_id: str = typer.Option(..., "--device-id", "-d", help="Device ID (from 'dem users devices')."),
 ) -> None:
     """Get detailed traceroute path data for a device.
 

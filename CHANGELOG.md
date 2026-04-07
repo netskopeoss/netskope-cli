@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0] - 2026-04-07
+
+- Add 10 ADEM user/device telemetry commands under `dem users`: devices, info, locations, scores, exp-score, rca, network, npa-hosts, traceroute-ts, traceroute
+- `dem users rca` provides CPU utilization, top processes, memory usage, and disk utilization — previously only available in the Netskope web UI
+- Add Netskope Community support banner to README and documentation site
+- Update documentation: README, index.html, and Claude Code skill with full ADEM command reference
+
 ## [1.0.2] - 2026-04-02
 
 - Fix README links: point Claude Code skills URL to https://code.claude.com/docs/en/skills and use full GitHub URL for netskope.md so it renders correctly on PyPI
