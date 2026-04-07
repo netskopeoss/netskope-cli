@@ -137,6 +137,11 @@ dem_app.add_typer(fields_app, name="fields")
 dem_app.add_typer(experience_alerts_app, name="experience-alerts")
 dem_app.add_typer(apps_app, name="apps")
 
+# ADEM user/device telemetry sub-app
+from netskope_cli.commands.adem_cmd import adem_users_app  # noqa: E402
+
+dem_app.add_typer(adem_users_app, name="users")
+
 
 # ---------------------------------------------------------------------------
 # Helpers

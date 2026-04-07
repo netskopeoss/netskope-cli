@@ -416,6 +416,58 @@ ntsk dem apps list --type predefined --limit 50
 - **Alert categories:** Network, Platform, Private Apps, User Experience, Site
 - **Alert severities:** info, low, medium, high, critical
 
+### DEM User/Device Telemetry (ADEM)
+
+Per-user, per-device telemetry via the ADEM API. Provides device health (CPU, memory, disk), experience scores, network metrics, root cause analysis, and traceroute data.
+
+**Workflow:** Start with `dem users devices` to discover device IDs, then use those IDs with other commands.
+
+```bash
+# List devices for a user (get device IDs for other commands)
+ntsk dem users devices -u alice@example.com \
+    --start-time 1710000000 --end-time 1710086400
+
+# User info summary (experience score, location, devices)
+ntsk dem users info -u alice@example.com \
+    --start-time 1710000000 --end-time 1710086400
+
+# Root cause analysis — CPU utilization, top processes, memory, disk
+ntsk dem users rca -u alice@example.com -d DEVICE-UUID \
+    --start-time 1710000000 --end-time 1710086400
+
+# Aggregated scores (app, device, experience, network, NPA host)
+ntsk dem users scores -u alice@example.com -d DEVICE-UUID \
+    --start-time 1710000000 --end-time 1710086400
+
+# Experience score timeseries
+ntsk dem users exp-score -u alice@example.com -d DEVICE-UUID \
+    --start-time 1710000000 --end-time 1710086400
+
+# Network latency & packet loss timeseries
+ntsk dem users network -u alice@example.com -d DEVICE-UUID \
+    --start-time 1710000000 --end-time 1710086400
+
+# NPA hosts for a user+device
+ntsk dem users npa-hosts -u alice@example.com -d DEVICE-UUID \
+    --start-time 1710000000 --end-time 1710086400
+
+# All user locations
+ntsk dem users locations --start-time 1710000000 --end-time 1710086400
+
+# Traceroute — list available timestamps, then fetch path data
+ntsk dem users traceroute-ts -u alice@example.com -d DEVICE-UUID \
+    --start-time 1710000000 --end-time 1710086400
+ntsk dem users traceroute -u alice@example.com -d DEVICE-UUID \
+    --start-time 1710050000 --end-time 1710050000
+```
+
+**ADEM Key Concepts:**
+- **Time units:** All `dem users` commands use epoch **seconds** (same as `entities list`, NOT milliseconds)
+- **Device ID required:** Most commands need `--device-id` / `-d` — get it from `dem users devices`
+- **RCA output:** Returns CPU_SCORE (utilization + top processes), DISK_SCORE (usage_kb + utilization), MEMORY_SCORE (utilization + top processes), plus app and network scores
+- **Aggregated scores:** Five dimensions — appScore, deviceScore, expScore, networkScore, npaHostScore
+- **Traceroute workflow:** First call `traceroute-ts` to get available timestamps, then call `traceroute` with a specific timestamp as both `--start-time` and `--end-time`
+
 ### Configuration Management
 ```bash
 ntsk config show                     # Current profile config
