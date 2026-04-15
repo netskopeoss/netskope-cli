@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.2.0] - 2026-04-15
+
+- Add `dem users diagnose` composite command: one-shot diagnostic report combining user info, applications, device details, aggregated scores, and RCA from a ticket's user + time range. Supports `--include-npa` for NPA path analysis and `--application` to focus on a specific app.
+- Add `dem users applications` command for `/api/v2/adem/users/getapplications` — list applications a user has accessed with experience scores
+- Add `dem users device-details` command for `/api/v2/adem/users/device/getdetails` — detailed device info including client status/version, CPU, memory, OS, geo location, gateway, POP, public/private IPs
+- Add `dem users npa-network-paths` command for `/api/v2/adem/users/npa/getnetworkpaths` — NPA network path graph showing nodes (DEVICE, GATEWAY, STITCHER, PUBLISHER, HOST) and edges with latency data
+- Add unit tests for all new ADEM commands including diagnose partial-failure resilience
+- Update documentation: README, index.html, Claude Code skill, and CHANGELOG with full new command reference
+
 ## [1.1.0] - 2026-04-07
 
 - Add 10 ADEM user/device telemetry commands under `dem users`: devices, info, locations, scores, exp-score, rca, network, npa-hosts, traceroute-ts, traceroute

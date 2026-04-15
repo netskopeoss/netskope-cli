@@ -147,6 +147,136 @@ class TestExperienceAlertsSearchIntegration:
         assert result.exit_code == 0
 
 
+class TestAdemUsersIntegration:
+    """ADEM user/device telemetry integration tests.
+
+    Requires ADEM_TEST_USER env var (a valid user email on the tenant).
+    Some tests also need ADEM_TEST_DEVICE (a valid device ID from that user).
+    """
+
+    @pytest.fixture(autouse=True)
+    def _check_adem_user(self):
+        self.user = os.environ.get("ADEM_TEST_USER", "")
+        if not self.user:
+            pytest.skip("Set ADEM_TEST_USER to run ADEM integration tests")
+        now = int(time.time())
+        self.end_time = str(now)
+        self.start_time = str(now - 172800)  # 48h ago
+
+    @property
+    def _device_id(self) -> str:
+        did = os.environ.get("ADEM_TEST_DEVICE", "")
+        if not did:
+            pytest.skip("Set ADEM_TEST_DEVICE to run device-specific ADEM tests")
+        return did
+
+    def test_applications(self, runner):
+        result = runner.invoke(
+            app,
+            [
+                "-o",
+                "json",
+                "dem",
+                "users",
+                "applications",
+                "--user",
+                self.user,
+                "--start-time",
+                self.start_time,
+                "--end-time",
+                self.end_time,
+            ],
+        )
+        assert result.exit_code == 0
+
+    def test_device_details(self, runner):
+        result = runner.invoke(
+            app,
+            [
+                "-o",
+                "json",
+                "dem",
+                "users",
+                "device-details",
+                "--user",
+                self.user,
+                "--device-id",
+                self._device_id,
+                "--start-time",
+                self.start_time,
+                "--end-time",
+                self.end_time,
+            ],
+        )
+        assert result.exit_code == 0
+
+    def test_npa_network_paths(self, runner):
+        npa_host = os.environ.get("ADEM_TEST_NPA_HOST", "")
+        if not npa_host:
+            pytest.skip("Set ADEM_TEST_NPA_HOST to run NPA network paths test")
+        result = runner.invoke(
+            app,
+            [
+                "-o",
+                "json",
+                "dem",
+                "users",
+                "npa-network-paths",
+                "--user",
+                self.user,
+                "--device-id",
+                self._device_id,
+                "--npa-host",
+                npa_host,
+                "--start-time",
+                self.start_time,
+                "--end-time",
+                self.end_time,
+            ],
+        )
+        assert result.exit_code == 0
+
+    def test_diagnose(self, runner):
+        result = runner.invoke(
+            app,
+            [
+                "-o",
+                "json",
+                "dem",
+                "users",
+                "diagnose",
+                "--user",
+                self.user,
+                "--start-time",
+                self.start_time,
+                "--end-time",
+                self.end_time,
+            ],
+        )
+        assert result.exit_code == 0
+
+    def test_diagnose_single_device(self, runner):
+        result = runner.invoke(
+            app,
+            [
+                "-o",
+                "json",
+                "dem",
+                "users",
+                "diagnose",
+                "--user",
+                self.user,
+                "--device-id",
+                self._device_id,
+                "--start-time",
+                self.start_time,
+                "--end-time",
+                self.end_time,
+            ],
+        )
+        assert result.exit_code == 0
+
+
 class TestExistingDemIntegration:
     def test_probes_list(self, runner):
         result = runner.invoke(app, ["-o", "json", "dem", "probes", "list"])

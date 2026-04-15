@@ -1819,8 +1819,22 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
 
 <span class="comment"># --- ADEM User/Device Telemetry ---</span>
 
+<span class="comment"># One-shot diagnostic report from ticket info</span>
+<span class="prompt">$</span> ntsk dem users diagnose <span class="flag">-u</span> alice@example.com \
+    <span class="flag">--start-time</span> 1710000000 <span class="flag">--end-time</span> 1710086400
+<span class="prompt">$</span> ntsk dem users diagnose <span class="flag">-u</span> alice@example.com \
+    <span class="flag">--start-time</span> 1710000000 <span class="flag">--end-time</span> 1710086400 <span class="flag">--include-npa</span>
+
 <span class="comment"># List devices for a user (get device IDs)</span>
 <span class="prompt">$</span> ntsk dem users devices <span class="flag">-u</span> alice@example.com \
+    <span class="flag">--start-time</span> 1710000000 <span class="flag">--end-time</span> 1710086400
+
+<span class="comment"># Detailed device info (hardware, OS, geo, IPs)</span>
+<span class="prompt">$</span> ntsk dem users device-details <span class="flag">-u</span> alice@example.com <span class="flag">-d</span> DEVICE-UUID \
+    <span class="flag">--start-time</span> 1710000000 <span class="flag">--end-time</span> 1710086400
+
+<span class="comment"># Applications with experience scores</span>
+<span class="prompt">$</span> ntsk dem users applications <span class="flag">-u</span> alice@example.com \
     <span class="flag">--start-time</span> 1710000000 <span class="flag">--end-time</span> 1710086400
 
 <span class="comment"># Root cause analysis — CPU, memory, disk</span>
@@ -1834,6 +1848,12 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
 <span class="comment"># Network latency &amp; packet loss timeseries</span>
 <span class="prompt">$</span> ntsk dem users network <span class="flag">-u</span> alice@example.com <span class="flag">-d</span> DEVICE-UUID \
     <span class="flag">--start-time</span> 1710000000 <span class="flag">--end-time</span> 1710086400
+
+<span class="comment"># NPA hosts and network path graph</span>
+<span class="prompt">$</span> ntsk dem users npa-hosts <span class="flag">-u</span> alice@example.com <span class="flag">-d</span> DEVICE-UUID \
+    <span class="flag">--start-time</span> 1710000000 <span class="flag">--end-time</span> 1710086400
+<span class="prompt">$</span> ntsk dem users npa-network-paths <span class="flag">-u</span> alice@example.com <span class="flag">-d</span> DEVICE-UUID \
+    <span class="flag">--npa-host</span> 10.100.12.4 <span class="flag">--start-time</span> 1710000000 <span class="flag">--end-time</span> 1710086400
 
 <span class="comment"># User info, locations, experience score timeseries</span>
 <span class="prompt">$</span> ntsk dem users info <span class="flag">-u</span> alice@example.com \
@@ -2434,9 +2454,10 @@ ntsk alerts list <span class="flag">-t</span> <span class="string">"Compromised 
 &#9474;   &#9500;&#9472;&#9472; states &#9472; query                  (agent/client)
 &#9474;   &#9500;&#9472;&#9472; traceroute &#9472; query              (network paths)
 &#9474;   &#9492;&#9472;&#9472; users                              (ADEM telemetry)
-&#9474;       &#9500;&#9472;&#9472; devices / info / locations
-&#9474;       &#9500;&#9472;&#9472; scores / exp-score / rca
-&#9474;       &#9500;&#9472;&#9472; network / npa-hosts
+&#9474;       &#9500;&#9472;&#9472; diagnose                           (composite diagnostic)
+&#9474;       &#9500;&#9472;&#9472; devices / device-details / info / locations
+&#9474;       &#9500;&#9472;&#9472; applications / scores / exp-score / rca
+&#9474;       &#9500;&#9472;&#9472; network / npa-hosts / npa-network-paths
 &#9474;       &#9492;&#9472;&#9472; traceroute / traceroute-ts
 &#9500;&#9472;&#9472; devices
 &#9474;   &#9500;&#9472;&#9472; list            List managed devices
@@ -3028,17 +3049,37 @@ ntsk dem apps list --type predefined --limit 50
 
 ### DEM User/Device Telemetry (ADEM)
 
-Per-user, per-device telemetry via the ADEM API. Provides device health (CPU, memory, disk), experience scores, network metrics, root cause analysis, and traceroute data.
+Per-user, per-device telemetry via the ADEM API. Provides device health (CPU, memory, disk), experience scores, network metrics, root cause analysis, traceroute data, application scores, and NPA network paths.
 
-**Workflow:** Start with \`dem users devices\` to discover device IDs, then use those IDs with other commands.
+**Workflow:** Start with \`dem users diagnose\` for a one-shot diagnostic report, or use \`dem users devices\` to discover device IDs for targeted queries.
 
 \`\`\`bash
+# One-shot diagnostic report from ticket info (user + time range)
+ntsk dem users diagnose -u alice@example.com \\
+    --start-time 1710000000 --end-time 1710086400
+
+# Diagnose a specific device with NPA analysis
+ntsk dem users diagnose -u alice@example.com -d DEVICE-UUID \\
+    --start-time 1710000000 --end-time 1710086400 --include-npa
+
+# Diagnose with application focus
+ntsk dem users diagnose -u alice@example.com \\
+    --start-time 1710000000 --end-time 1710086400 --application "Google Gmail"
+
 # List devices for a user (get device IDs for other commands)
 ntsk dem users devices -u alice@example.com \\
     --start-time 1710000000 --end-time 1710086400
 
+# Detailed device info (hardware, OS, geo, client version, IPs)
+ntsk dem users device-details -u alice@example.com -d DEVICE-UUID \\
+    --start-time 1710000000 --end-time 1710086400
+
 # User info summary (experience score, location, devices)
 ntsk dem users info -u alice@example.com \\
+    --start-time 1710000000 --end-time 1710086400
+
+# Applications with experience scores
+ntsk dem users applications -u alice@example.com \\
     --start-time 1710000000 --end-time 1710086400
 
 # Root cause analysis — CPU utilization, top processes, memory, disk
@@ -3057,9 +3098,11 @@ ntsk dem users exp-score -u alice@example.com -d DEVICE-UUID \\
 ntsk dem users network -u alice@example.com -d DEVICE-UUID \\
     --start-time 1710000000 --end-time 1710086400
 
-# NPA hosts for a user+device
+# NPA hosts and network path graph
 ntsk dem users npa-hosts -u alice@example.com -d DEVICE-UUID \\
     --start-time 1710000000 --end-time 1710086400
+ntsk dem users npa-network-paths -u alice@example.com -d DEVICE-UUID \\
+    --npa-host 10.100.12.4 --start-time 1710000000 --end-time 1710086400
 
 # All user locations
 ntsk dem users locations --start-time 1710000000 --end-time 1710086400
@@ -3074,8 +3117,10 @@ ntsk dem users traceroute -u alice@example.com -d DEVICE-UUID \\
 **ADEM Key Concepts:**
 - **Time units:** All \`dem users\` commands use epoch **seconds** (same as \`entities list\`, NOT milliseconds)
 - **Device ID required:** Most commands need \`--device-id\` / \`-d\` — get it from \`dem users devices\`
+- **\`diagnose\` command:** Composite command combining getinfo + getapplications + getlist + getdetails + getaggregatedscores + getrca. Surfaces performance issues from ticket info (user, time range). Use \`--include-npa\` for NPA path analysis. Use \`--application\` to focus on a specific app.
 - **RCA output:** Returns CPU_SCORE (utilization + top processes), DISK_SCORE (usage_kb + utilization), MEMORY_SCORE (utilization + top processes), plus app and network scores
 - **Aggregated scores:** Five dimensions — appScore, deviceScore, expScore, networkScore, npaHostScore
+- **NPA network paths:** Graph of nodes (DEVICE, GATEWAY, STITCHER, PUBLISHER, HOST) with edges carrying avgLatency, medianLatency, noOfSessions. Get npaHost values from \`dem users npa-hosts\`.
 - **Traceroute workflow:** First call \`traceroute-ts\` to get available timestamps, then call \`traceroute\` with a specific timestamp as both \`--start-time\` and \`--end-time\`
 
 ### Configuration Management
