@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.3.0] - 2026-04-17
+
+- **Breaking:** `dem users applications` now requires `--device-id`. Without it, the `/api/v2/adem/users/getapplications` endpoint returns only a 1-2 app subset instead of the full per-device application list. Run `dem users devices` first to enumerate device IDs.
+- `dem users diagnose` now fetches applications per device (inside the device loop) rather than at the user level, so each device's full app list appears under `devices[].applications` in JSON output and within each device panel in table output. The `--application` filter now scopes per-device.
+
 ## [1.2.1] - 2026-04-17
 
 - Fix table output summarizing list-of-dict fields as `[N items]` (GitHub issue #9). Columns like `pops` on `ipsec tunnels list` and `categories` on `intel url-lookup` now render the inline values (e.g. `ord1, atl1`) using a common identifying key (`name`, `display_name`, `label`, `title`, or `id`), with `, ... (N items)` for lists longer than 3. Falls back to `[N items]` only when no common key exists.

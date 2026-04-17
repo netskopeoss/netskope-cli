@@ -224,28 +224,35 @@ def users_applications(
     user: str = typer.Option(..., "--user", "-u", help="User email address."),
     start_time: int = typer.Option(..., "--start-time", help="Start time in Unix epoch seconds."),
     end_time: int = typer.Option(..., "--end-time", help="End time in Unix epoch seconds."),
+    device_id: str = typer.Option(..., "--device-id", "-d", help="Device ID (from 'dem users devices')."),
 ) -> None:
-    """List applications for a user with experience scores.
+    """List applications on a device with per-app experience scores.
 
-    Returns the applications a user has accessed within the given time
-    window, along with their experience scores.  Useful for identifying
-    which applications are causing poor digital experience.
+    Returns every application accessed on the specified device within the
+    time window, with each app's average experience score.  Use this to
+    identify which applications are causing poor digital experience.
+
+    ``--device-id`` is required: without it the API returns only a 1-2 app
+    subset instead of the full per-device list.  Run ``dem users devices``
+    first to enumerate device IDs for the user.
 
     EXAMPLES
 
         netskope dem users applications \\
             --user alice@example.com \\
+            --device-id DEVICE-UUID \\
             --start-time 1710000000 --end-time 1710086400
 
         netskope -o json dem users applications \\
             --user alice@example.com \\
+            --device-id DEVICE-UUID \\
             --start-time 1710000000 --end-time 1710086400
     """
     client = _build_client(ctx)
     formatter = _get_formatter(ctx)
     fmt = _get_output_format(ctx)
 
-    body = _build_user_body(start_time, end_time, user=user)
+    body = _build_user_body(start_time, end_time, user=user, device_id=device_id)
 
     if not _is_quiet(ctx):
         with spinner("Fetching user applications...", no_color=_no_color(ctx)):
@@ -717,28 +724,6 @@ def _render_diagnose(diag: dict[str, Any], no_color: bool = False) -> None:
 
     console.print(Panel(header, title="[bold]User Summary[/bold]", border_style="blue", expand=False, padding=(1, 2)))
 
-    # --- Applications ---
-    apps = diag.get("applications")
-    if apps is not None:
-        app_list = apps if isinstance(apps, list) else apps.get("data", apps.get("applications", []))
-        if app_list:
-            app_table = Table(show_header=True, header_style="bold cyan", box=None, pad_edge=False, show_edge=False)
-            app_table.add_column("Application", style="bold", min_width=24)
-            app_table.add_column("Score", justify="right")
-            for a in app_list if isinstance(app_list, list) else []:
-                name = a.get("appName") or a.get("applicationName") or a.get("name", "?")
-                sc = a.get("expScore") or a.get("score")
-                app_table.add_row(str(name), Text(str(sc) if sc is not None else "N/A", style=_score_style(sc)))
-            console.print(
-                Panel(
-                    app_table,
-                    title="[bold]Applications[/bold]",
-                    border_style="blue",
-                    expand=False,
-                    padding=(1, 2),
-                )
-            )
-
     # --- Per-device sections ---
     for dev in diag.get("devices", []):
         details = dev.get("details") or {}
@@ -806,6 +791,22 @@ def _render_diagnose(diag: dict[str, Any], no_color: bool = False) -> None:
         dev_output.add_row(dev_grid)
         dev_output.add_row(Text("Scores", style="bold magenta"))
         dev_output.add_row(scores_table)
+
+        # Applications on this device
+        apps = dev.get("applications")
+        if apps is not None:
+            app_list = apps if isinstance(apps, list) else apps.get("applications", apps.get("data", []))
+            if isinstance(app_list, list) and app_list:
+                app_table = Table(show_header=True, header_style="bold cyan", box=None, pad_edge=False, show_edge=False)
+                app_table.add_column("Application", style="bold", min_width=24)
+                app_table.add_column("Score", justify="right")
+                for a in app_list:
+                    name = a.get("appName") or a.get("applicationName") or a.get("name", "?")
+                    sc = a.get("expScore") or a.get("score")
+                    app_table.add_row(str(name), Text(str(sc) if sc is not None else "N/A", style=_score_style(sc)))
+                dev_output.add_row(Text("Applications", style="bold magenta"))
+                dev_output.add_row(app_table)
+
         if rca_lines:
             dev_output.add_row(Text("RCA Issues", style="bold magenta"))
             for line in rca_lines:
@@ -889,7 +890,7 @@ def users_diagnose(
     no_color = _no_color(ctx)
 
     base_body = _build_user_body(start_time, end_time, user=user)
-    diag: dict[str, Any] = {"user_info": None, "applications": None, "devices": []}
+    diag: dict[str, Any] = {"user_info": None, "devices": []}
 
     # Phase 1 — user-level data
     if not quiet:
@@ -897,25 +898,9 @@ def users_diagnose(
             diag["user_info"] = _safe_request(
                 client, "POST", "/api/v2/adem/users/getinfo", json_data=base_body, label="getinfo", no_color=no_color
             )
-            diag["applications"] = _safe_request(
-                client,
-                "POST",
-                "/api/v2/adem/users/getapplications",
-                json_data=base_body,
-                label="getapplications",
-                no_color=no_color,
-            )
     else:
         diag["user_info"] = _safe_request(
             client, "POST", "/api/v2/adem/users/getinfo", json_data=base_body, label="getinfo", no_color=no_color
-        )
-        diag["applications"] = _safe_request(
-            client,
-            "POST",
-            "/api/v2/adem/users/getapplications",
-            json_data=base_body,
-            label="getapplications",
-            no_color=no_color,
         )
 
     # Resolve device list
@@ -954,6 +939,14 @@ def users_diagnose(
                     label="device/getdetails",
                     no_color=no_color,
                 )
+                dev_entry["applications"] = _safe_request(
+                    client,
+                    "POST",
+                    "/api/v2/adem/users/getapplications",
+                    json_data=dev_body,
+                    label="getapplications",
+                    no_color=no_color,
+                )
                 dev_entry["scores"] = _safe_request(
                     client,
                     "POST",
@@ -977,6 +970,14 @@ def users_diagnose(
                 "/api/v2/adem/users/device/getdetails",
                 json_data=dev_body,
                 label="device/getdetails",
+                no_color=no_color,
+            )
+            dev_entry["applications"] = _safe_request(
+                client,
+                "POST",
+                "/api/v2/adem/users/getapplications",
+                json_data=dev_body,
+                label="getapplications",
                 no_color=no_color,
             )
             dev_entry["scores"] = _safe_request(
@@ -1036,26 +1037,28 @@ def users_diagnose(
         diag["devices"].append(dev_entry)
 
     # Filter by application if specified
-    if application and diag.get("applications"):
-        app_data = diag["applications"]
-        if isinstance(app_data, list):
+    if application:
+        needle = application.lower()
+        for dev_entry in diag["devices"]:
+            app_data = dev_entry.get("applications")
+            if not app_data:
+                continue
+            app_items: Any
+            if isinstance(app_data, list):
+                app_items = app_data
+            elif isinstance(app_data, dict):
+                app_items = app_data.get("applications", app_data.get("data", []))
+            else:
+                continue
+            if not isinstance(app_items, list):
+                continue
             filtered = [
                 a
-                for a in app_data
-                if application.lower() in str(a.get("appName", a.get("applicationName", a.get("name", "")))).lower()
+                for a in app_items
+                if needle in str(a.get("appName", a.get("applicationName", a.get("name", "")))).lower()
             ]
             if filtered:
-                diag["applications"] = filtered
-        elif isinstance(app_data, dict):
-            items = app_data.get("data", app_data.get("applications", []))
-            if isinstance(items, list):
-                filtered = [
-                    a
-                    for a in items
-                    if application.lower() in str(a.get("appName", a.get("applicationName", a.get("name", "")))).lower()
-                ]
-                if filtered:
-                    diag["applications"] = filtered
+                dev_entry["applications"] = filtered
 
     # Render output
     if fmt in ("json", "jsonl", "csv", "yaml"):

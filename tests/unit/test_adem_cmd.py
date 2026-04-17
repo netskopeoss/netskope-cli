@@ -18,10 +18,11 @@ BASE = "https://test.goskope.com"
 # ---------------------------------------------------------------------------
 
 MOCK_APPLICATIONS = {
-    "data": [
+    "applications": [
         {"appName": "Google Gmail", "expScore": 85},
         {"appName": "Slack", "expScore": 92},
-    ]
+    ],
+    "totalCount": 2,
 }
 
 MOCK_DEVICE_DETAILS = {
@@ -151,6 +152,8 @@ class TestApplications:
                 "applications",
                 "--user",
                 "alice@example.com",
+                "--device-id",
+                "DEV-1234",
                 "--start-time",
                 "1710000000",
                 "--end-time",
@@ -174,6 +177,8 @@ class TestApplications:
                 "applications",
                 "--user",
                 "alice@example.com",
+                "--device-id",
+                "DEV-1234",
                 "--start-time",
                 "1710000000",
                 "--end-time",
@@ -182,7 +187,8 @@ class TestApplications:
         )
         assert result.exit_code == 0
         data = json.loads(result.output)
-        assert isinstance(data, list)
+        assert data["applications"][0]["appName"] == "Google Gmail"
+        assert data["totalCount"] == 2
 
     @respx.mock
     def test_request_body(self, runner):
@@ -197,6 +203,8 @@ class TestApplications:
                 "applications",
                 "--user",
                 "alice@example.com",
+                "--device-id",
+                "DEV-1234",
                 "--start-time",
                 "1710000000",
                 "--end-time",
@@ -205,9 +213,28 @@ class TestApplications:
         )
         body = json.loads(route.calls[0].request.content)
         assert body["user"] == "alice@example.com"
+        assert body["deviceId"] == "DEV-1234"
         assert body["starttime"] == 1710000000
         assert body["endtime"] == 1710086400
-        assert "deviceId" not in body
+
+    @respx.mock
+    def test_requires_device_id(self, runner):
+        """--device-id is required; API returns only 1-2 apps without it."""
+        result = runner.invoke(
+            app,
+            [
+                "dem",
+                "users",
+                "applications",
+                "--user",
+                "alice@example.com",
+                "--start-time",
+                "1710000000",
+                "--end-time",
+                "1710086400",
+            ],
+        )
+        assert result.exit_code != 0
 
 
 # ---------------------------------------------------------------------------
@@ -518,11 +545,11 @@ class TestDiagnose:
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert "user_info" in data
-        assert "applications" in data
         assert "devices" in data
         assert len(data["devices"]) == 1
         assert data["devices"][0]["device_id"] == "DEV-1234"
         assert "details" in data["devices"][0]
+        assert "applications" in data["devices"][0]
         assert "scores" in data["devices"][0]
         assert "rca" in data["devices"][0]
 
@@ -552,9 +579,9 @@ class TestDiagnose:
         )
         assert result.exit_code == 0
         data = json.loads(result.output)
-        apps = data.get("applications", [])
+        apps = data["devices"][0].get("applications", [])
         if isinstance(apps, dict):
-            apps = apps.get("data", [])
+            apps = apps.get("applications", apps.get("data", []))
         # Should filter to only Gmail
         assert len(apps) == 1
         assert "Gmail" in apps[0]["appName"]
@@ -600,10 +627,9 @@ class TestDiagnose:
         data = json.loads(raw[json_start:])
         # user_info should be present
         assert data["user_info"] is not None
-        # applications should be None due to 404
-        assert data["applications"] is None
-        # device data should still be present
+        # device data should still be present; applications failed per-device
         assert len(data["devices"]) == 1
+        assert data["devices"][0]["applications"] is None
 
 
 # ---------------------------------------------------------------------------

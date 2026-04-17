@@ -98,7 +98,7 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
         </div>
         <span class="font-bold text-lg tracking-tight">Netskope CLI</span>
-        <span class="badge badge-blue ml-1">v1.2.1</span>
+        <span class="badge badge-blue ml-1">v1.3.0</span>
       </div>
       <div class="hidden md:flex items-center gap-6 text-sm">
         <a href="#getting-started" class="nav-link text-muted-foreground">Getting Started</a>
@@ -263,7 +263,7 @@
     <div class="code-block p-4 relative">
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
       <code><span class="prompt">$</span> ntsk --version
-<span class="output">netskope-cli 1.2.1</span>
+<span class="output">netskope-cli 1.3.0</span>
 <span class="prompt">$</span> ntsk --help</code>
     </div>
   </div>
@@ -1833,8 +1833,8 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
 <span class="prompt">$</span> ntsk dem users device-details <span class="flag">-u</span> alice@example.com <span class="flag">-d</span> DEVICE-UUID \
     <span class="flag">--start-time</span> 1710000000 <span class="flag">--end-time</span> 1710086400
 
-<span class="comment"># Applications with experience scores</span>
-<span class="prompt">$</span> ntsk dem users applications <span class="flag">-u</span> alice@example.com \
+<span class="comment"># Applications on a device (with per-app experience scores)</span>
+<span class="prompt">$</span> ntsk dem users applications <span class="flag">-u</span> alice@example.com <span class="flag">-d</span> DEVICE-UUID \
     <span class="flag">--start-time</span> 1710000000 <span class="flag">--end-time</span> 1710086400
 
 <span class="comment"># Root cause analysis — CPU, memory, disk</span>
@@ -3078,8 +3078,8 @@ ntsk dem users device-details -u alice@example.com -d DEVICE-UUID \\
 ntsk dem users info -u alice@example.com \\
     --start-time 1710000000 --end-time 1710086400
 
-# Applications with experience scores
-ntsk dem users applications -u alice@example.com \\
+# Applications on a device (with per-app experience scores; --device-id required)
+ntsk dem users applications -u alice@example.com -d DEVICE-UUID \\
     --start-time 1710000000 --end-time 1710086400
 
 # Root cause analysis — CPU utilization, top processes, memory, disk
@@ -3117,7 +3117,7 @@ ntsk dem users traceroute -u alice@example.com -d DEVICE-UUID \\
 **ADEM Key Concepts:**
 - **Time units:** All \`dem users\` commands use epoch **seconds** (same as \`entities list\`, NOT milliseconds)
 - **Device ID required:** Most commands need \`--device-id\` / \`-d\` — get it from \`dem users devices\`
-- **\`diagnose\` command:** Composite command combining getinfo + getapplications + getlist + getdetails + getaggregatedscores + getrca. Surfaces performance issues from ticket info (user, time range). Use \`--include-npa\` for NPA path analysis. Use \`--application\` to focus on a specific app.
+- **\`diagnose\` command:** Composite command combining getinfo + getlist + (per device: getdetails + getapplications + getaggregatedscores + getrca). \`getapplications\` is called per device (deviceId is required — without it the API returns only a 1-2 app subset). Surfaces performance issues from ticket info (user, time range). Use \`--include-npa\` for NPA path analysis. Use \`--application\` to focus on a specific app.
 - **RCA output:** Returns CPU_SCORE (utilization + top processes), DISK_SCORE (usage_kb + utilization), MEMORY_SCORE (utilization + top processes), plus app and network scores
 - **Aggregated scores:** Five dimensions — appScore, deviceScore, expScore, networkScore, npaHostScore
 - **NPA network paths:** Graph of nodes (DEVICE, GATEWAY, STITCHER, PUBLISHER, HOST) with edges carrying avgLatency, medianLatency, noOfSessions. Get npaHost values from \`dem users npa-hosts\`.

@@ -447,8 +447,8 @@ ntsk dem users device-details -u alice@example.com -d DEVICE-UUID \
 ntsk dem users info -u alice@example.com \
     --start-time 1710000000 --end-time 1710086400
 
-# Applications with experience scores
-ntsk dem users applications -u alice@example.com \
+# Applications on a device (with per-app experience scores; --device-id required)
+ntsk dem users applications -u alice@example.com -d DEVICE-UUID \
     --start-time 1710000000 --end-time 1710086400
 
 # Root cause analysis — CPU utilization, top processes, memory, disk
@@ -489,7 +489,7 @@ ntsk dem users traceroute -u alice@example.com -d DEVICE-UUID \
 **ADEM Key Concepts:**
 - **Time units:** All `dem users` commands use epoch **seconds** (same as `entities list`, NOT milliseconds)
 - **Device ID required:** Most commands need `--device-id` / `-d` — get it from `dem users devices`
-- **`diagnose` command:** Composite command that calls getinfo + getapplications + getlist + getdetails + getaggregatedscores + getrca for a single user. Surfaces performance issues from ticket info (user, time range). Use `--include-npa` for NPA path analysis. Use `--application` to filter to a specific app.
+- **`diagnose` command:** Composite command that calls getinfo + getlist + (per device: getdetails + getapplications + getaggregatedscores + getrca) for a single user. `getapplications` is called per device (deviceId is required — without it the API returns only a 1-2 app subset). Surfaces performance issues from ticket info (user, time range). Use `--include-npa` for NPA path analysis. Use `--application` to filter to a specific app.
 - **RCA output:** Returns CPU_SCORE (utilization + top processes), DISK_SCORE (usage_kb + utilization), MEMORY_SCORE (utilization + top processes), plus app and network scores
 - **Aggregated scores:** Five dimensions — appScore, deviceScore, expScore, networkScore, npaHostScore
 - **NPA network paths:** Graph structure with nodes (DEVICE, GATEWAY, STITCHER, PUBLISHER, HOST) and edges (avgLatency, medianLatency, noOfSessions). Get npaHost values from `dem users npa-hosts`.
