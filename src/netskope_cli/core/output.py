@@ -675,6 +675,14 @@ class OutputFormatter:
                 if len(value) > 3:
                     return f"{preview}, ... ({len(value)} items)"
                 return preview
+            # If all items are dicts with a common identifying key, inline those values.
+            if all(isinstance(v, dict) for v in value):
+                for label_key in ("name", "display_name", "label", "title", "id"):
+                    if all(label_key in v and isinstance(v[label_key], (str, int, float, bool)) for v in value):
+                        preview = ", ".join(str(v[label_key]) for v in value[:3])
+                        if len(value) > 3:
+                            return f"{preview}, ... ({len(value)} items)"
+                        return preview
             return f"[{len(value)} items]"
         return str(value)
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.2.1] - 2026-04-17
+
+- Fix table output summarizing list-of-dict fields as `[N items]` (GitHub issue #9). Columns like `pops` on `ipsec tunnels list` and `categories` on `intel url-lookup` now render the inline values (e.g. `ord1, atl1`) using a common identifying key (`name`, `display_name`, `label`, `title`, or `id`), with `, ... (N items)` for lists longer than 3. Falls back to `[N items]` only when no common key exists.
+
 ## [1.2.0] - 2026-04-15
 
 - Add `dem users diagnose` composite command: one-shot diagnostic report combining user info, applications, device details, aggregated scores, and RCA from a ticket's user + time range. Supports `--include-npa` for NPA path analysis and `--application` to focus on a specific app.

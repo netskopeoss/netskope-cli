@@ -111,6 +111,66 @@ class TestTableFormat:
         captured = capsys.readouterr()
         assert captured.out == ""
 
+    def test_table_list_of_dicts_cell_inlines_common_name_key(self, capsys: pytest.CaptureFixture[str]) -> None:
+        fmt = OutputFormatter(no_color=True, wide=True)
+        data = [
+            {
+                "id": 1,
+                "pops": [
+                    {"name": "ord1", "gateway": "1.2.3.4"},
+                    {"name": "atl1", "gateway": "5.6.7.8"},
+                ],
+            }
+        ]
+        fmt.format_output(data, fmt="table")
+        out = capsys.readouterr().out
+        assert "ord1, atl1" in out
+        assert "2 items" not in out
+
+    def test_table_list_of_dicts_cell_truncates_after_three(self, capsys: pytest.CaptureFixture[str]) -> None:
+        fmt = OutputFormatter(no_color=True, wide=True)
+        data = [
+            {
+                "id": 1,
+                "categories": [
+                    {"name": "A", "type": "x"},
+                    {"name": "B", "type": "x"},
+                    {"name": "C", "type": "x"},
+                    {"name": "D", "type": "x"},
+                    {"name": "E", "type": "x"},
+                ],
+            }
+        ]
+        fmt.format_output(data, fmt="table")
+        out = capsys.readouterr().out
+        assert "A, B, C, ... (5 items)" in out
+
+    def test_table_list_of_dicts_cell_falls_back_without_label_key(self, capsys: pytest.CaptureFixture[str]) -> None:
+        fmt = OutputFormatter(no_color=True, wide=True)
+        data = [
+            {
+                "id": 1,
+                "things": [
+                    {"gateway": "1.2.3.4", "status": "up"},
+                    {"gateway": "5.6.7.8", "status": "down"},
+                ],
+            }
+        ]
+        fmt.format_output(data, fmt="table")
+        out = capsys.readouterr().out
+        assert "[2 items]" in out
+
+    def test_summarize_value_prefers_name_over_id(self) -> None:
+        value = [
+            {"id": "10003", "name": "Potentially malicious sites", "type": "custom"},
+            {"id": "28", "name": "Social", "type": "predefined"},
+        ]
+        assert OutputFormatter._summarize_value(value) == "Potentially malicious sites, Social"
+
+    def test_summarize_value_uses_id_when_no_name(self) -> None:
+        value = [{"id": 1, "kind": "x"}, {"id": 2, "kind": "y"}]
+        assert OutputFormatter._summarize_value(value) == "1, 2"
+
 
 # ---------------------------------------------------------------------------
 # Field selection
