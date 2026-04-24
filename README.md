@@ -179,7 +179,7 @@ ntsk users list -o csv > users.csv
 | **Status & Setup**    | `doctor`, `tenant`, `status`, `status --extended`, `commands`, `commands --flat` |
 | **Events**            | `events get`, `events list --type alert\|application\|network\|...` |
 | **Alerts**            | `alerts get`, `alerts list`, `alerts summary`, `alerts types` |
-| **Incidents**         | `incidents list`, `incidents search`, `incidents uci`      |
+| **Incidents**         | `incidents list`, `incidents search`, `incidents uci`, `incidents notes list/add/delete` |
 | **Users & RBAC**      | `users list`, `users get`, `users groups list`, `users groups members`, `rbac roles list` |
 | **Policy**            | `policy url-list list`, `policy deploy`                    |
 | **Auth & Config**     | `auth login`, `auth logout`, `config set-tenant`, `config set-token` |

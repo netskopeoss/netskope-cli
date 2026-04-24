@@ -48,3 +48,4 @@ local/
 # Claude Code local state (but allow commands/ to be committed)
 .claude/*
 !.claude/commands/
+local/

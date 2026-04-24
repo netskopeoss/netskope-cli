@@ -12,7 +12,7 @@ from typing import Optional
 import typer
 
 from netskope_cli.core.client import NetskopeClient, build_client
-from netskope_cli.core.output import OutputFormatter, echo_error, spinner
+from netskope_cli.core.output import OutputFormatter, echo_error, echo_success, spinner
 from netskope_cli.utils.helpers import validate_time_range
 
 # ---------------------------------------------------------------------------
@@ -29,6 +29,21 @@ incidents_app = typer.Typer(
     ),
     no_args_is_help=True,
 )
+
+_notes_app = typer.Typer(
+    name="notes",
+    help=(
+        "List, add, and delete notes on DLP incidents.\n\n"
+        "Notes are free-text annotations attached to a DLP incident — useful "
+        "for recording investigation findings, handoff context, or remediation "
+        "steps. Each incident can hold at most 25 notes, and each note must be "
+        "under 512 characters.\n\n"
+        "See also: 'netskope incidents forensics' for the DLP evidence payload "
+        "that accompanies an incident."
+    ),
+    no_args_is_help=True,
+)
+incidents_app.add_typer(_notes_app, name="notes")
 
 
 # ---------------------------------------------------------------------------
@@ -578,4 +593,174 @@ def anomalies(
         data,
         fmt=fmt,
         title=f"UBA Anomalies — {', '.join(user_list)}",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Notes subcommands
+# ---------------------------------------------------------------------------
+
+# The API rejects content at 512 characters or more — enforce strict-less-than
+# on the client side so we fail fast with a clear message instead of round-
+# tripping a 400.
+_NOTE_CONTENT_LIMIT = 512
+
+_DLP_INCIDENT_ID_HELP = (
+    "DLP incident identifier. Important: this is the dlp_incident_id field, "
+    "NOT the regular incident_id. Find DLP incident IDs in the "
+    "'dlp_incident_id' column of 'netskope incidents list' output, or in the "
+    "Netskope admin console."
+)
+
+
+@_notes_app.command("list")
+def notes_list(
+    ctx: typer.Context,
+    dlp_incident_id: str = typer.Argument(..., help=_DLP_INCIDENT_ID_HELP),
+) -> None:
+    """List notes attached to a DLP incident.
+
+    Calls GET /api/v2/incidents/dlpincidents/{id}/notes. Each note records
+    the author, timestamp, and text content. Returns an empty list if the
+    incident has no notes yet.
+
+    Examples:
+        netskope incidents notes list 1343008090332508247
+        netskope -o json incidents notes list 1343008090332508247 | jq '.[].content'
+        netskope incidents notes list 1343008090332508247 -f note_id,user
+        netskope --profile staging incidents notes list 1343008090332508247
+    """
+    state = ctx.obj
+    client = _build_client(ctx)
+    formatter = _get_formatter(ctx)
+    fmt = _get_output_format(ctx)
+
+    path = f"/api/v2/incidents/dlpincidents/{urllib.parse.quote(dlp_incident_id, safe='')}/notes"
+
+    with spinner("Fetching notes...", no_color=state.no_color):
+        data = client.request("GET", path)
+
+    add_iso = not (state.epoch if state else False)
+
+    formatter.format_output(
+        data,
+        fmt=fmt,
+        title=f"Notes — DLP Incident {dlp_incident_id}",
+        default_fields=["note_id", "user", "timestamp", "content"],
+        add_iso_timestamps=add_iso,
+    )
+
+
+@_notes_app.command("add")
+def notes_add(
+    ctx: typer.Context,
+    dlp_incident_id: str = typer.Argument(..., help=_DLP_INCIDENT_ID_HELP),
+    content: str = typer.Option(
+        ...,
+        "--content",
+        "-c",
+        help=(
+            "Text body of the note. Must be under 512 characters. Intended for "
+            "short investigation findings, handoff context, or remediation steps."
+        ),
+    ),
+) -> None:
+    """Add a new note to a DLP incident.
+
+    Calls POST /api/v2/incidents/dlpincidents/{id}/notes with the provided
+    content. Each incident can hold at most 25 notes; the API returns 409 when
+    that limit is reached. Content must be under 512 characters.
+
+    Examples:
+        netskope incidents notes add 1343008090332508247 -c "Escalated to tier 2"
+        netskope incidents notes add 1343008090332508247 --content "False positive — closing"
+        netskope -o json incidents notes add 1343008090332508247 -c "Handoff to IR" | jq '.note_id'
+        netskope --profile staging incidents notes add 1343008090332508247 -c "Reviewed"
+    """
+    state = ctx.obj
+
+    if len(content) >= _NOTE_CONTENT_LIMIT:
+        echo_error(
+            f"Note content is {len(content)} characters; it must be under " f"{_NOTE_CONTENT_LIMIT}.",
+            no_color=state.no_color,
+        )
+        raise typer.Exit(code=1)
+
+    client = _build_client(ctx)
+    formatter = _get_formatter(ctx)
+    fmt = _get_output_format(ctx)
+
+    path = f"/api/v2/incidents/dlpincidents/{urllib.parse.quote(dlp_incident_id, safe='')}/notes"
+
+    with spinner("Adding note...", no_color=state.no_color):
+        data = client.request("POST", path, json_data={"content": content})
+
+    # Envelope is {"data": {..single note..}, "status": "success"}. The shared
+    # unwrap helper only handles list-typed data, so pull out the note dict
+    # here for clean table/json rendering.
+    if isinstance(data, dict) and isinstance(data.get("data"), dict):
+        data = data["data"]
+
+    add_iso = not (state.epoch if state else False)
+
+    formatter.format_output(
+        data,
+        fmt=fmt,
+        title=f"Note Added — DLP Incident {dlp_incident_id}",
+        add_iso_timestamps=add_iso,
+    )
+
+
+@_notes_app.command("delete")
+def notes_delete(
+    ctx: typer.Context,
+    dlp_incident_id: str = typer.Argument(..., help=_DLP_INCIDENT_ID_HELP),
+    note_id: str = typer.Argument(
+        ...,
+        help=(
+            "Unique identifier of the note to delete. This operation is "
+            "irreversible — the note cannot be recovered. Find note IDs via "
+            "'netskope incidents notes list <dlp-incident-id>'."
+        ),
+    ),
+    yes: bool = typer.Option(
+        False,
+        "--yes",
+        "-y",
+        help="Skip the interactive confirmation prompt. Useful for scripted workflows.",
+    ),
+) -> None:
+    """Delete a note from a DLP incident.
+
+    Calls DELETE /api/v2/incidents/dlpincidents/{id}/notes/{note_id}. This is
+    a destructive operation — the note cannot be recovered. Prompts for
+    confirmation unless --yes is passed.
+
+    Examples:
+        netskope incidents notes delete 1343008090332508247 604ce028-b104-4fe6-8d4e-6ed3c04c5378
+        netskope incidents notes delete 1343008090332508247 604ce028-b104-4fe6-8d4e-6ed3c04c5378 --yes
+        netskope --profile staging incidents notes delete 1343008090332508247 604ce028-... -y
+    """
+    no_color = ctx.obj.no_color if ctx.obj is not None else False
+
+    if not yes:
+        typer.confirm(
+            f"Delete note {note_id} from DLP incident {dlp_incident_id}?",
+            abort=True,
+        )
+
+    client = _build_client(ctx)
+
+    path = (
+        f"/api/v2/incidents/dlpincidents/"
+        f"{urllib.parse.quote(dlp_incident_id, safe='')}/notes/"
+        f"{urllib.parse.quote(note_id, safe='')}"
+    )
+
+    with spinner(f"Deleting note {note_id}...", no_color=no_color):
+        client.request("DELETE", path)
+
+    echo_success(
+        f"Note {note_id} deleted from DLP incident {dlp_incident_id}.",
+        no_color=no_color,
     )

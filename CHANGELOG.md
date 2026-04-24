@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.4.0] - 2026-04-24
+
+- Add `incidents notes` sub-app with three commands for managing notes on DLP incidents: `notes list <dlp-incident-id>` (GET), `notes add <dlp-incident-id> -c "text"` (POST, client-side 512-char guard), and `notes delete <dlp-incident-id> <note-id> [-y]` (DELETE with confirmation prompt). Wraps the `/api/v2/incidents/dlpincidents/{id}/notes` endpoints.
+
 ## [1.3.1] - 2026-04-24
 
 - Fix `rbac admins list` returning `HTTP 404: no Route matched with those values`. The command was calling `/api/v2/rbac/admins`, which does not exist — admin users are served by the ms-platform service at `/api/v2/platform/administration/scim/Users` (SCIM-based).
