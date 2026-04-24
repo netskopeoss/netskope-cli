@@ -324,13 +324,35 @@ def roles_delete(
 
 
 @_admins_app.command("list")
-def admins_list(ctx: typer.Context) -> None:
+def admins_list(
+    ctx: typer.Context,
+    limit: int = typer.Option(
+        1000,
+        "--limit",
+        "-l",
+        help="Maximum number of admins to return per page (maps to SCIM 'count').",
+    ),
+    start_index: int = typer.Option(
+        1,
+        "--start-index",
+        help="1-based index of the first result (SCIM 'startIndex' parameter).",
+    ),
+    scim_filter: Optional[str] = typer.Option(
+        None,
+        "--filter",
+        help=(
+            "SCIM filter expression to narrow the result set. Example: "
+            "'urn:ietf:params:scim:schemas:netskope:2.0:user[recordType eq \"SERVICE_ACCOUNT\"]'."
+        ),
+    ),
+) -> None:
     """List all admin users in your Netskope tenant.
 
-    Queries GET /api/v2/rbac/admins to retrieve every administrator
-    account along with their assigned roles and current status.  This
-    is useful for security audits, onboarding reviews, and verifying
-    that the right people have administrative access to the tenant.
+    Queries GET /api/v2/platform/administration/scim/Users (served by the
+    ms-platform service) to retrieve every administrator account along with
+    their assigned role, record type, provisioning source, and MFA status.
+    Useful for security audits, onboarding reviews, and verifying that the
+    right people have administrative access to the tenant.
 
     Examples:
         # List all admin users
@@ -339,14 +361,24 @@ def admins_list(ctx: typer.Context) -> None:
         # Output as CSV for a spreadsheet audit
         netskope -o csv rbac admins list
 
-        # Pipe JSON output to jq for filtering
-        netskope -o json rbac admins list | jq '.[] | select(.role=="Admin")'
+        # Filter to service accounts only
+        netskope rbac admins list \\
+            --filter 'urn:ietf:params:scim:schemas:netskope:2.0:user[recordType eq "SERVICE_ACCOUNT"]'
     """
     client = _build_client(ctx)
     formatter = _build_formatter(ctx)
     no_color = ctx.obj.no_color if ctx.obj is not None else False
 
-    with spinner("Fetching admin users...", no_color=no_color):
-        data = client.request("GET", "/api/v2/rbac/admins")
+    params: dict[str, object] = {"count": limit, "startIndex": start_index}
+    if scim_filter:
+        params["filter"] = scim_filter
 
-    formatter.format_output(data, fmt=_get_output_format(ctx), title="RBAC Admin Users")
+    with spinner("Fetching admin users...", no_color=no_color):
+        data = client.request("GET", "/api/v2/platform/administration/scim/Users", params=params)
+
+    formatter.format_output(
+        data,
+        fmt=_get_output_format(ctx),
+        title="RBAC Admin Users",
+        default_fields=["userName", "active", "id"],
+    )

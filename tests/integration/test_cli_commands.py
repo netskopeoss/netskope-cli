@@ -483,7 +483,10 @@ class TestErrorHandling:
 
     def test_auth_token_without_token_raises(self):
         """auth token command when no token is stored should exit non-zero."""
-        with patch("netskope_cli.commands.auth_cmd._get_token", return_value=None):
+        # Patch get_api_token where auth_cmd imports it from, so the real
+        # system keyring cannot bleed into the test when a user has stored
+        # credentials for the "default" profile.
+        with patch("netskope_cli.core.config.get_api_token", return_value=None):
             result = runner.invoke(app, ["auth", "token"])
             # AuthError is raised which becomes non-zero exit
             assert result.exit_code != 0

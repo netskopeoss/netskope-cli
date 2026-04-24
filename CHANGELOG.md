@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.3.1] - 2026-04-24
+
+- Fix `rbac admins list` returning `HTTP 404: no Route matched with those values`. The command was calling `/api/v2/rbac/admins`, which does not exist — admin users are served by the ms-platform service at `/api/v2/platform/administration/scim/Users` (SCIM-based).
+- Add `--limit`, `--start-index`, and `--filter` options to `rbac admins list` for SCIM pagination and filtering (e.g. `--filter 'urn:ietf:params:scim:schemas:netskope:2.0:user[recordType eq "SERVICE_ACCOUNT"]'`).
+- Fix `test_config_token_used` and `test_auth_token_without_token_raises` leaking the developer's real keyring token into test assertions; both now mock the keyring call / `get_api_token` directly.
+
 ## [1.3.0] - 2026-04-17
 
 - **Breaking:** `dem users applications` now requires `--device-id`. Without it, the `/api/v2/adem/users/getapplications` endpoint returns only a 1-2 app subset instead of the full per-device application list. Run `dem users devices` first to enumerate device IDs.

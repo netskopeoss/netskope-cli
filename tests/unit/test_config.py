@@ -213,11 +213,15 @@ class TestGetApiToken:
 
     def test_config_token_used(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("NETSKOPE_API_TOKEN", raising=False)
+        # Prevent the real system keyring from returning a stored token for
+        # the "default" profile when tests run on a developer machine.
+        monkeypatch.setattr("netskope_cli.core.config._get_keyring_token", lambda _p: None)
         cfg = NetskopeConfig(profiles={"default": ProfileConfig(api_token="config-token")})
         assert get_api_token(cfg=cfg) == "config-token"
 
     def test_returns_none_when_missing(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("NETSKOPE_API_TOKEN", raising=False)
+        monkeypatch.setattr("netskope_cli.core.config._get_keyring_token", lambda _p: None)
         cfg = NetskopeConfig(profiles={"default": ProfileConfig()})
         assert get_api_token(cfg=cfg) is None
 
