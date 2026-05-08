@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.4.1] - 2026-05-08
+
+- Fix `policy url-list update <id>` returning HTTP 400 (`name required`). The PUT body placed `name` inside `data`, and the API requires `name` (top level), `data.urls`, and `data.type` on every request — but the command only sent the fields the user explicitly passed. The command now GETs the existing list first and PUTs with the user's `--name` / `--urls` / `--type` merged over the current values, so callers only need to specify what they want to change.
+
 ## [1.4.0] - 2026-04-24
 
 - Add `incidents notes` sub-app with three commands for managing notes on DLP incidents: `notes list <dlp-incident-id>` (GET), `notes add <dlp-incident-id> -c "text"` (POST, client-side 512-char guard), and `notes delete <dlp-incident-id> <note-id> [-y]` (DELETE with confirmation prompt). Wraps the `/api/v2/incidents/dlpincidents/{id}/notes` endpoints.
