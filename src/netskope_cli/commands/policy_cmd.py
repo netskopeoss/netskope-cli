@@ -282,22 +282,25 @@ def url_list_update(
     formatter = _get_formatter(ctx)
     fmt = _get_output_format(ctx)
 
-    data: dict[str, object] = {}
-    if name is not None:
-        data["name"] = name
-    if urls is not None:
-        data["urls"] = [u.strip() for u in urls.split(",") if u.strip()]
-    if list_type is not None:
-        data["type"] = list_type
-
-    if not data:
+    if name is None and urls is None and list_type is None:
         echo_warning(
             "No update options provided. Use --name, --urls, or --type.",
             no_color=ctx.obj.no_color if ctx.obj is not None else False,
         )
         raise typer.Exit(code=1)
 
-    body = {"data": data}
+    # The API rejects PUT bodies that omit name, data.urls, or data.type
+    # ("name required", "urls must be an array of URLs", "data.type must be one of
+    # exact, regex"). Fetch the existing list and merge the user's overrides on top
+    # so callers only need to specify what they want to change.
+    current = client.request("GET", f"/api/v2/policy/urllist/{url_list_id}")
+    current_data = current.get("data") or {} if isinstance(current, dict) else {}
+
+    new_name = name if name is not None else (current.get("name") if isinstance(current, dict) else None)
+    new_urls = [u.strip() for u in urls.split(",") if u.strip()] if urls is not None else current_data.get("urls", [])
+    new_type = list_type if list_type is not None else current_data.get("type", "exact")
+
+    body = {"name": new_name, "data": {"urls": new_urls, "type": new_type}}
     result = client.request(
         "PUT",
         f"/api/v2/policy/urllist/{url_list_id}",
