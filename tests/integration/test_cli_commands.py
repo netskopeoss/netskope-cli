@@ -580,6 +580,75 @@ class TestPolicyCommands:
             assert "evil.com" in body["data"]["urls"]
             assert "bad.com" in body["data"]["urls"]
 
+    def test_policy_url_list_update_urls_only_preserves_name_and_type(self):
+        """update --urls must GET the list first and send name + data.type so the API
+        doesn't reject the PUT with 'name required' / 'data.type must be one of...'."""
+        existing = {
+            "id": 42,
+            "name": "kept-name",
+            "data": {"urls": ["old.com"], "type": "regex"},
+        }
+        updated = {
+            "id": 42,
+            "name": "kept-name",
+            "data": {"urls": ["new.com"], "type": "regex"},
+            "modify_type": "Edited",
+        }
+
+        with patch.object(
+            __import__("netskope_cli.core.client", fromlist=["NetskopeClient"]).NetskopeClient,
+            "request",
+            side_effect=[existing, updated],
+        ) as mock_req:
+            result = runner.invoke(
+                app,
+                ["--output", "json", "policy", "url-list", "update", "42", "--urls", "new.com"],
+            )
+            assert result.exit_code == 0, result.stdout
+            assert mock_req.call_count == 2
+            get_call, put_call = mock_req.call_args_list
+            assert get_call[0][0] == "GET"
+            assert get_call[0][1] == "/api/v2/policy/urllist/42"
+            assert put_call[0][0] == "PUT"
+            assert put_call[0][1] == "/api/v2/policy/urllist/42"
+            body = put_call[1]["json_data"]
+            assert body["name"] == "kept-name"
+            assert body["data"]["urls"] == ["new.com"]
+            assert body["data"]["type"] == "regex"
+
+    def test_policy_url_list_update_name_only_preserves_urls_and_type(self):
+        existing = {
+            "id": 42,
+            "name": "old-name",
+            "data": {"urls": ["a.com", "b.com"], "type": "exact"},
+        }
+        updated = {"id": 42, "name": "new-name", "modify_type": "Edited"}
+
+        with patch.object(
+            __import__("netskope_cli.core.client", fromlist=["NetskopeClient"]).NetskopeClient,
+            "request",
+            side_effect=[existing, updated],
+        ) as mock_req:
+            result = runner.invoke(
+                app,
+                ["--output", "json", "policy", "url-list", "update", "42", "--name", "new-name"],
+            )
+            assert result.exit_code == 0, result.stdout
+            put_call = mock_req.call_args_list[1]
+            body = put_call[1]["json_data"]
+            assert body["name"] == "new-name"
+            assert body["data"]["urls"] == ["a.com", "b.com"]
+            assert body["data"]["type"] == "exact"
+
+    def test_policy_url_list_update_no_options_errors_without_request(self):
+        with patch.object(
+            __import__("netskope_cli.core.client", fromlist=["NetskopeClient"]).NetskopeClient,
+            "request",
+        ) as mock_req:
+            result = runner.invoke(app, ["policy", "url-list", "update", "42"])
+            assert result.exit_code != 0
+            mock_req.assert_not_called()
+
 
 # ===================================================================
 # 7. Users commands (with mocked HTTP)
