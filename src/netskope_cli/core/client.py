@@ -159,11 +159,11 @@ class NetskopeClient:
         self._timeout = timeout
         # Convert string CA bundle path to an SSLContext to avoid httpx
         # deprecation warning for verify=<str>.
+        self._verify: bool | ssl.SSLContext
         if isinstance(verify, str):
-            ssl_ctx = ssl.create_default_context(cafile=verify)
-            self._verify: bool | ssl.SSLContext = ssl_ctx
+            self._verify = ssl.create_default_context(cafile=verify)
         else:
-            self._verify: bool | ssl.SSLContext = verify
+            self._verify = verify
         self._client: httpx.AsyncClient | None = None
 
     # ------------------------------------------------------------------

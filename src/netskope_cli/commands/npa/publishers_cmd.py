@@ -104,7 +104,7 @@ def list_publishers(
         data = client.request("GET", "/api/v2/infrastructure/publishers", params=params or None)
 
     if count:
-        formatter.format_output(data, fmt=fmt, title="Publishers", count=True)
+        formatter.format_output(data, fmt=fmt, title="Publishers", count_only=True)
     else:
         formatter.format_output(
             data,

@@ -203,13 +203,14 @@ def create_rule(
     formatter = _get_formatter(ctx)
     fmt = _get_output_format(ctx)
 
+    payload: dict[str, object]
     if json_file:
         payload = _load_json_file(json_file)
     else:
         if not rule_name:
             echo_error("Either --rule-name or --json-file is required.")
             raise typer.Exit(code=1)
-        payload: dict[str, object] = {
+        payload = {
             "rule_name": rule_name,
             "group_id": group_id,
             "enabled": "1" if enabled else "0",
@@ -255,10 +256,11 @@ def update_rule(
     formatter = _get_formatter(ctx)
     fmt = _get_output_format(ctx)
 
+    payload: dict[str, object]
     if json_file:
         payload = _load_json_file(json_file)
     else:
-        payload: dict[str, object] = {}
+        payload = {}
         if rule_name is not None:
             payload["rule_name"] = rule_name
         if enabled is not None:

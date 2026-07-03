@@ -28,7 +28,7 @@ def _get_formatter(ctx: typer.Context) -> OutputFormatter:
 def _get_output_format(ctx: typer.Context) -> str:
     state = ctx.obj
     if state is not None:
-        return state.output.value
+        return str(state.output.value)
     return "table"
 
 
@@ -44,9 +44,12 @@ def _load_json_file(path: str) -> dict[str, Any]:
     if not p.exists():
         raise typer.BadParameter(f"File not found: {path}")
     try:
-        return json.loads(p.read_text())
+        data = json.loads(p.read_text())
     except json.JSONDecodeError as exc:
         raise typer.BadParameter(f"Invalid JSON in {path}: {exc}")
+    if not isinstance(data, dict):
+        raise typer.BadParameter(f"Expected a JSON object in {path}")
+    return data
 
 
 def _parse_comma_sep(value: str | None) -> list[str]:

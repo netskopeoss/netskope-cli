@@ -62,13 +62,14 @@ def _save_config(cfg: dict) -> None:
 
 def _active_profile(cfg: dict) -> str:
     """Return the name of the currently active profile."""
-    return cfg.get("active_profile", "default")
+    return str(cfg.get("active_profile", "default"))
 
 
 def _get_profile_section(cfg: dict, profile: str) -> dict:
     """Return the config dict for a given profile, creating it if needed."""
-    profiles = cfg.setdefault("profiles", {})
-    return profiles.setdefault(profile, {})
+    profiles: dict = cfg.setdefault("profiles", {})
+    section: dict = profiles.setdefault(profile, {})
+    return section
 
 
 def _mask_token(token: str) -> str:
@@ -131,7 +132,8 @@ def _get_token(profile: str) -> str | None:
     cfg = _load_config()
     profiles = cfg.get("profiles", {})
     section = profiles.get(profile, {})
-    return section.get("api_token")
+    token = section.get("api_token")
+    return token if isinstance(token, str) else None
 
 
 def _delete_token(profile: str) -> None:
@@ -154,7 +156,7 @@ def _resolve_profile(ctx: typer.Context) -> str:
     """
     state = ctx.obj
     if state is not None and state.profile is not None:
-        return state.profile
+        return str(state.profile)
     env_profile = os.environ.get("NETSKOPE_PROFILE")
     if env_profile:
         return env_profile

@@ -97,6 +97,7 @@ def update_alerts_config(
     formatter = _get_formatter(ctx)
     fmt = _get_output_format(ctx)
 
+    payload: dict[str, object]
     if json_file:
         payload = _load_json_file(json_file)
     else:
@@ -104,7 +105,7 @@ def update_alerts_config(
             echo_error("Provide --admin-users and/or --event-types, or use --json-file.")
             raise typer.Exit(code=1)
 
-        payload: dict[str, object] = {}
+        payload = {}
         if admin_users:
             payload["adminUsers"] = _parse_comma_sep(admin_users)
         if event_types:

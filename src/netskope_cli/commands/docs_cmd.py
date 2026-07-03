@@ -147,7 +147,7 @@ def _get_output_format(ctx: typer.Context) -> str:
     """Return the output format string from the global state."""
     state = ctx.obj
     if state is not None:
-        return state.output.value
+        return str(state.output.value)
     return "table"
 
 

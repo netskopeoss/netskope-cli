@@ -176,7 +176,7 @@ def tree_command(
     no_color = state.no_color if state is not None else False
 
     # Walk up to the root Click group
-    root_ctx = ctx
+    root_ctx: click.Context = ctx
     while root_ctx.parent is not None:
         root_ctx = root_ctx.parent
     root_group = root_ctx.command

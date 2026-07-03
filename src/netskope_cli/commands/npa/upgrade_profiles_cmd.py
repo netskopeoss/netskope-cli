@@ -220,10 +220,11 @@ def update_upgrade_profile(
     formatter = _get_formatter(ctx)
     fmt = _get_output_format(ctx)
 
+    payload: dict[str, object]
     if json_file:
         payload = _load_json_file(json_file)
     else:
-        payload: dict[str, object] = {}
+        payload = {}
         if name is not None:
             payload["name"] = name
         if enabled is not None:

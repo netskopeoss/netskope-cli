@@ -47,7 +47,7 @@ def _resolve_profile(ctx: typer.Context) -> str:
 
     state = ctx.obj
     if state is not None and state.profile is not None:
-        return state.profile
+        return str(state.profile)
     cfg = _load_config()
     return _active_profile(cfg)
 
@@ -95,9 +95,10 @@ def _get_tenant(profile: str) -> str | None:
         # Fall back to direct config lookup
         from netskope_cli.commands.config_cmd import _get_profile_section, _load_config
 
-        cfg = _load_config()
-        section = _get_profile_section(cfg, profile)
-        return section.get("tenant")
+        raw_cfg = _load_config()
+        section = _get_profile_section(raw_cfg, profile)
+        tenant = section.get("tenant")
+        return tenant if isinstance(tenant, str) else None
 
 
 # ---------------------------------------------------------------------------

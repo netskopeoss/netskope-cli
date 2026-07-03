@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Coroutine
 from typing import Any
 
 import typer
@@ -198,7 +199,7 @@ async def _gather_status(
     event_params = {**time_params, "limit": _EVENT_LIMIT}
     errors: list[str] = []
 
-    tasks = []
+    tasks: list[Coroutine[Any, Any, Any]] = []
     # Event counts
     for etype in event_types:
         tasks.append(

@@ -178,6 +178,7 @@ def apps_create(
     fmt = _get_output_format(ctx)
     no_color = ctx.obj.no_color if ctx.obj is not None else False
 
+    payload: dict
     if json_file:
         payload = _load_json_file(json_file)
     else:
@@ -188,7 +189,7 @@ def apps_create(
             echo_error("--host is required when not using --json-file.", no_color=no_color)
             raise typer.Exit(code=1)
 
-        payload: dict = {"app_name": app_name, "host": host}
+        payload = {"app_name": app_name, "host": host}
         if protocols is not None:
             try:
                 payload["protocols"] = json.loads(protocols)
@@ -265,10 +266,11 @@ def apps_update(
     fmt = _get_output_format(ctx)
     no_color = ctx.obj.no_color if ctx.obj is not None else False
 
+    payload: dict
     if json_file:
         payload = _load_json_file(json_file)
     else:
-        payload: dict = {}
+        payload = {}
         if app_name is not None:
             payload["app_name"] = app_name
         if host is not None:

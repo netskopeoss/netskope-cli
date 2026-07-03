@@ -340,8 +340,8 @@ def _maybe_show_setup_hint(ctx: typer.Context, cli_profile: str | None) -> None:
     # fall back to sys.argv for edge cases where the context hasn't resolved yet.
     subcommand = ctx.invoked_subcommand
     if subcommand is None:
-        args = ctx.protected_params.get("args") or sys.argv[1:]
-        for arg in args if isinstance(args, list) else [args]:
+        args = ctx.args or sys.argv[1:]
+        for arg in args:
             if isinstance(arg, str) and not arg.startswith("-"):
                 subcommand = arg
                 break

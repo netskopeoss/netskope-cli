@@ -857,7 +857,7 @@ def echo_info(msg: str, *, no_color: bool = False) -> None:
 @contextmanager
 def spinner(
     message: str = "Loading...", *, no_color: bool = False, quiet: bool = False
-) -> Generator[Progress, None, None]:
+) -> Generator[Progress | None, None, None]:
     """Context manager that shows a Rich spinner on stderr.
 
     Automatically suppressed when stderr is not a TTY (piped output)
@@ -870,7 +870,7 @@ def spinner(
     """
     # Suppress spinner when stderr isn't a TTY or quiet mode is active
     if quiet or not sys.stderr.isatty():
-        yield None  # type: ignore[arg-type]
+        yield None
         return
 
     console = _make_console(no_color=no_color, stderr=True)
