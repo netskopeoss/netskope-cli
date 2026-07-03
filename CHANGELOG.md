@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.3] - 2026-07-03
+
+- Security: resolve all GitHub Dependabot alerts — bump pytest to >=9.0.3 (tmpdir handling vulnerability) and refresh locked versions of cryptography (49.0.0), idna (3.18), and pydantic-settings (2.14.2).
+- Fix `npa publishers list --count` crashing with `TypeError`: the command passed an unsupported `count` keyword to the output formatter (now `count_only`).
+- Fix a latent `AttributeError` in the getting-started hint: `main.py` referenced `ctx.protected_params`, which does not exist on Click's Context (now uses `ctx.args`).
+- `npa` commands using `--json-file` now reject JSON files whose top-level value is not an object, instead of sending malformed payloads to the API.
+- Type-safety pass: `mypy src/` is now clean (was 38 errors) — added `types-toml`/`types-PyYAML` stubs and fixed untyped returns, variable redefinitions, and annotations across 25 modules.
+
 ## [1.4.2] - 2026-07-03
 
 - Fix `dem users scores --aggregation-type`: the API enum is `avg`/`p95` — the option previously advertised `avg/min/max`, where `min`/`max` return HTTP 400 and the valid `p95` was undocumented. Now a validated enum choice.
