@@ -1,6 +1,12 @@
 # Changelog
 
-## [1.4.1] - 2026-05-08
+## [1.4.2] - 2026-07-03
+
+- Fix `dem users scores --aggregation-type`: the API enum is `avg`/`p95` — the option previously advertised `avg/min/max`, where `min`/`max` return HTTP 400 and the valid `p95` was undocumented. Now a validated enum choice.
+- Fix `dem users network --metric-type`: now a validated enum of the API's actual values `all/latency/packet_loss/jitter`, surfacing the previously hidden `jitter` metric and rejecting the invalid `packetloss` spelling client-side.
+- Correct `dem users rca` help text: the endpoint returns a weighted root-cause tree plus per-component score summary (CPU, memory, disk, wifi, network, network RTT, device, user DEM), not raw CPU utilization/top-process data.
+- Document privileged endpoints: `dem metrics`, `dem states`, `dem traceroute`, `dem users traceroute`, and `dem users traceroute-ts` use internal endpoints absent from the public swagger; scoped API tokens may receive 403 (browser/session auth works).
+- Ports the applicable DEM/ADEM correctness fixes from mcp-server-pilot PR #25.
 
 - Fix `policy url-list update <id>` returning HTTP 400 (`name required`). The PUT body placed `name` inside `data`, and the API requires `name` (top level), `data.urls`, and `data.type` on every request — but the command only sent the fields the user explicitly passed. The command now GETs the existing list first and PUTs with the user's `--name` / `--urls` / `--type` merged over the current values, so callers only need to specify what they want to change.
 

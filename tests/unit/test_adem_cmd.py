@@ -704,3 +704,116 @@ class TestExistingAdemRegression:
         assert result.exit_code == 0
         for cmd in ["applications", "device-details", "npa-network-paths", "diagnose"]:
             assert cmd in result.output
+
+
+# ---------------------------------------------------------------------------
+# enum validation — scores aggregation_type and network metric_type
+# ---------------------------------------------------------------------------
+
+MOCK_NETWORK = {
+    "metrics": [{"latency": 35, "packetLoss": 0, "jitter": 2, "pop": "FR-PAR1", "timestamp": 1710050000}],
+}
+
+
+class TestEnumValidation:
+    @respx.mock
+    def test_scores_accepts_p95(self, runner):
+        """p95 is a valid aggregation (API enum is ['avg','p95'])."""
+        route = respx.post(f"{BASE}/api/v2/adem/users/device/getaggregatedscores").mock(
+            return_value=httpx.Response(200, json=MOCK_SCORES)
+        )
+        result = runner.invoke(
+            app,
+            [
+                "dem",
+                "users",
+                "scores",
+                "--user",
+                "alice@example.com",
+                "--device-id",
+                "DEV-1234",
+                "--start-time",
+                "1710000000",
+                "--end-time",
+                "1710086400",
+                "--aggregation-type",
+                "p95",
+            ],
+        )
+        assert result.exit_code == 0
+        body = json.loads(route.calls[0].request.content)
+        assert body["aggregationType"] == "p95"
+
+    def test_scores_rejects_min_and_max(self, runner):
+        """min/max return HTTP 400 from the API and must be rejected client-side."""
+        for bad in ("min", "max"):
+            result = runner.invoke(
+                app,
+                [
+                    "dem",
+                    "users",
+                    "scores",
+                    "--user",
+                    "alice@example.com",
+                    "--device-id",
+                    "DEV-1234",
+                    "--start-time",
+                    "1710000000",
+                    "--end-time",
+                    "1710086400",
+                    "--aggregation-type",
+                    bad,
+                ],
+            )
+            assert result.exit_code != 0
+
+    @respx.mock
+    def test_network_accepts_packet_loss_and_jitter(self, runner):
+        """packet_loss and jitter are valid API metric types (all/latency/packet_loss/jitter)."""
+        route = respx.post(f"{BASE}/api/v2/adem/users/metrics/getnetwork").mock(
+            return_value=httpx.Response(200, json=MOCK_NETWORK)
+        )
+        for mt in ("packet_loss", "jitter"):
+            result = runner.invoke(
+                app,
+                [
+                    "dem",
+                    "users",
+                    "network",
+                    "--user",
+                    "alice@example.com",
+                    "--device-id",
+                    "DEV-1234",
+                    "--start-time",
+                    "1710000000",
+                    "--end-time",
+                    "1710086400",
+                    "--metric-type",
+                    mt,
+                ],
+            )
+            assert result.exit_code == 0
+            body = json.loads(route.calls.last.request.content)
+            assert body["metricType"] == mt
+
+    def test_network_rejects_packetloss(self, runner):
+        """The legacy 'packetloss' spelling returns HTTP 400 from the API and must be rejected."""
+        result = runner.invoke(
+            app,
+            [
+                "dem",
+                "users",
+                "network",
+                "--user",
+                "alice@example.com",
+                "--device-id",
+                "DEV-1234",
+                "--start-time",
+                "1710000000",
+                "--end-time",
+                "1710086400",
+                "--metric-type",
+                "packetloss",
+            ],
+        )
+        assert result.exit_code != 0

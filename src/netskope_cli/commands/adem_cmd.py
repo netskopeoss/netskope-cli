@@ -9,6 +9,7 @@ scores, root cause analysis, and traceroute data.
 from __future__ import annotations
 
 import logging
+from enum import Enum
 from typing import Any
 
 import typer
@@ -34,6 +35,27 @@ adem_users_app = typer.Typer(
     ),
     no_args_is_help=True,
 )
+
+# ---------------------------------------------------------------------------
+# Enums
+# ---------------------------------------------------------------------------
+
+
+class AggregationType(str, Enum):
+    """Aggregation types accepted by device/getaggregatedscores."""
+
+    avg = "avg"
+    p95 = "p95"
+
+
+class NetworkMetricType(str, Enum):
+    """Metric types accepted by metrics/getnetwork."""
+
+    all = "all"
+    latency = "latency"
+    packet_loss = "packet_loss"
+    jitter = "jitter"
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -314,10 +336,10 @@ def users_scores(
     start_time: int = typer.Option(..., "--start-time", help="Start time in Unix epoch seconds."),
     end_time: int = typer.Option(..., "--end-time", help="End time in Unix epoch seconds."),
     device_id: str = typer.Option(..., "--device-id", "-d", help="Device ID (from 'dem users devices')."),
-    aggregation_type: str = typer.Option(
-        "avg",
+    aggregation_type: AggregationType = typer.Option(
+        AggregationType.avg,
         "--aggregation-type",
-        help="Aggregation type: avg, min, or max.",
+        help="Aggregation type: avg or p95.",
     ),
 ) -> None:
     """Get aggregated experience scores for a device.
@@ -336,13 +358,15 @@ def users_scores(
             --user alice@example.com \\
             --device-id DEVICE-UUID \\
             --start-time 1710000000 --end-time 1710086400 \\
-            --aggregation-type min
+            --aggregation-type p95
     """
     client = _build_client(ctx)
     formatter = _get_formatter(ctx)
     fmt = _get_output_format(ctx)
 
-    body = _build_user_body(start_time, end_time, user=user, device_id=device_id, aggregationType=aggregation_type)
+    body = _build_user_body(
+        start_time, end_time, user=user, device_id=device_id, aggregationType=aggregation_type.value
+    )
 
     if not _is_quiet(ctx):
         with spinner("Fetching aggregated scores...", no_color=_no_color(ctx)):
@@ -406,11 +430,13 @@ def users_rca(
     end_time: int = typer.Option(..., "--end-time", help="End time in Unix epoch seconds."),
     device_id: str = typer.Option(..., "--device-id", "-d", help="Device ID (from 'dem users devices')."),
 ) -> None:
-    """Root cause analysis for a device — CPU, memory, and disk telemetry.
+    """Root cause analysis for a device — weighted root-cause tree and scores.
 
-    Returns detailed device health data including CPU utilization and
-    top processes, disk usage and utilization, and memory scores.  This
-    is the primary command for investigating device performance issues.
+    Returns a weighted root-cause tree plus a per-component score summary
+    (CPU, memory, disk, wifi, network, network RTT, device, and user DEM
+    scores).  This is the primary command for investigating device
+    performance issues; raw usage and process data are served by
+    separate endpoints.
 
     EXAMPLES
 
@@ -451,16 +477,16 @@ def users_network(
     start_time: int = typer.Option(..., "--start-time", help="Start time in Unix epoch seconds."),
     end_time: int = typer.Option(..., "--end-time", help="End time in Unix epoch seconds."),
     device_id: str = typer.Option(..., "--device-id", "-d", help="Device ID (from 'dem users devices')."),
-    metric_type: str = typer.Option(
-        "all",
+    metric_type: NetworkMetricType = typer.Option(
+        NetworkMetricType.all,
         "--metric-type",
-        help="Metric type to retrieve (default: all).",
+        help="Metric type to retrieve: all, latency, packet_loss, or jitter.",
     ),
 ) -> None:
     """Get network metrics timeseries for a device.
 
-    Returns latency and packet loss time-series data for the specified
-    user and device within the given time window.
+    Returns latency, packet loss, and jitter time-series data for the
+    specified user and device within the given time window.
 
     EXAMPLES
 
@@ -479,7 +505,7 @@ def users_network(
     formatter = _get_formatter(ctx)
     fmt = _get_output_format(ctx)
 
-    body = _build_user_body(start_time, end_time, user=user, device_id=device_id, metricType=metric_type)
+    body = _build_user_body(start_time, end_time, user=user, device_id=device_id, metricType=metric_type.value)
 
     if not _is_quiet(ctx):
         with spinner("Fetching network metrics...", no_color=_no_color(ctx)):
@@ -602,6 +628,10 @@ def users_traceroute_ts(
     Use these timestamps with ``dem users traceroute`` to fetch the
     detailed path data for a specific point in time.
 
+    NOTE: This uses an internal endpoint not in the public API docs;
+    scoped API tokens may receive 403.  Works with browser/session auth
+    (``netskope auth login``).
+
     EXAMPLES
 
         netskope dem users traceroute-ts \\
@@ -643,6 +673,10 @@ def users_traceroute(
     device details, and geographic location.  Use ``dem users traceroute-ts``
     first to find available timestamps, then pass a specific timestamp as
     both ``--start-time`` and ``--end-time``.
+
+    NOTE: This uses an internal endpoint not in the public API docs;
+    scoped API tokens may receive 403.  Works with browser/session auth
+    (``netskope auth login``).
 
     EXAMPLES
 

@@ -712,6 +712,10 @@ def metrics_query(
     The --where clause uses operator-first format with ["$", "value"]
     for string literals.
 
+    NOTE: This uses an internal endpoint not in the public API docs;
+    scoped API tokens may receive 403.  Works with browser/session auth
+    (``netskope auth login``).
+
     EXAMPLES
 
         # Query average UX scores per user (last 24h)
@@ -939,6 +943,10 @@ def states_query(
     Queries current device/agent state — does NOT accept time ranges.
     Only 'agent_status' and 'client_status' data sources are valid.
 
+    NOTE: This uses an internal endpoint not in the public API docs;
+    scoped API tokens may receive 403.  Works with browser/session auth
+    (``netskope auth login``).
+
     EXAMPLES
 
         # List all connected agents
@@ -1033,6 +1041,10 @@ def traceroute_query(
     Returns hop-by-hop network path graph data.  The traceroute API does
     NOT support a limit parameter; use --where filters and short time
     ranges to control response size.
+
+    NOTE: This uses an internal endpoint not in the public API docs;
+    scoped API tokens may receive 403.  Works with browser/session auth
+    (``netskope auth login``).
 
     EXAMPLES
 
