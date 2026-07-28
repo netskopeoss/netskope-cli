@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import httpx
 import pytest
 import respx
@@ -220,6 +222,122 @@ class TestAsyncRequests:
         async with NetskopeClient(BASE_URL, api_token="tok") as client:
             with pytest.raises(APIError, match="Connection failed"):
                 await client.get("/api/v2/down")
+
+
+# ---------------------------------------------------------------------------
+# Rate-limit retry (HTTP 429)
+# ---------------------------------------------------------------------------
+
+
+class TestRateLimitRetry:
+    def _capture_sleep(self, monkeypatch: pytest.MonkeyPatch) -> list[float]:
+        """Replace asyncio.sleep with a function that only records the delay values."""
+        delays: list[float] = []
+
+        async def fake_sleep(seconds: float) -> None:
+            delays.append(seconds)
+
+        monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+        return delays
+
+    @respx.mock
+    async def test_429_then_success_retries(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        delays = self._capture_sleep(monkeypatch)
+        route = respx.get(f"{BASE_URL}/api/v2/test").mock(
+            side_effect=[
+                httpx.Response(429, json={"message": "slow down"}),
+                httpx.Response(200, json={"ok": True}),
+            ]
+        )
+        async with NetskopeClient(BASE_URL, api_token="tok") as client:
+            data = await client.get("/api/v2/test")
+        assert data == {"ok": True}
+        assert route.call_count == 2
+        assert delays == [1.0]
+
+    @respx.mock
+    async def test_backoff_schedule_is_exponential(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        delays = self._capture_sleep(monkeypatch)
+        route = respx.get(f"{BASE_URL}/api/v2/test").mock(
+            side_effect=[
+                httpx.Response(429, json={"message": "slow down"}),
+                httpx.Response(429, json={"message": "slow down"}),
+                httpx.Response(429, json={"message": "slow down"}),
+                httpx.Response(200, json={"ok": True}),
+            ]
+        )
+        async with NetskopeClient(BASE_URL, api_token="tok") as client:
+            data = await client.get("/api/v2/test")
+        assert data == {"ok": True}
+        assert route.call_count == 4
+        assert delays == [1.0, 2.0, 4.0]
+
+    @respx.mock
+    async def test_persistent_429_raises_after_retries(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        delays = self._capture_sleep(monkeypatch)
+        route = respx.get(f"{BASE_URL}/api/v2/test").mock(
+            return_value=httpx.Response(429, json={"message": "rate limited"})
+        )
+        async with NetskopeClient(BASE_URL, api_token="tok") as client:
+            with pytest.raises(RateLimitError):
+                await client.get("/api/v2/test")
+        assert route.call_count == 4  # initial attempt + 3 retries
+        assert len(delays) == 3
+
+    @respx.mock
+    async def test_retry_after_header_honoured(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        delays = self._capture_sleep(monkeypatch)
+        respx.get(f"{BASE_URL}/api/v2/test").mock(
+            side_effect=[
+                httpx.Response(429, json={"message": "slow down"}, headers={"Retry-After": "5"}),
+                httpx.Response(200, json={"ok": True}),
+            ]
+        )
+        async with NetskopeClient(BASE_URL, api_token="tok") as client:
+            await client.get("/api/v2/test")
+        assert delays == [5.0]
+
+    @respx.mock
+    async def test_retry_after_clamped_to_ceiling(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        delays = self._capture_sleep(monkeypatch)
+        respx.get(f"{BASE_URL}/api/v2/test").mock(
+            side_effect=[
+                httpx.Response(429, json={"message": "slow down"}, headers={"Retry-After": "999"}),
+                httpx.Response(200, json={"ok": True}),
+            ]
+        )
+        async with NetskopeClient(BASE_URL, api_token="tok") as client:
+            await client.get("/api/v2/test")
+        assert delays == [60.0]
+
+    @respx.mock
+    async def test_unparseable_retry_after_falls_back_to_backoff(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        delays = self._capture_sleep(monkeypatch)
+        respx.get(f"{BASE_URL}/api/v2/test").mock(
+            side_effect=[
+                httpx.Response(
+                    429,
+                    json={"message": "slow down"},
+                    headers={"Retry-After": "Wed, 21 Oct 2026 07:28:00 GMT"},
+                ),
+                httpx.Response(200, json={"ok": True}),
+            ]
+        )
+        async with NetskopeClient(BASE_URL, api_token="tok") as client:
+            await client.get("/api/v2/test")
+        assert delays == [1.0]
+
+    @respx.mock
+    async def test_max_retries_zero_fails_fast(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        delays = self._capture_sleep(monkeypatch)
+        route = respx.get(f"{BASE_URL}/api/v2/test").mock(
+            return_value=httpx.Response(429, json={"message": "rate limited"})
+        )
+        async with NetskopeClient(BASE_URL, api_token="tok", max_retries=0) as client:
+            with pytest.raises(RateLimitError):
+                await client.get("/api/v2/test")
+        assert route.call_count == 1
+        assert delays == []
 
 
 # ---------------------------------------------------------------------------
