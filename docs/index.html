@@ -1276,9 +1276,9 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
       <details class="card">
         <summary class="p-4 font-semibold text-sm">incidents update</summary>
         <div class="px-4 pb-4">
-          <p class="text-sm text-muted-foreground mb-3">Update incident fields. API: <code>PATCH /api/v2/incidents/{id}</code></p>
+          <p class="text-sm text-muted-foreground mb-3">Update one incident field (status, assignee or severity). API: <code>PATCH /api/v2/incidents/update</code></p>
           <div class="code-block p-3 text-xs">
-            <code><span class="prompt">$</span> ntsk incidents update <span class="string">INC-12345</span> <span class="flag">--status</span> <span class="string">closed</span> <span class="flag">--assignee</span> <span class="string">alice@example.com</span></code>
+            <code><span class="prompt">$</span> ntsk incidents update <span class="string">1807262583165050077</span> <span class="flag">--field</span> <span class="string">status</span> <span class="flag">--new-value</span> <span class="string">in_progress</span> <span class="flag">--user</span> <span class="string">alice@example.com</span></code>
           </div>
         </div>
       </details>
@@ -1291,7 +1291,7 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
 <span class="prompt">$</span> ntsk incidents forensics <span class="string">32885923562112144</span>
 
 <span class="comment"># UBA anomalies for a user</span>
-<span class="prompt">$</span> ntsk incidents anomalies <span class="string">alice@example.com</span></code>
+<span class="prompt">$</span> ntsk incidents anomalies <span class="flag">--users</span> <span class="string">alice@example.com</span></code>
           </div>
         </div>
       </details>
@@ -2308,7 +2308,7 @@ ntsk alerts list <span class="flag">-t</span> <span class="string">"Compromised 
 <span class="prompt">$</span> ntsk alerts get <span class="flag">--user</span> <span class="string">suspect@company.com</span> <span class="flag">--since</span> <span class="string">30d</span>
 
 <span class="comment"># 3. Check UBA anomalies</span>
-<span class="prompt">$</span> ntsk incidents anomalies <span class="string">suspect@company.com</span>
+<span class="prompt">$</span> ntsk incidents anomalies <span class="flag">--users</span> <span class="string">suspect@company.com</span>
 
 <span class="comment"># 4. Review their application usage</span>
 <span class="prompt">$</span> ntsk events get <span class="flag">--type</span> <span class="string">application</span> <span class="flag">--user</span> <span class="string">suspect@company.com</span> <span class="flag">--since</span> <span class="string">30d</span>
@@ -2856,10 +2856,10 @@ ntsk incidents list --start 7d --limit 10 | jq '[.[] | {incident_id, user, app, 
 ntsk incidents list --fields incident_id,user,app,object,severity,timestamp --limit 10 -o json
 
 ntsk incidents search --query 'severity eq "high"' --start 24h   # --query is REQUIRED here
-ntsk incidents uci --user alice@example.com             # User Confidence Index
-ntsk incidents anomalies --user alice@example.com       # UBA anomalies
+ntsk incidents uci alice@example.com                    # User Confidence Index (positional)
+ntsk incidents anomalies --users alice@example.com      # UBA anomalies (--users, plural)
 ntsk incidents forensics <dlp_incident_id>              # DLP forensic data
-ntsk incidents update <id> --status "Closed" --comment "Resolved"
+ntsk incidents update <incident_id> --field status --new-value closed --user alice@example.com
 \`\`\`
 
 **Key incident response fields:** \`_id\`, \`incident_id\`, \`dlp_incident_id\`, \`dlp_incident_severity\`, \`dlp_file\`, \`dlp_match_info\`, \`user\`, \`app\`, \`activity\`, \`object\`, \`url\`, \`domain\`, \`file_type\`, \`file_size\`, \`md5\`, \`sha256\`, \`severity\`, \`status\`, \`srcip\`, \`src_country\`, \`forensic_data\`

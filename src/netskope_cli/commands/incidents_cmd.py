@@ -12,8 +12,26 @@ from typing import Optional
 import typer
 
 from netskope_cli.core.client import NetskopeClient, build_client
-from netskope_cli.core.output import OutputFormatter, echo_error, echo_success, spinner
+from netskope_cli.core.exceptions import APIError, ValidationError
+from netskope_cli.core.output import (
+    OutputFormatter,
+    echo_error,
+    echo_success,
+    echo_warning,
+    spinner,
+)
 from netskope_cli.utils.helpers import validate_time_range
+
+# Fields the update API accepts, and the values each one recognises.
+#
+# The tenant validates `severity` (an unknown value fails the write), but it does
+# NOT validate `status` — an arbitrary string is written straight through, so a
+# typo or the wrong capitalisation silently corrupts the incident's workflow
+# state. Both are checked here; --force bypasses the check.
+_UPDATABLE_FIELDS = ("status", "assignee", "severity")
+_STATUS_VALUES = ("new", "in_progress", "resolved", "closed")
+_SEVERITY_VALUES = ("Low", "Medium", "High", "Critical")
+_KNOWN_VALUES = {"status": _STATUS_VALUES, "severity": _SEVERITY_VALUES}
 
 # ---------------------------------------------------------------------------
 # Typer sub-app
@@ -228,11 +246,12 @@ def uci(
 @incidents_app.command("update")
 def update(
     ctx: typer.Context,
-    incident_id: str = typer.Argument(
-        ...,
+    incident_id: Optional[str] = typer.Argument(
+        None,
         help=(
-            "The unique identifier of the incident to update. You can find incident IDs "
-            "by running 'netskope incidents search' or 'netskope events incident'."
+            "The numeric ID of the incident to update. This is the 'incident_id' (also "
+            "reported as 'dlp_incident_id') field returned by 'netskope incidents search'. "
+            "Omit only when using --object-id instead."
         ),
     ),
     field: str = typer.Option(
@@ -244,80 +263,222 @@ def update(
             "to update multiple fields."
         ),
     ),
-    old_value: str = typer.Option(
-        ...,
-        "--old-value",
-        help=(
-            "The current value of the field being updated. This is required by the API as "
-            "a concurrency guard to prevent conflicting updates. Must match the field's "
-            "current value exactly."
-        ),
-    ),
     new_value: str = typer.Option(
         ...,
         "--new-value",
         help=(
-            "The new value to set for the field. For 'status', use values like 'open', "
-            "'in_progress', or 'closed'. For 'severity', use 'low', 'medium', 'high', "
-            "or 'critical'. For 'assignee', use the analyst's email address."
+            "The new value to set. For 'status': new, in_progress, resolved, closed "
+            "(lowercase). For 'severity': Low, Medium, High, Critical (capitalised). "
+            "For 'assignee': the analyst's email address."
         ),
     ),
     user: str = typer.Option(
         ...,
         "--user",
         help=(
-            "Email address of the analyst making the change. This is recorded in the "
-            "audit trail for accountability. Must be a valid user in your Netskope tenant."
+            "Identifier of the analyst making the change, recorded in the audit trail. "
+            "The API does not validate this against your tenant's users, so any string "
+            "is accepted — an email address is the useful convention."
         ),
+    ),
+    old_value: Optional[str] = typer.Option(
+        None,
+        "--old-value",
+        help=(
+            "The field's current value. Required with --object-id, where the API uses it "
+            "to select which incidents to change. Ignored when updating by incident ID."
+        ),
+    ),
+    object_id: Optional[str] = typer.Option(
+        None,
+        "--object-id",
+        help=(
+            "Update every incident attached to this object instead of a single incident. "
+            "An object ID looks like 'hash_user@example.com_<md5>_<sha1>' and is usually "
+            "shared by many incidents. Requires --old-value."
+        ),
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Send --new-value even if it is not a recognised value for the field.",
     ),
 ) -> None:
     """Update a field on an existing incident (status, assignee, or severity).
 
-    Calls PATCH /api/v2/incidents/update with the provided field change. The API
-    requires the old value as a concurrency guard. Use this for SOC workflow
-    automation such as assigning incidents to analysts or escalating severity.
+    Calls PATCH /api/v2/incidents/update. By default this targets one incident by
+    its numeric ID. Pass --object-id to instead update every incident attached to a
+    given object, which is a bulk operation — see the warning it prints.
+
+    A success here means the API accepted the request, not that an incident
+    changed: an ID matching no incident is also reported as success. Re-query to
+    confirm, e.g. 'netskope incidents search --query "incident_id eq <id>"'.
 
     Examples:
-        netskope incidents update INC-123 --field status \\
-            --old-value open --new-value in_progress --user analyst@example.com
-        netskope incidents update INC-456 --field severity \\
-            --old-value medium --new-value critical --user admin@example.com
-        netskope incidents update INC-789 --field assignee \\
-            --old-value "" --new-value responder@example.com --user admin@example.com
+        netskope incidents update 1807262583165050077 --field status \\
+            --new-value in_progress --user analyst@example.com
+        netskope incidents update 1807262583165050077 --field severity \\
+            --new-value Critical --user admin@example.com
+        netskope incidents update 1807262583165050077 --field assignee \\
+            --new-value responder@example.com --user admin@example.com
     """
     state = ctx.obj
-    allowed_fields = ("status", "assignee", "severity")
-    if field not in allowed_fields:
-        echo_error(
-            f"Invalid field '{field}'. Must be one of: {', '.join(allowed_fields)}",
+
+    if field not in _UPDATABLE_FIELDS:
+        raise ValidationError(
+            f"Invalid field '{field}'.",
+            suggestion=f"--field must be one of: {', '.join(_UPDATABLE_FIELDS)}",
+        )
+
+    if incident_id and object_id:
+        raise ValidationError(
+            "Pass either an incident ID or --object-id, not both.",
+            suggestion=(
+                "The API cannot mix the two in one call. Drop --object-id to update the "
+                "single incident, or drop the ID argument to update by object."
+            ),
+        )
+    if not incident_id and not object_id:
+        raise ValidationError(
+            "No incident to update.",
+            suggestion=(
+                "Give the numeric incident ID as an argument, or use --object-id.\n"
+                "Find IDs with: netskope incidents search --fields incident_id,status,severity"
+            ),
+        )
+
+    known = _KNOWN_VALUES.get(field)
+    if known and new_value not in known and not force:
+        raise ValidationError(
+            f"'{new_value}' is not a recognised value for '{field}'.",
+            suggestion=(
+                f"Valid values are: {', '.join(known)} (case-sensitive).\n"
+                "The tenant does not reject an unrecognised status, it stores it verbatim, "
+                "so a typo here silently corrupts the incident. Pass --force if you really "
+                "mean it."
+            ),
+        )
+
+    entry: dict[str, object] = {
+        "field": field,
+        "new_value": new_value,
+        "user": user,
+    }
+
+    if object_id:
+        if old_value is None:
+            raise ValidationError(
+                "--object-id requires --old-value.",
+                suggestion=(
+                    "The API selects incidents by the pair (object_id, current value), so "
+                    "--old-value must match the field's current value exactly."
+                ),
+            )
+        entry["object_id"] = object_id
+        entry["old_value"] = old_value
+        target = f"object {object_id}"
+        echo_warning(
+            "--object-id updates every incident attached to this object, which is often "
+            "dozens. The API reports the number of payload entries sent, not the number of "
+            "incidents changed, so the result count will read '1' either way.",
             no_color=state.no_color,
         )
-        raise typer.Exit(code=1)
+    else:
+        # incident_id must reach the API as a JSON integer: the tenant rejects a quoted
+        # ID with "incident_id attribute needs to be integer".
+        assert incident_id is not None  # narrowed by the checks above
+        if not incident_id.isdigit():
+            raise ValidationError(
+                f"'{incident_id}' is not a valid incident ID.",
+                suggestion=(
+                    "Incident IDs are numeric, e.g. 1807262583165050077. If you meant to "
+                    "update by object, pass it as --object-id together with --old-value."
+                ),
+            )
+        entry["incident_id"] = int(incident_id)
+        target = f"incident {incident_id}"
+        if old_value is not None:
+            echo_warning(
+                "--old-value is ignored when updating by incident ID; the API applies no "
+                "concurrency check on this path.",
+                no_color=state.no_color,
+            )
 
     client = _build_client(ctx)
     formatter = _get_formatter(ctx)
     fmt = _get_output_format(ctx)
 
-    payload = {
-        "payload": [
-            {
-                "object_id": incident_id,
-                "field": field,
-                "old_value": old_value,
-                "new_value": new_value,
-                "user": user,
-            }
-        ]
-    }
-
     with spinner("Updating incident...", no_color=state.no_color):
-        data = client.request(
-            "PATCH",
-            "/api/v2/incidents/update",
-            json_data=payload,
+        try:
+            data = client.request(
+                "PATCH",
+                "/api/v2/incidents/update",
+                json_data={"payload": [entry]},
+            )
+        except APIError as exc:
+            # A 500 here means the tenant matched no incident, not a transient fault.
+            # Its own wording ("please try later") sends people into pointless retries.
+            if exc.status_code == 500 and "update incidents" in str(exc).lower():
+                raise APIError(
+                    f"The tenant found no incident matching {target}.",
+                    status_code=500,
+                    suggestion=(
+                        "The API reports this as a 500 asking you to retry, but retrying "
+                        "will not help. Confirm the incident exists:\n"
+                        "  netskope incidents search --query 'incident_id eq <id>' "
+                        "--fields incident_id,status,severity"
+                        + (
+                            "\nWith --object-id, --old-value must also match the field's " "current value exactly."
+                            if object_id
+                            else ""
+                        )
+                    ),
+                    details=exc.details,
+                ) from exc
+            raise
+
+    _check_update_response(data, target=target, no_color=state.no_color)
+
+    formatter.format_output(data, fmt=fmt, title="Incident update")
+
+
+def _check_update_response(data: object, *, target: str, no_color: bool) -> None:
+    """Fail loudly on the update API's several flavours of quiet non-success.
+
+    The endpoint answers HTTP 200 for input it rejected ({"ok": 0, ...}) and for
+    payload entries it discarded without applying ({"ok": 1, "result": "0"}), so
+    the status code alone says nothing about whether anything changed.
+
+    Note the ceiling on what success means here: `result` counts the payload
+    entries the API accepted, not the incidents it changed. An ID that matches no
+    incident at all still comes back as {"ok": 1, "result": "1"}, so this reports
+    acceptance and leaves confirmation to a follow-up query.
+    """
+    if not isinstance(data, dict):
+        return
+
+    result = data.get("result")
+
+    if not data.get("ok"):
+        raise APIError(
+            str(result) if result else "The incident update was rejected.",
+            suggestion=(
+                "The tenant accepted the request but applied nothing. Check that --field "
+                "and --new-value are valid, and that the incident exists."
+            ),
         )
 
-    formatter.format_output(data, fmt=fmt, title=f"Incident {incident_id} Updated")
+    if str(result) == "0":
+        raise APIError(
+            f"Nothing was updated for {target}.",
+            suggestion=(
+                "The API discarded the update without applying it. Confirm the incident "
+                "still exists:\n"
+                "  netskope incidents search --query 'incident_id eq <id>' --fields incident_id,status"
+            ),
+        )
+
+    echo_success(f"Update accepted for {target}.", no_color=no_color)
 
 
 @incidents_app.command("forensics")

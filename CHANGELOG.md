@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+- Fix `incidents update` never updating anything. The command sent the incident ID as `object_id`, but the API treats that as the ID of the *object* an incident is about (e.g. `hash_user@example.com_<md5>_<sha1>`), not the incident. Nothing matched, and the API answered either HTTP 200 `{"ok": 1, "result": "0"}` or HTTP 500 "Failed to update incidents, please try later." The command now sends `incident_id` as a JSON integer, which the API requires — a quoted ID is rejected with `incident_id attribute needs to be integer`.
+- Add `--object-id` to `incidents update` for the original object-scoped behaviour, now opt-in and requiring `--old-value`. It warns before running: the API updates every incident attached to the object (50 in one observed case) while reporting `"result": "1"`, because `result` counts payload entries rather than incidents.
+- `incidents update` now fails on responses that only look successful. HTTP 200 with `{"ok": 0, ...}` (how several input errors are returned) and `{"ok": 1, "result": "0"}` (every payload entry silently discarded) both exit non-zero with the API's message. A 500 from this endpoint is reported as "no incident matched" with a note that retrying will not help, since that is what it actually means.
+- `incidents update` validates `--new-value` against the values each field accepts: `new`/`in_progress`/`resolved`/`closed` for status, `Low`/`Medium`/`High`/`Critical` for severity. The tenant validates severity itself but writes an unrecognised *status* verbatim, so a typo or wrong capitalisation silently corrupts the incident's workflow state. `--force` bypasses the check.
+- Correct `incidents update` help text, which documented status values (`open`) and severity capitalisation (`low`, `critical`) the API does not use, IDs in a `INC-123` format that does not exist, and claimed `--user` must be a valid tenant user (it is not validated at all). Also documents that success means the request was accepted, not that an incident changed — an ID matching no incident is reported as success.
+- Add `tests/unit/test_incidents_cmd.py` (18 tests); `incidents update` previously had none.
+- Fix incident examples in `docs/index.html` that do not run: `incidents update` was shown with `--status`/`--assignee`/`--comment` flags and a `PATCH /api/v2/incidents/{id}` endpoint that do not exist, `incidents anomalies` with a positional user (it takes `--users`, plural), and `incidents uci` with `--user` (it takes a positional argument).
+
 ## [1.4.3] - 2026-07-03
 
 - Security: resolve all GitHub Dependabot alerts — bump pytest to >=9.0.3 (tmpdir handling vulnerability) and refresh locked versions of cryptography (49.0.0), idna (3.18), and pydantic-settings (2.14.2).
