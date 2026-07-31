@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.4.4] - 2026-07-31
 
 - Fix `incidents update` never updating anything. The command sent the incident ID as `object_id`, but the API treats that as the ID of the *object* an incident is about (e.g. `hash_user@example.com_<md5>_<sha1>`), not the incident. Nothing matched, and the API answered either HTTP 200 `{"ok": 1, "result": "0"}` or HTTP 500 "Failed to update incidents, please try later." The command now sends `incident_id` as a JSON integer, which the API requires — a quoted ID is rejected with `incident_id attribute needs to be integer`.
 - Add `--object-id` to `incidents update` for the original object-scoped behaviour, now opt-in and requiring `--old-value`. It warns before running: the API updates every incident attached to the object (50 in one observed case) while reporting `"result": "1"`, because `result` counts payload entries rather than incidents.
