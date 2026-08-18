@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.4.5] - 2026-08-18
 
 - Add the `aicc` command group — full AI Command Center support (34 commands over the `/api/v2/aicc` inventory API):
   - Inventories with search/filter/sort/pagination (`--all` fetches every page): `aicc apps`, `aicc mcp`, `aicc models`, `aicc agents`, `aicc identities` (`--type user|unknown` for known people vs unattributed sources), and `aicc extensions`.
