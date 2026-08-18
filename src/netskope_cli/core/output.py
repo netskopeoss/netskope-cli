@@ -52,6 +52,8 @@ _DATA_NESTED_KEYS = (
     "releases",
     "policygroups",
     "private_apps_tags",
+    "items",
+    "violations",
 )
 
 # Metadata keys that may appear at the envelope level.

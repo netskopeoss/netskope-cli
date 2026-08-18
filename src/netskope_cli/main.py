@@ -714,6 +714,13 @@ app.command("commands", help="Print the full command tree for discoverability.")
 
 _optional_groups: list[tuple[str, str, str, str]] = [
     (
+        "netskope_cli.commands.aicc",
+        "aicc_app",
+        "AI Command Center — inventory AI apps, MCP servers, agents, models, and identities"
+        " with risk scoring, analytics, and AI Risk Report data.",
+        "Cloud Security",
+    ),
+    (
         "netskope_cli.commands.events_cmd",
         "events_app",
         "Query security events by type (alerts, application, network, page, incident, audit,"
@@ -1031,6 +1038,7 @@ def cli() -> None:
             _known_commands = [
                 "config",
                 "auth",
+                "aicc",
                 "events",
                 "alerts",
                 "incidents",

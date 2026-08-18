@@ -328,6 +328,74 @@ ntsk spm rules list
 ntsk spm changes
 ```
 
+### AI Command Center (AICC)
+
+AICC inventories every AI touchpoint discovered in traffic — **apps** (generative-AI applications), **mcp** (MCP servers), **agents** (native AI agents on endpoints), **models** (hosted + locally-run, e.g. Ollama), **extensions** (browser/editor/desktop), and **identities** (users and unknown sources) — with CCI risk scoring, usage analytics, alert posture, and one-command AI Risk Report data.
+
+**Start here:** `ntsk aicc guide` prints the full in-CLI cheat sheet (data model, command map, workflows, gotchas). `ntsk aicc overview` is the one-call dashboard summary.
+
+```bash
+# Orientation
+ntsk aicc guide                                     # Concepts + command map + recipes
+ntsk aicc overview --start 30d -o json              # Entity counts, traffic/session/alert KPIs
+ntsk aicc coverage                                  # Earliest date with data (check before long windows!)
+
+# Inventories (same flag set on apps/mcp/models/agents)
+ntsk aicc apps list --sort-by bytes --limit 10
+ntsk aicc apps list --status Unsanctioned --ccl Poor --ccl Low     # shadow-AI review
+ntsk aicc apps list --first-seen-after 30d                          # what's new
+ntsk aicc mcp list --sort-by sessions --limit 10
+ntsk aicc models list --deployment endpoint                         # locally-run models
+ntsk aicc agents list
+ntsk aicc identities list --type user --sort-by bytes --limit 10    # top AI users
+ntsk aicc identities list --type unknown --all -o json              # visibility blind spots
+
+# Drill-down (NAME must be the exact 'name' field from list — quote spaces)
+ntsk aicc apps get "Anthropic Claude"               # detail + usage_summary + footprint
+ntsk aicc apps status ChatGPT                       # quick CASB sanctioning check
+ntsk aicc apps identities ChatGPT --sort-by uploaded_bytes
+ntsk aicc apps deployments ChatGPT --type cloud_web # --type from footprint.types in 'get'
+ntsk aicc apps trend ChatGPT --kind traffic|identity|risk
+ntsk aicc apps violations ChatGPT --start 30d
+ntsk aicc mcp get|identities|deployments|trend|violations NAME
+ntsk aicc identities get alice@example.com          # or an IP for unknown sources
+ntsk aicc identities models|agents|mcp alice@example.com
+ntsk aicc extensions get Claude --type browser_extension
+
+# Analytics (dashboard KPIs and charts)
+ntsk aicc analytics entities                        # headline counts per entity type
+ntsk aicc analytics counts identities|assets|alerts # KPI + trend vs prior window + time series
+ntsk aicc analytics sums traffic|sessions
+ntsk aicc analytics breakdown apps --dimension category|status|ccl [--metric count|bytes|sessions|transactions]
+ntsk aicc analytics breakdown mcp --dimension category|ccl
+ntsk aicc analytics breakdown identities --dimension user_group|ou|activity_level
+ntsk aicc analytics breakdown models --dimension footprint|provider
+ntsk aicc analytics breakdown agents --dimension category|framework
+ntsk aicc analytics alerts-matrix --start 30d       # alert counts by asset × detection
+ntsk aicc analytics alert-policies --detection DLP  # which policies fired
+
+# Provider DLP posture (anthropic | mscopilot | chatgpt)
+ntsk aicc data-protection summary anthropic --start 30d
+ntsk aicc data-protection violations anthropic --severity critical --user alice@example.com
+
+# AI Risk Report (AIRR) — everything in one command
+ntsk aicc report --start 30d -o json > airr-data.json               # full data bundle
+ntsk aicc report --start 2026-06-01 --end 2026-06-30 --top 25 --format markdown --out airr.md
+```
+
+**AICC Key Concepts:**
+- **Time:** `--start/-s/--since` and `--end/-e` accept `7d`, `30d`, ISO dates, or epochs (default: last 7 days). The API itself uses ISO 8601 UTC strings — the CLI converts for you. History is limited: check `aicc coverage` first; windows before `data_available_since` return empty.
+- **Risk scoring:** `cci_score` (0–100) maps to `ccl` — Poor (<20), Low, Medium, High, Excellent (80+). Medium or below = not enterprise-ready. Apps also have `status`: Sanctioned/Unsanctioned.
+- **Entity keys:** everything is addressed by exact, case-sensitive `name` (identities by `user_id`: email or IP). Get names from `list` output or `--search`; there is no fuzzy matching on `get`.
+- **Footprint:** each entity's `footprint.types` (from `get`) lists where it runs (`cloud_web`, `endpoint`, ...). Those keys are the only valid `--type` values for `deployments`; unknown types return `[]` silently.
+- **Pagination:** `--limit` (CLI default 50) / `--offset` for one page, `--all` for every page. A "Showing X of Y" note goes to stderr when more rows exist. DLP violation totals can be tens of thousands — filter before `--all`.
+- **`--fields` here is client-side** (unlike events) — any response field works, never causes a 400.
+- **Sort:** list commands take `--sort-by`/`--sort-dir`; the CLI builds the API's JSON `sort` parameter. Valid list sort fields: bytes, sessions, transactions, identities, cci_score, risk_level (per-entity subsets — see `--help`).
+- **KPI trend** (`counts`/`sums`/`overview`) = % change vs the prior window of equal length; `null` when the prior window is empty.
+- **Discover filter values** with `analytics breakdown` (e.g. `--dimension category` lists every category present) before using `--category`/`--provider`/`--framework` filters.
+- **Errors:** 404 → AICC not enabled on the tenant; 403 → token lacks the `ai_security_discovery` scope (both print hints).
+- **`aicc report` JSON structure:** `report` (tenant, window, coverage), `executive_summary` (entity_counts, unsanctioned_applications, total_traffic, alerts), `applications`, `mcp_servers`, `users`, `unknown_identities` (top-N lists), `alerts` (matrix, policies, total_alerts), `key_findings` (top/riskiest per class). Built for rendering AIRR-style HTML/PDF reports.
+
 ### Threat Protection & Intelligence
 ```bash
 ntsk atp scan-file /path/to/file.exe
