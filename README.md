@@ -177,6 +177,7 @@ ntsk users list -o csv > users.csv
 | Category              | Commands                                                   |
 |-----------------------|------------------------------------------------------------|
 | **Status & Setup**    | `doctor`, `tenant`, `status`, `status --extended`, `commands`, `commands --flat` |
+| **AICC (AI Command Center)** | `aicc overview`, `aicc report`, `aicc guide`, `aicc apps\|mcp\|models\|agents list/get/identities/trend/violations`, `aicc identities list --type user\|unknown`, `aicc analytics breakdown`, `aicc data-protection summary` |
 | **Events**            | `events get`, `events list --type alert\|application\|network\|...` |
 | **Alerts**            | `alerts get`, `alerts list`, `alerts summary`, `alerts types` |
 | **Incidents**         | `incidents list`, `incidents search`, `incidents update`, `incidents uci`, `incidents anomalies`, `incidents forensics`, `incidents notes list/add/delete` |
@@ -213,6 +214,7 @@ ntsk commands --flat         # All commands with [read]/[write] safety tags
 ntsk commands --flat --json  # Flat JSON with mode + supports_yes_flag (best for agents)
 ntsk commands --json         # Full JSON tree with args, options, and descriptions
 ntsk dspm list-types         # List valid DSPM resource types
+ntsk aicc guide              # AICC data model, command map, and workflow recipes
 ```
 
 The `commands --flat` output lists every leaf command with `[read]`/`[write]` tags — the fastest way for a script or AI agent to discover all available commands and their safety level. The `--flat --json` variant adds `"mode"` and `"supports_yes_flag"` fields for programmatic use. Write commands prompt for confirmation; pass `--yes` to skip.

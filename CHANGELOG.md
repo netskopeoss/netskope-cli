@@ -1,5 +1,18 @@
 # Changelog
 
+## [Unreleased]
+
+- Add the `aicc` command group — full AI Command Center support (34 commands over the `/api/v2/aicc` inventory API):
+  - Inventories with search/filter/sort/pagination (`--all` fetches every page): `aicc apps`, `aicc mcp`, `aicc models`, `aicc agents`, `aicc identities` (`--type user|unknown` for known people vs unattributed sources), and `aicc extensions`.
+  - Per-entity drill-down: `get` (detail + usage summary + footprint), `identities`, `deployments --type <footprint key>`, `trend --kind traffic|identity|risk`, `violations`, and `apps status` for CASB sanctioning checks.
+  - Analytics: `entities` (headline counts), `counts`/`sums` (KPIs with trend vs the prior window and bucketed time series), `breakdown` (dimension charts with per-entity dimension/metric validation), `alerts-matrix`, and `alert-policies`.
+  - Provider DLP posture: `aicc data-protection summary|violations anthropic|mscopilot|chatgpt`.
+  - `aicc report` — aggregates ~10 endpoints into one AI Risk Report data bundle (executive summary, top apps/MCP servers/users/unknown identities, alert posture, computed key findings) as JSON or rendered Markdown; `aicc overview` for a one-call dashboard summary; `aicc coverage` for the earliest date with data; `aicc guide` for an in-CLI cheat sheet (data model, command map, workflow recipes, gotchas).
+  - Time flags accept relative offsets (`7d`), ISO dates, or epochs and are converted to the ISO 8601 UTC strings the AICC API requires. 404s explain the AICC licensing requirement; 403s point at the missing `ai_security_discovery` token scope.
+- The output formatter now unwraps `data.items` and `data.violations` envelopes (used by AICC and other newer APIs).
+- Document the `aicc` group in README and teach it to the AI agent skill (`.claude/commands/netskope.md`).
+- Add `tests/unit/test_aicc_cmd.py` (26 tests).
+
 ## [1.4.4] - 2026-07-31
 
 - Fix `incidents update` never updating anything. The command sent the incident ID as `object_id`, but the API treats that as the ID of the *object* an incident is about (e.g. `hash_user@example.com_<md5>_<sha1>`), not the incident. Nothing matched, and the API answered either HTTP 200 `{"ok": 1, "result": "0"}` or HTTP 500 "Failed to update incidents, please try later." The command now sends `incident_id` as a JSON integer, which the API requires — a quoted ID is rejected with `incident_id attribute needs to be integer`.
