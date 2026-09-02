@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.6] - 2026-09-02
+
+- Fix `netskope commands` returning an empty command tree on fresh installs. typer 0.26.0 began bundling its own vendored copy of `click`, so the `isinstance(obj, click.Group)` checks in `tree_cmd.py` and `main.py` silently evaluated to `False`. Because the dependency constraint allowed `typer <1.0`, any new `pip install` resolved a broken combination:
+  - `netskope commands` rendered only the root node, and `netskope commands --flat` / `--json` returned nothing.
+  - The "available subcommands" hint shown when a command group is invoked bare stopped appearing, and a bare `Error:` line leaked to stderr instead.
+- Constrain `typer` to `>=0.9,<0.26` so the CLI builds against the same `click` it imports. Last known-good version is 0.25.1.
+- Add regression tests that exercise the real Typer app (not a synthetic `click` group) and assert `typer.Context` still subclasses `click.Context`, so a future dependency bump cannot reintroduce this silently.
+
 ## [1.4.5] - 2026-08-18
 
 - Add the `aicc` command group — full AI Command Center support (34 commands over the `/api/v2/aicc` inventory API):

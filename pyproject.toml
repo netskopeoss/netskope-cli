@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "netskope"
-version = "1.4.5"
+version = "1.4.6"
 description = "The official Netskope CLI — manage your Netskope tenant from the command line"
 authors = ["Netskope"]
 license = "MIT"
@@ -16,7 +16,7 @@ ntsk = "netskope_cli.main:cli"
 
 [tool.poetry.dependencies]
 python = "^3.11"
-typer = {extras = ["all"], version = ">=0.9,<1.0"}
+typer = {extras = ["all"], version = ">=0.9,<0.26"}
 rich = ">=13.0,<15.0"
 httpx = ">=0.25,<1.0"
 toml = ">=0.10,<1.0"
@@ -64,3 +64,9 @@ asyncio_mode = "auto"
 python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
+
+# playwright is an optional extra ([browser]); browser_auth.py imports it
+# lazily behind try/except ImportError, so stubs are absent in a base install.
+[[tool.mypy.overrides]]
+module = "playwright.*"
+ignore_missing_imports = true

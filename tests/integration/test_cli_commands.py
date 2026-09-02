@@ -764,3 +764,55 @@ class TestUsersCommands:
             body = mock_req.call_args[1]["json_data"]
             assert body["userName"] == "new@example.com"
             assert body["emails"][0]["value"] == "new@example.com"
+
+
+# ---------------------------------------------------------------------------
+# Regression: typer >=0.26 vendors its own copy of click, which makes the
+# ``isinstance(obj, click.Group)`` checks in tree_cmd/main silently fail and
+# renders ``netskope commands`` empty.  These tests drive the *real* app (not a
+# synthetic click group) so the breakage cannot pass unnoticed again.
+# ---------------------------------------------------------------------------
+
+
+class TestCommandTreeRegression:
+    def test_typer_context_subclasses_real_click_context(self) -> None:
+        """typer must build on the same click we import, not a vendored copy."""
+        import click
+        import typer
+
+        assert issubclass(typer.Context, click.Context), (
+            "typer is using a vendored click; isinstance(..., click.Group) checks "
+            "in tree_cmd.py/main.py will silently fail. Keep typer <0.26."
+        )
+
+    def test_commands_flat_lists_many_commands(self) -> None:
+        result = runner.invoke(app, ["commands", "--flat"])
+        assert result.exit_code == 0
+        lines = [ln for ln in result.stdout.splitlines() if ln.strip()]
+        assert len(lines) > 100, f"expected the full command list, got {len(lines)} lines"
+
+    def test_commands_json_is_populated(self) -> None:
+        import json as _json
+
+        result = runner.invoke(app, ["commands", "--flat", "--json"])
+        assert result.exit_code == 0
+        data = _json.loads(result.stdout)
+        assert isinstance(data, list) and len(data) > 100
+
+    def test_walk_flat_traverses_real_app_group(self) -> None:
+        """The isinstance(click.Group) walk must work on the *real* typer app.
+
+        Rendering of the rich tree is TTY-gated, so assert against the walk
+        itself rather than stdout.
+        """
+        import click
+        import typer.main
+
+        from netskope_cli.commands.tree_cmd import _walk_flat
+
+        root = typer.main.get_command(app)
+        assert isinstance(root, click.Group), "real app root is not a click.Group"
+
+        leaves = _walk_flat(root, click.Context(root, info_name="netskope"), prefix="ntsk ")
+        assert len(leaves) > 100, f"expected the full command list, got {len(leaves)} leaves"
+        assert any("aicc" in path for path, *_ in leaves)
