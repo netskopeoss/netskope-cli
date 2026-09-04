@@ -357,8 +357,11 @@ def _render_event_response(
     if total is not None:
         display_title = f"{title} ({total} total, showing {len(results)})"
 
+    # Hand over the whole envelope, not just ``result``: endpoints that do
+    # return a ``total`` (audit, some datasearch responses) need it to drive
+    # --count and the "Showing N of M" banner.
     formatter.format_output(
-        results,
+        data,
         fmt=output_fmt,
         fields=selected_fields,
         default_fields=default_fields,
@@ -724,7 +727,7 @@ def alerts(
 
     Examples:
         netskope events alerts --query 'alert_type eq "DLP"' --start 24h
-        netskope events alerts --query 'severity eq "high"' --limit 50 --fields timestamp,user,alert_name
+        netskope events alerts --query 'severity eq "high"' --limit 50 --api-fields timestamp,user,alert_name
         netskope -o json events alerts --start 7d --order-by "timestamp DESC"
     """
     _run_event_query(
@@ -794,7 +797,7 @@ def application(
 
     Examples:
         netskope events application --query 'app eq "Dropbox"' --start 24h
-        netskope events application --query 'user eq "alice@example.com"' --fields app,action,timestamp
+        netskope events application --query 'user eq "alice@example.com"' --api-fields app,action,timestamp
         netskope -o json events application --start 7d --group-by app
     """
     _run_event_query(
@@ -936,7 +939,7 @@ def page(
 
     Examples:
         netskope events page --query 'url_category eq "Gambling"' --start 24h
-        netskope events page --query 'user eq "bob@example.com"' --fields url,category,action,timestamp
+        netskope events page --query 'user eq "bob@example.com"' --api-fields url,category,action,timestamp
         netskope events page --start 7d --limit 200 --order-by "timestamp DESC"
     """
     _run_event_query(
@@ -1007,7 +1010,7 @@ def incident(
 
     Examples:
         netskope events incident --query 'severity eq "critical"' --start 24h
-        netskope events incident --query 'status eq "open"' --fields incident_id,user,severity,timestamp
+        netskope events incident --query 'status eq "open"' --api-fields incident_id,user,severity,timestamp
         netskope -o json events incident --start 30d --group-by severity
     """
     _run_event_query(
@@ -1083,7 +1086,7 @@ def audit(
 
     Examples:
         netskope events audit --type admin --start 7d
-        netskope events audit --type user --fields timestamp,user,action --limit 50
+        netskope events audit --type user --api-fields timestamp,user,action --limit 50
         netskope -o json events audit --start 24h --order-by "timestamp DESC"
     """
     _run_audit_query(
@@ -1151,7 +1154,7 @@ def infrastructure(
 
     Examples:
         netskope events infrastructure --start 24h --limit 50
-        netskope events infrastructure --query 'status eq "down"' --fields name,status,timestamp
+        netskope events infrastructure --query 'status eq "down"' --api-fields name,status,timestamp
         netskope -o json events infrastructure --start 7d --group-by status
     """
     _run_event_query(
@@ -1222,7 +1225,7 @@ def client_status(
 
     Examples:
         netskope events client-status --start 24h --limit 100
-        netskope events client-status --query 'device_os eq "Windows"' --fields user,device,status
+        netskope events client-status --query 'device_os eq "Windows"' --api-fields user,device,status
         netskope -o json events client-status --start 7d --group-by status
     """
     _run_event_query(
@@ -1293,7 +1296,7 @@ def epdlp(
 
     Examples:
         netskope events epdlp --query 'policy eq "PCI"' --start 24h
-        netskope events epdlp --start 7d --fields user,file_name,action,dlp_rule --limit 50
+        netskope events epdlp --start 7d --api-fields user,file_name,action,dlp_rule --limit 50
         netskope -o json events epdlp --start 30d --group-by dlp_rule
     """
     _run_event_query(

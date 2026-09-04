@@ -203,6 +203,27 @@ class TestCountExact:
         result = count_exact(client, "/x", {}, page_size=3, ceiling=6, quiet=True)
         assert result == ExactCount(count=6, fetched=6, requests=2, reached_ceiling=True)
 
+    def test_ceiling_not_a_page_multiple_trims_the_last_page(self) -> None:
+        client = _FakeClient([{"n": i} for i in range(100)])
+        result = count_exact(client, "/x", {}, page_size=3, ceiling=5, quiet=True)
+        assert result == ExactCount(count=5, fetched=5, requests=2, reached_ceiling=True)
+        assert [c["limit"] for c in client.calls] == [3, 2]
+
+    def test_total_below_ceiling_is_exact(self) -> None:
+        client = _FakeClient([{"n": i} for i in range(4)])
+        result = count_exact(client, "/x", {}, page_size=3, ceiling=5, quiet=True)
+        assert result == ExactCount(count=4, fetched=4, requests=2, reached_ceiling=False)
+
+    def test_error_envelope_is_raised_not_counted(self) -> None:
+        from netskope_cli.core.exceptions import NetskopeError
+
+        class Broken:
+            def request(self, method: str, endpoint: str, *, params: dict[str, Any] | None = None) -> Any:
+                return {"ok": 0, "message": "bad query"}
+
+        with pytest.raises(NetskopeError, match="bad query"):
+            count_exact(Broken(), "/x", {}, page_size=3, ceiling=10, quiet=True)
+
     def test_where_filters_each_page(self) -> None:
         from netskope_cli.core.filtering import parse_filter
 
@@ -262,6 +283,15 @@ class TestFormatterStrictAndCapped:
         assert exc.value.exit_code == 2
         assert "'nope' not found in any record" in exc.value.message
         assert "--lenient" in (exc.value.suggestion or "")
+
+    def test_server_side_projection_missing_field_warns_under_api_fields_label(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        OutputFormatter(no_color=True).format_output(ALERTS, fmt="json", fields=["timestamp", "qdomainn"])
+        out, err = _out(capsys)
+        assert "--api-fields: 'qdomainn' not found in any record" in err
+        assert "qdomain" in err  # close match suggested
+        assert json.loads(out)[0] == {"timestamp": 1784851173, "qdomainn": None}
 
     def test_lenient_warns_and_prints_nulls(self, capsys: pytest.CaptureFixture[str]) -> None:
         OutputFormatter(no_color=True, lenient=True, fields=["nope", "alert_name"]).format_output(ALERTS, fmt="json")
@@ -425,6 +455,16 @@ class TestApiFields:
         assert json.loads(result.stdout) == [{"timestamp": 1784851173, "qdomain": "bad.example"}]
 
     @respx.mock
+    def test_projected_field_absent_from_response_does_not_fail(self, runner: CliRunner) -> None:
+        # Sparse event schemas: the API accepts the name but no row in the window has it.
+        _alert_route([{"timestamp": 1784851173, "alert_name": "DLP thing"}])
+        result = _invoke(runner, "alerts", "list", "--api-fields", "timestamp,qdomain", "-o", "json")
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.stdout) == [{"timestamp": 1784851173, "qdomain": None}]
+        assert "--api-fields: 'qdomain' not found" in result.output
+        assert "--fields:" not in result.output
+
+    @respx.mock
     def test_widened_for_where_and_filter_matches(self, runner: CliRunner) -> None:
         route = _alert_route()
         result = _invoke(
@@ -559,6 +599,41 @@ class TestCountCap:
         result = _invoke(runner, "incidents", "list", "--count")
         assert result.stdout.strip() == "2", result.output
         assert _request_query(incident)["limit"] == ["10000"]
+
+    @respx.mock
+    def test_events_count_prefers_an_envelope_total(self, runner: CliRunner) -> None:
+        respx.get(f"{BASE}/api/v2/events/data/audit").mock(
+            return_value=httpx.Response(200, json={"result": ALERTS, "total": 5000})
+        )
+        result = _invoke(runner, "events", "audit", "--count")
+        assert result.stdout.strip() == "5000", result.output
+        assert "capped" not in result.output
+
+        respx.get(f"{BASE}/api/v2/events/datasearch/network").mock(
+            return_value=httpx.Response(200, json={"result": FULL_PAGE, "total": 50000})
+        )
+        for argv in (("events", "network", "--count"), ("events", "list", "--type", "network", "--count")):
+            result = _invoke(runner, *argv)
+            assert result.stdout.strip() == "50000", result.output
+            assert "capped" not in result.output
+
+    @respx.mock
+    def test_events_banner_shows_envelope_total(self, runner: CliRunner) -> None:
+        respx.get(f"{BASE}/api/v2/events/datasearch/network").mock(
+            return_value=httpx.Response(200, json={"result": ALERTS, "total": 40})
+        )
+        result = _invoke(runner, "events", "network", "-o", "csv")
+        assert result.exit_code == 0, result.output
+        assert "Showing 2 of 40 results" in result.output
+
+    @respx.mock
+    def test_exact_surfaces_api_error_envelope(self, runner: CliRunner) -> None:
+        respx.get(f"{BASE}/api/v2/events/datasearch/network").mock(
+            return_value=httpx.Response(200, json={"ok": 0, "message": "bad query"})
+        )
+        result = _invoke(runner, "events", "network", "--count", "--exact")
+        assert result.exit_code != 0
+        assert "bad query" in (result.output + str(result.exception))
 
     @respx.mock
     def test_exact_pages_with_offset(self, runner: CliRunner) -> None:

@@ -24,7 +24,7 @@ from typing import Any
 
 from rich.console import Console
 
-from netskope_cli.core.exceptions import ValidationError
+from netskope_cli.core.exceptions import NetskopeError, ValidationError
 from netskope_cli.core.fieldpaths import top_level_name
 from netskope_cli.core.filtering import Expr, apply_filter
 from netskope_cli.core.output import spinner, unwrap_api_response
@@ -101,6 +101,8 @@ def resolve_api_fields(ctx: Any, api_fields: str | None) -> ApiFieldSelection:
     When ``--api-fields`` is absent nothing is sent and, for one release, a
     one-line note on stderr tells users who pass a plain top-level ``--fields``
     list (the old server-side spelling) how to get the payload trimming back.
+    The note is informational and follows ``--quiet`` (auto-enabled when stdout
+    is piped), so it appears in interactive runs only.
     """
     state = getattr(ctx, "obj", None)
     global_fields: list[str] | None = getattr(state, "fields", None) or None
@@ -153,6 +155,15 @@ def is_page_capped(data: Any, limit: int) -> bool:
         return True
 
 
+def _raise_on_error_envelope(page: Any) -> None:
+    """Datasearch reports query errors as HTTP 200 with ``ok: 0``; do not count that as an empty page."""
+    if isinstance(page, dict):
+        ok = page.get("ok")
+        if ok is not None and not ok:
+            msg = page.get("message") or page.get("error") or "Unknown API error"
+            raise NetskopeError(f"API returned an error: {msg}", details=page)
+
+
 @dataclass(frozen=True)
 class ExactCount:
     count: int
@@ -186,8 +197,15 @@ def count_exact(
 
     with spinner("Counting...", no_color=no_color, quiet=quiet) as progress:
         while True:
-            page = client.request("GET", endpoint, params={**base, "limit": page_size, "offset": offset})
+            # Never fetch past the ceiling: the last page is trimmed so the
+            # reported "N+" is the ceiling itself, not a page-size overshoot.
+            size = min(page_size, ceiling - fetched)
+            if size <= 0:
+                reached_ceiling = True
+                break
+            page = client.request("GET", endpoint, params={**base, "limit": size, "offset": offset})
             requests += 1
+            _raise_on_error_envelope(page)
             records, _meta = unwrap_api_response(page)
             rows = records if isinstance(records, list) else []
             fetched += len(rows)
@@ -196,7 +214,7 @@ def count_exact(
                 count += len(kept)
             else:
                 count += len(rows)
-            if len(rows) < page_size:
+            if len(rows) < size:
                 break
             if fetched >= ceiling:
                 reached_ceiling = True

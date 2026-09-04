@@ -311,7 +311,11 @@ class OutputFormatter:
             One of ``FORMATS``.  When *None* the format is auto-detected:
             ``"human"`` for interactive TTYs, ``"json"`` otherwise.
         fields:
-            Optional subset of keys/columns to include in the output.
+            A projection the command already sent to the API (``--api-fields``),
+            shown in this order.  A name the API did not return is reported as
+            a warning and rendered blank/null; it never fails the command.  The
+            user's client-side list is the constructor's ``fields`` (the global
+            ``--fields``) and is strict unless ``lenient``.
         default_fields:
             Default columns to show for table/human when *fields* is None.
             Ignored for json/csv/yaml/jsonl.
@@ -499,11 +503,22 @@ class OutputFormatter:
         if effective_fields is None and explicit is not None:
             effective_fields = list(explicit)
         explicit_requested = explicit is not None
+        # A per-command ``fields`` is a server-side projection the API may
+        # legitimately not fill (sparse event schemas), so it only warns; the
+        # global --fields is the user's own list and is strict unless --lenient.
+        server_side = fields is not None
 
         # Apply field selection AFTER unwrapping so that --fields applies to
         # individual records, not envelope keys.
         pre_selection_data = data
-        data = self._project(data, effective_fields, fmt=fmt, warn=explicit_requested)
+        data = self._project(
+            data,
+            effective_fields,
+            fmt=fmt,
+            warn=explicit_requested,
+            strict=not server_side and not self._lenient,
+            label="--api-fields" if server_side else "--fields",
+        )
 
         # Fallback: if default_fields removed every column (e.g. grouped
         # results whose keys differ), re-render without selection so the
@@ -561,8 +576,21 @@ class OutputFormatter:
             return ""
         return " Did you mean " + ", ".join(f"[cyan]{rich_escape(m)}[/cyan]" for m in matches) + "?"
 
-    def _project(self, data: Any, fields: Sequence[str] | None, *, fmt: str, warn: bool) -> Any:
-        """Project *data* onto *fields* (dotted paths, globs), warning about unknown names."""
+    def _project(
+        self,
+        data: Any,
+        fields: Sequence[str] | None,
+        *,
+        fmt: str,
+        warn: bool,
+        strict: bool = True,
+        label: str = "--fields",
+    ) -> Any:
+        """Project *data* onto *fields* (dotted paths, globs).
+
+        Unknown names raise :class:`UnknownFieldError` when *strict*, else
+        print a warning prefixed with *label*.
+        """
         if fields is None:
             return data
         specs = [f.strip() for f in fields if f and f.strip()]
@@ -580,11 +608,11 @@ class OutputFormatter:
                 f"'{rich_escape(path)}' not found in any record.{self._suggestion_text(path, records)}"
                 for path in find_unmatched(records, paths)
             ]
-            if problems and not self._lenient:
+            if problems and strict:
                 raise UnknownFieldError(problems)
             for problem in problems:
                 self.err_console.print(
-                    f"[yellow]--fields:[/yellow] {problem} [dim]Run with --list-fields to see every field.[/dim]"
+                    f"[yellow]{label}:[/yellow] {problem} [dim]Run with --list-fields to see every field.[/dim]"
                 )
         if not paths:
             return data

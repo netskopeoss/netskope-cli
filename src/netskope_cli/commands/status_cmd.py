@@ -19,6 +19,7 @@ from rich.table import Table
 from rich.text import Text
 
 from netskope_cli.core.client import NetskopeClient, build_client
+from netskope_cli.core.datasearch import DATASEARCH_PAGE_CAP
 from netskope_cli.core.output import spinner
 from netskope_cli.utils.helpers import validate_time_range
 
@@ -27,7 +28,7 @@ status_app = typer.Typer(name="status", invoke_without_command=True)
 # The datasearch endpoints return at most this many rows per request and no
 # total, so a count that reaches it is a lower bound.  Busy tenants exceed it
 # within a day; the ``*_capped`` metrics say when that happened.
-_EVENT_LIMIT = 10000
+_EVENT_LIMIT = DATASEARCH_PAGE_CAP
 
 
 @dataclass(frozen=True)

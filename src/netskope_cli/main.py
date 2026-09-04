@@ -278,8 +278,8 @@ def main(
             "the API request. Dotted paths reach nested values (host_info.os), a[].b maps over lists, and * "
             "globs expand (epdlp.*). Example: --fields hostname,host_info.os,last_event_timestamp. Discover "
             "names with --list-fields. A name no record has stops the command with exit 2 unless --lenient. "
-            "Events, alerts and incidents commands also take --api-fields for a server-side projection; "
-            "see 'ntsk docs fields'."
+            "Events, alerts, incidents and npa publishers/policy commands also take --api-fields for a "
+            "server-side projection; see 'ntsk docs fields'."
         ),
         rich_help_panel="Query options (client-side, any command)",
     ),

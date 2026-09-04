@@ -345,7 +345,7 @@ _FIELDS_REFERENCE = """\
 Querying Any Command: Discover, Select, Filter, Sort
 =====================================================
 
-Four global options work on EVERY command, before or after the subcommand.
+The global query options below work on EVERY command, before or after the subcommand.
 They run client-side on the rows the API returned (so --limit still applies).
 
 1. DISCOVER   --list-fields
@@ -417,6 +417,8 @@ Client-side vs server-side
                                            Widened automatically with every top-level name
                                            that --fields, --where or --sort reference, so a
                                            filter on a field you did not project still works.
+                                           A projected name the API did not return warns.
+     npa publishers/policy   --api-fields  same, for the NPA publisher and policy endpoints
      events/alerts/incidents --query       server-side JQL filter (use it to fetch less)
      dns/dspm/publishers     --filter      server-side filter expression
      dem ... --where / --select            DEM JSON query syntax
