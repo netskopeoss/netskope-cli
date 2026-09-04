@@ -97,6 +97,28 @@ class TestTableFormat:
         assert "alice" in captured.out
         assert "bob" in captured.out
 
+    def test_table_bracketed_values_are_not_eaten_as_markup(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Issue #16: NPA app names come back as "[name]"; lowercase ones matched Rich's tag syntax and vanished."""
+        fmt = OutputFormatter(no_color=True)
+        data = [
+            {"app_id": 1, "app_name": "[ipinfo]"},
+            {"app_id": 2, "app_name": "[linux1-EB-ssh]"},
+            {"app_id": 3, "app_name": "[[Start Page] - EB]"},
+            {"app_id": 4, "app_name": "[Cloud Exchange]"},
+        ]
+        fmt.format_output(data, fmt="table")
+        out = capsys.readouterr().out
+        for name in ("[ipinfo]", "[linux1-EB-ssh]", "[[Start Page] - EB]", "[Cloud Exchange]"):
+            assert name in out
+
+    def test_kv_table_and_single_column_escape_markup(self, capsys: pytest.CaptureFixture[str]) -> None:
+        fmt = OutputFormatter(no_color=True)
+        fmt.format_output({"app_name": "[ipinfo]", "tag": "[bold]"}, fmt="table")
+        fmt.format_output(["[ipinfo]", "[dim]"], fmt="table")
+        out = capsys.readouterr().out
+        assert out.count("[ipinfo]") == 2
+        assert "[bold]" in out and "[dim]" in out
+
     def test_table_single_flat_dict_becomes_kv(self, capsys: pytest.CaptureFixture[str]) -> None:
         fmt = OutputFormatter(no_color=True)
         data = {"key1": "val1", "key2": "val2"}
@@ -241,6 +263,12 @@ class TestUnsupportedFormat:
 
 
 class TestEchoHelpers:
+    def test_echo_helpers_escape_markup_in_message(self, capsys: pytest.CaptureFixture[str]) -> None:
+        echo_success("Private application '[ipinfo]' created.", no_color=True)
+        err = capsys.readouterr().err
+        assert "SUCCESS" in err
+        assert "[ipinfo]" in err
+
     def test_echo_success(self, capsys: pytest.CaptureFixture[str]) -> None:
         echo_success("it worked", no_color=True)
         captured = capsys.readouterr()

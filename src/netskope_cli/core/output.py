@@ -689,12 +689,17 @@ class OutputFormatter:
         return str(value)
 
     def _format_cell(self, value: Any) -> str:
-        """Format a cell value for table display with truncation."""
+        """Format a cell value for table display with truncation.
+
+        The result is escaped for Rich markup: API data such as NPA app names
+        (``"[myapp]"``) would otherwise be parsed as a style tag and rendered
+        as an empty cell (issue #16).
+        """
         if isinstance(value, (dict, list)):
             text = self._summarize_value(value)
         else:
             text = str(value)
-        return self._truncate(text)
+        return rich_escape(self._truncate(text))
 
     def _truncate(self, value: str) -> str:
         if self.max_col_width and len(value) > self.max_col_width:
@@ -830,25 +835,25 @@ def build_formatter(ctx: Any) -> "OutputFormatter":
 def echo_success(msg: str, *, no_color: bool = False) -> None:
     """Print a success message to stderr."""
     console = _make_console(no_color=no_color, stderr=True)
-    console.print(f"[bold green]SUCCESS[/bold green] {msg}")
+    console.print(f"[bold green]SUCCESS[/bold green] {rich_escape(msg)}")
 
 
 def echo_error(msg: str, *, no_color: bool = False) -> None:
     """Print an error message to stderr."""
     console = _make_console(no_color=no_color, stderr=True)
-    console.print(f"[bold red]ERROR[/bold red] {msg}")
+    console.print(f"[bold red]ERROR[/bold red] {rich_escape(msg)}")
 
 
 def echo_warning(msg: str, *, no_color: bool = False) -> None:
     """Print a warning message to stderr."""
     console = _make_console(no_color=no_color, stderr=True)
-    console.print(f"[bold yellow]WARNING[/bold yellow] {msg}")
+    console.print(f"[bold yellow]WARNING[/bold yellow] {rich_escape(msg)}")
 
 
 def echo_info(msg: str, *, no_color: bool = False) -> None:
     """Print an informational message to stderr."""
     console = _make_console(no_color=no_color, stderr=True)
-    console.print(f"[bold blue]INFO[/bold blue] {msg}")
+    console.print(f"[bold blue]INFO[/bold blue] {rich_escape(msg)}")
 
 
 # ---------------------------------------------------------------------------
