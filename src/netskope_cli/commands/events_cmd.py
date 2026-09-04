@@ -15,6 +15,7 @@ import typer
 from netskope_cli.core.client import NetskopeClient, build_client
 from netskope_cli.core.exceptions import NetskopeError
 from netskope_cli.core.output import OutputFormatter, spinner
+from netskope_cli.core.output import build_formatter as _core_build_formatter
 from netskope_cli.utils.helpers import validate_time_range
 
 logger = logging.getLogger(__name__)
@@ -47,9 +48,10 @@ _HELP_QUERY = (
     "Run 'netskope docs jql' for full JQL syntax reference."
 )
 _HELP_FIELDS = (
-    "Comma-separated list of field names to include in the response. Use this to reduce "
-    "payload size and focus on relevant data. For example: 'timestamp,user,action,app'. "
-    "Omit to return all available fields."
+    "Comma-separated list of field names to include in the response. Sent to the API, so it "
+    "reduces payload size and only accepts top-level event fields, e.g. 'timestamp,user,action,app'. "
+    "Omit to return all available fields. For nested paths, globs, or the same syntax on any other "
+    "command, see the global --fields and 'ntsk docs fields'."
 )
 _HELP_START = (
     "Start of the time range for the query. Accepts a Unix epoch timestamp (seconds) or a "
@@ -186,6 +188,7 @@ def _run_event_query(
     wide = getattr(state, "wide", False) if state is not None else False
     _render_event_response(
         data,
+        ctx=ctx,
         title=title,
         output_fmt=output_fmt,
         no_color=no_color,
@@ -252,6 +255,7 @@ def _run_audit_query(
     wide = getattr(state, "wide", False) if state is not None else False
     _render_event_response(
         data,
+        ctx=ctx,
         title="Audit Events",
         output_fmt=output_fmt,
         no_color=no_color,
@@ -262,9 +266,16 @@ def _run_audit_query(
     )
 
 
+def _has_where(ctx: typer.Context | None) -> bool:
+    """True when the global client-side --where filter is active."""
+    state = getattr(ctx, "obj", None) if ctx is not None else None
+    return getattr(state, "where_expr", None) is not None
+
+
 def _render_event_response(
     data: Any,
     *,
+    ctx: typer.Context | None = None,
     title: str,
     output_fmt: str,
     no_color: bool,
@@ -287,7 +298,9 @@ def _render_event_response(
         msg = data.get("message") or data.get("error") or "Unknown API error"
         raise NetskopeError(f"API returned an error: {msg}", details=data)
 
-    if count_only:
+    # With a client-side --where the envelope total is meaningless: let the
+    # formatter filter first and count what is left.
+    if count_only and not _has_where(ctx):
         total = data.get("total", len(data.get("result", [])))
         print(total)
         return
@@ -295,7 +308,10 @@ def _render_event_response(
     results = data.get("result", [])
     total = data.get("total")
 
-    formatter = OutputFormatter(no_color=no_color, count_only=count_only, wide=wide)
+    if ctx is not None:
+        formatter = _core_build_formatter(ctx)
+    else:
+        formatter = OutputFormatter(no_color=no_color, count_only=count_only, wide=wide)
 
     display_title = title
     if total is not None:
@@ -581,7 +597,7 @@ def events_list(
 
     endpoint, title, default_fields = _EVENT_TYPE_MAP[normalized]
 
-    if count:
+    if count and not _has_where(ctx):
         # Fetch minimal data just to get the total count.
         _run_event_query_with_count(ctx, endpoint, query=query, start=start, end=end)
         return

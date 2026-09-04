@@ -65,6 +65,12 @@ Each module defines helper functions: `_build_client()`, `_get_formatter()`, `_g
 - **Config format:** Ruff rules E, F, W, I; mypy strict mode
 - **Test tools:** pytest + respx (httpx mocking) + pytest-mock
 - **Secrets:** Never hardcode; use env vars or keyring. Config files in `.gitignore`.
+- **Formatters:** always obtain one via `netskope_cli.core.output.build_formatter(ctx)` (each module's
+  `_get_formatter`/`_build_formatter` is a thin wrapper). The global query options `--fields`, `--list-fields`,
+  `--where`, `--sort` live on `State` and are applied inside `OutputFormatter.format_output`; do not add
+  client-side-only `--fields` options to new commands. A per-command option with the same name means "sent to the
+  API" and is protected from hoisting by `_resolve_leaf_command()` in `main.py`. Path/filter machinery lives in
+  `core/fieldpaths.py` and `core/filtering.py`; the user-facing reference is `ntsk docs fields`.
 
 ## Releasing to PyPI
 

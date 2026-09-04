@@ -13,6 +13,7 @@ from rich.console import Console
 
 from netskope_cli.core.client import NetskopeClient, build_client
 from netskope_cli.core.output import OutputFormatter, spinner
+from netskope_cli.core.output import build_formatter as _core_build_formatter
 
 # ---------------------------------------------------------------------------
 # Known alert types
@@ -62,12 +63,8 @@ def _get_console(ctx: typer.Context) -> Console:
 
 
 def _get_formatter(ctx: typer.Context) -> OutputFormatter:
-    """Build an OutputFormatter from the current context."""
-    state = ctx.obj
-    no_color = state.no_color if state is not None else False
-    count_only = getattr(state, "count", False) if state is not None else False
-    wide = getattr(state, "wide", False) if state is not None else False
-    return OutputFormatter(no_color=no_color, count_only=count_only, wide=wide)
+    """Build the shared OutputFormatter for this context (delegates to core.output.build_formatter)."""
+    return _core_build_formatter(ctx)
 
 
 def _get_output_format(ctx: typer.Context) -> str:
@@ -256,6 +253,8 @@ def list_alerts(
             "Comma-separated list of field names to include in the response. Reduces "
             "payload size and focuses on relevant data. For example: "
             "'alert_name,severity,user,timestamp'. Omit to return all fields."
+            " Sent to the API (top-level fields only). For nested paths, globs, or client-side "
+            "selection on any command see the global --fields and 'ntsk docs fields'."
         ),
     ),
     start: Optional[str] = typer.Option(
