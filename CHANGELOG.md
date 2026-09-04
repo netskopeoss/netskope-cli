@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.4.7] - 2026-09-04
 
 - Fix table output dropping values that look like Rich markup tags (#16). NPA private app names are returned as `[name]`; when the name started with a lowercase letter (`[ipinfo]`, `[linux1-EB-ssh]`) Rich parsed it as a style tag and rendered an empty `app_name` cell, while `[Cloud Exchange]` survived. Table, key/value and single-column cells are now markup-escaped, as are the `SUCCESS`/`ERROR`/`WARNING`/`INFO` message helpers. JSON/YAML/CSV output was never affected.
 - Pin every runtime and dev dependency to an exact version in `pyproject.toml` (typer 0.25.1, click 8.5.0, rich 14.3.4, httpx 0.28.1, pydantic 2.13.5, pydantic-settings 2.15.0, keyring 25.7.0, pyyaml 6.0.3, toml 0.10.2, shellingham 1.5.4; playwright 1.58.0 for the `browser` extra). The v1.4.6 typer cap stopped one regression, but open ranges still let fresh installs drift to newer click/rich/pydantic than the test suite runs against. Verified on fresh venvs (Python 3.11–3.14): `netskope commands` renders the full tree and typer 0.27.2 still breaks it. Bumping a pin now means editing `pyproject.toml`, running `poetry lock`, the full suite, and a fresh-install smoke test.
