@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.4.8] - 2026-09-04
 
 - Add four global query options that work on **every** command, before or after the subcommand, and never change the API request: `--fields/-f` (pick output fields in the order given; dotted paths such as `host_info.os`, `a[].b` list hops, `a[0].b` indexes and `*` globs), `--list-fields` (print the response schema instead of the records: every nested path with type, presence percentage, sample value and a marker for the command's default columns; `-o json` for a machine-readable version), `--where 'EXPR'` (client-side row filter using the JQL syntax from `ntsk docs jql`: `eq ne gt ge lt le in like between`, `and/or/not`, parentheses, case-insensitive strings, numeric coercion, any-element semantics on lists, `eq null` for missing) and `--sort FIELD[:desc]` (stable multi-key sort, missing values last). `--where` runs before `--count` so the filtered count is reported. Syntax errors exit 2 with a caret under the offending token before any API call. Reference: `ntsk docs fields`.
 - Fix the wide-table hint that suggested `--fields` on commands that did not accept it (`ntsk devices list --fields ...` failed with "No such option"). The hint now names `--list-fields`, a `--fields` example drawn from all columns including hidden ones, and `-W`, and is suppressed when the user already chose columns. Unknown field names in `--fields`, `--where` or `--sort` print a warning with close matches instead of silently producing blank columns; `--field` typos suggest `--fields`.

@@ -28,7 +28,7 @@ from netskope_cli.core.filtering import parse_filter, parse_sort_spec
 # ---------------------------------------------------------------------------
 # Version — single source of truth
 # ---------------------------------------------------------------------------
-__version__ = "1.4.7"
+__version__ = "1.4.8"
 
 # ---------------------------------------------------------------------------
 # Global state object threaded through the context
