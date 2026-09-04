@@ -24,6 +24,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.syntax import Syntax
 from rich.table import Table
 
+from netskope_cli.core.exceptions import ValidationError
 from netskope_cli.core.fieldpaths import (
     FieldInfo,
     discover_schema,
@@ -35,6 +36,20 @@ from netskope_cli.core.fieldpaths import (
     suggest_fields,
 )
 from netskope_cli.core.filtering import Expr, apply_filter, parse_filter, parse_sort_spec, sort_records
+
+
+class UnknownFieldError(ValidationError):
+    """``--fields`` named something no returned record has (exit code 2 unless ``--lenient``)."""
+
+    def __init__(self, problems: list[str]) -> None:
+        super().__init__(
+            "--fields: " + " ".join(problems),
+            suggestion=(
+                "Run with --list-fields to see every field, or add --lenient to print blank/null "
+                "columns for unknown names instead of stopping."
+            ),
+        )
+
 
 # ---------------------------------------------------------------------------
 # API response envelope unwrapping
@@ -238,14 +253,17 @@ class OutputFormatter:
         sort: Sequence[tuple[str, bool]] | str | None = None,
         list_fields: bool = False,
         quiet: bool = False,
+        lenient: bool = False,
     ) -> None:
         """Create a formatter.
 
         The keyword arguments mirror the global CLI options: ``fields`` is the
         global ``--fields`` list, ``where`` a parsed (or raw) ``--where``
-        expression, ``sort`` a parsed (or raw) ``--sort`` specification and
-        ``list_fields`` the ``--list-fields`` switch.  Strings are parsed here
-        so tests and ad-hoc callers can pass them directly.
+        expression, ``sort`` a parsed (or raw) ``--sort`` specification,
+        ``list_fields`` the ``--list-fields`` switch and ``lenient`` the
+        ``--lenient`` switch (warn about unknown ``--fields`` names instead of
+        raising :class:`UnknownFieldError`).  Strings are parsed here so tests
+        and ad-hoc callers can pass them directly.
         """
         self.no_color = no_color
         self.console = _make_console(no_color=no_color)
@@ -260,6 +278,7 @@ class OutputFormatter:
             parse_sort_spec(sort) if isinstance(sort, str) else (list(sort) if sort else None)
         )
         self._list_fields = list_fields
+        self._lenient = lenient
         self._fields_applied = False
         self._schema_cache: list[FieldInfo] | None = None
 
@@ -280,6 +299,7 @@ class OutputFormatter:
         count_only: bool = False,
         strip_internal: bool = True,
         add_iso_timestamps: bool = True,
+        capped_at: int | None = None,
     ) -> None:
         """Format and print *data* to stdout.
 
@@ -314,6 +334,11 @@ class OutputFormatter:
         add_iso_timestamps:
             When *True* (default), add ``{key}_iso`` companion fields for
             epoch timestamps in JSON/JSONL/CSV/YAML output.
+        capped_at:
+            The page size the API stopped at when *data* filled it (see
+            ``core.datasearch.is_page_capped``).  Counts are then lower
+            bounds: the result banner says so, ``--count`` prints ``N+`` and
+            a notice on stderr points at ``--exact``.
         """
         if fmt is None:
             fmt = self._auto_detect_format()
@@ -366,6 +391,8 @@ class OutputFormatter:
             if removed > 0:
                 if not self._quiet:
                     self.err_console.print(f"[dim]{len(data)} of {len(data) + removed} results matched --where[/dim]")
+            elif capped_at is not None:
+                self.err_console.print(f"[dim]{len(data):,}+ results (capped)[/dim]")
             elif unwrap:
                 total = None
                 if metadata:
@@ -397,7 +424,7 @@ class OutputFormatter:
         count_only = count_only or self._default_count_only
         if count_only:
             total = None
-            if self._where is None:
+            if self._where is None and capped_at is None:
                 total = (
                     metadata.get("total")
                     or metadata.get("totalResults")
@@ -405,11 +432,17 @@ class OutputFormatter:
                     or metadata.get("status.total")
                 )
             if total is not None:
-                print(int(total))
+                n = int(total)
             elif isinstance(data, list):
-                print(len(data))
+                n = len(data)
             else:
-                print(1 if data else 0)
+                n = 1 if data else 0
+            print(f"{n}+" if capped_at is not None else n)
+            if capped_at is not None:
+                self.err_console.print(
+                    f"[yellow]Count capped at the API maximum of {capped_at:,} rows; "
+                    "narrow the time range or use --exact.[/yellow]"
+                )
             return
 
         # If the unwrapped data is empty, inform the user (except
@@ -542,15 +575,16 @@ class OutputFormatter:
         else:
             paths = list(dict.fromkeys(specs))
         if warn and records:
-            for spec in unmatched_globs:
+            problems = [f"pattern '{rich_escape(spec)}' matched no fields." for spec in unmatched_globs]
+            problems += [
+                f"'{rich_escape(path)}' not found in any record.{self._suggestion_text(path, records)}"
+                for path in find_unmatched(records, paths)
+            ]
+            if problems and not self._lenient:
+                raise UnknownFieldError(problems)
+            for problem in problems:
                 self.err_console.print(
-                    f"[yellow]--fields:[/yellow] pattern '{rich_escape(spec)}' matched no fields. "
-                    "[dim]Try --list-fields to see every field.[/dim]"
-                )
-            for path in find_unmatched(records, paths):
-                self.err_console.print(
-                    f"[yellow]--fields:[/yellow] '{rich_escape(path)}' not found in any record."
-                    f"{self._suggestion_text(path, records)} [dim]Run with --list-fields to see every field.[/dim]"
+                    f"[yellow]--fields:[/yellow] {problem} [dim]Run with --list-fields to see every field.[/dim]"
                 )
         if not paths:
             return data
@@ -1024,7 +1058,7 @@ def build_formatter(ctx: Any) -> "OutputFormatter":
     """Create an ``OutputFormatter`` pre-configured from the global CLI state.
 
     Reads ``no_color``, ``count``, ``wide``, ``quiet`` and the query options
-    (``fields``, ``where_expr``, ``sort_spec``, ``list_fields``) from
+    (``fields``, ``where_expr``, ``sort_spec``, ``list_fields``, ``lenient``) from
     ``ctx.obj`` (the ``State`` dataclass set by the main callback).  Safe to
     call even when ``ctx.obj`` is *None*.  Every command module's
     ``_get_formatter`` / ``_build_formatter`` helper delegates here so the
@@ -1044,20 +1078,8 @@ def build_formatter(ctx: Any) -> "OutputFormatter":
         where=opt("where_expr", None) or opt("where", None),
         sort=opt("sort_spec", None) or opt("sort", None),
         list_fields=opt("list_fields", False),
+        lenient=opt("lenient", False),
     )
-
-
-def resolve_fields(ctx: Any, local: str | Sequence[str] | None) -> list[str] | None:
-    """Merge a command's own ``--fields`` value with the global one (local wins)."""
-    if isinstance(local, str):
-        parsed = [f.strip() for f in local.split(",") if f.strip()]
-        if parsed:
-            return parsed
-    elif local:
-        return [f for f in local if f]
-    state = getattr(ctx, "obj", None)
-    global_fields = getattr(state, "fields", None) if state is not None else None
-    return list(global_fields) if global_fields else None
 
 
 # ---------------------------------------------------------------------------

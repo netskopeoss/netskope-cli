@@ -9,6 +9,7 @@ import httpx
 import pytest
 
 from netskope_cli.commands.status_cmd import (
+    EventCount,
     _fetch_event_count,
     _fetch_publishers,
     _fetch_resource_total,
@@ -37,7 +38,7 @@ class TestFetchEventCount:
             )
         )
         count = await _fetch_event_count(BASE_URL, HEADERS, "/api/v2/events/datasearch/alert", {"limit": 100})
-        assert count == 42
+        assert count == EventCount(42, False)
 
     @pytest.mark.asyncio
     async def test_falls_back_to_result_length(self, respx_mock):
@@ -45,7 +46,33 @@ class TestFetchEventCount:
             return_value=httpx.Response(200, json={"result": [{"id": 1}, {"id": 2}, {"id": 3}]})
         )
         count = await _fetch_event_count(BASE_URL, HEADERS, "/api/v2/events/datasearch/alert", {"limit": 100})
-        assert count == 3
+        assert count == EventCount(3, False)
+
+    @pytest.mark.asyncio
+    async def test_full_page_is_flagged_capped(self, respx_mock):
+        respx_mock.get(f"{BASE_URL}/api/v2/events/datasearch/alert").mock(
+            return_value=httpx.Response(200, json={"result": [{"id": i} for i in range(100)]})
+        )
+        count = await _fetch_event_count(BASE_URL, HEADERS, "/api/v2/events/datasearch/alert", {"limit": 100})
+        assert count == EventCount(100, True)
+
+    @pytest.mark.asyncio
+    async def test_full_page_with_status_count_equal_to_rows_is_capped(self, respx_mock):
+        respx_mock.get(f"{BASE_URL}/api/v2/events/datasearch/alert").mock(
+            return_value=httpx.Response(200, json={"result": [{"id": i} for i in range(100)], "status": {"count": 100}})
+        )
+        count = await _fetch_event_count(BASE_URL, HEADERS, "/api/v2/events/datasearch/alert", {"limit": 100})
+        assert count == EventCount(100, True)
+
+    @pytest.mark.asyncio
+    async def test_full_page_with_larger_status_count_is_exact(self, respx_mock):
+        respx_mock.get(f"{BASE_URL}/api/v2/events/datasearch/alert").mock(
+            return_value=httpx.Response(
+                200, json={"result": [{"id": i} for i in range(100)], "status": {"count": 5000}}
+            )
+        )
+        count = await _fetch_event_count(BASE_URL, HEADERS, "/api/v2/events/datasearch/alert", {"limit": 100})
+        assert count == EventCount(5000, False)
 
     @pytest.mark.asyncio
     async def test_returns_none_on_http_error(self, respx_mock):
@@ -53,13 +80,13 @@ class TestFetchEventCount:
             return_value=httpx.Response(500, json={"error": "server error"})
         )
         count = await _fetch_event_count(BASE_URL, HEADERS, "/api/v2/events/datasearch/alert", {"limit": 100})
-        assert count is None
+        assert count == EventCount(None, False)
 
     @pytest.mark.asyncio
     async def test_returns_none_on_network_error(self, respx_mock):
         respx_mock.get(f"{BASE_URL}/api/v2/events/datasearch/alert").mock(side_effect=httpx.ConnectError("fail"))
         count = await _fetch_event_count(BASE_URL, HEADERS, "/api/v2/events/datasearch/alert", {"limit": 100})
-        assert count is None
+        assert count == EventCount(None, False)
 
 
 # ---------------------------------------------------------------------------
@@ -199,6 +226,7 @@ class TestGatherStatus:
         metrics, errors = await _gather_status(BASE_URL, HEADERS, time_params)
 
         assert metrics["alert_events_24h"] == 10
+        assert metrics["alert_events_capped"] is False
         assert metrics["application_events_24h"] == 10
         assert metrics["network_events_24h"] == 10
         assert metrics["page_events_24h"] == 10
@@ -235,6 +263,7 @@ class TestGatherStatus:
 
         assert metrics["alert_events_24h"] == 0
         assert metrics["application_events_24h"] is None
+        assert metrics["application_events_capped"] is False
         assert metrics["publishers"]["total"] is None
         assert metrics["private_apps"] == 3
         assert metrics["users"] is None
@@ -361,3 +390,57 @@ class TestStatusCLI:
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert data["period"] == "7d"
+
+
+class TestStatusCapped:
+    """A count that hit the datasearch page cap is rendered as a lower bound."""
+
+    @staticmethod
+    def _metrics(capped: bool) -> dict:
+        return {
+            "alert_events_24h": 10000,
+            "alert_events_capped": capped,
+            "application_events_24h": 200,
+            "network_events_24h": 300,
+            "page_events_24h": 50,
+            "incident_events_24h": 5,
+            "publishers": {"total": 3, "connected": 2, "not_connected": 1},
+            "private_apps": 10,
+            "users": 500,
+        }
+
+    def _run(self, tmp_path, monkeypatch, capped: bool, *argv: str):
+        from typer.testing import CliRunner
+
+        from netskope_cli.main import app
+
+        monkeypatch.setenv("NETSKOPE_TENANT", "https://test.goskope.com")
+        monkeypatch.setenv("NETSKOPE_API_TOKEN", "testtoken")
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+
+        async def mock_gather(base_url, headers, time_params, cookies=None, extended=False):
+            return self._metrics(capped), []
+
+        with patch("netskope_cli.commands.status_cmd._gather_status", side_effect=mock_gather):
+            return CliRunner().invoke(app, list(argv))
+
+    def test_json_reports_capped_flags(self, tmp_path, monkeypatch):
+        result = self._run(tmp_path, monkeypatch, True, "-o", "json", "status")
+        assert result.exit_code == 0, result.output
+        events = json.loads(result.output)["events"]
+        assert events["alerts"] == 10000 and events["alerts_capped"] is True
+        assert events["incidents_capped"] is False
+
+        result = self._run(tmp_path, monkeypatch, False, "-o", "json", "status")
+        assert json.loads(result.output)["events"]["alerts_capped"] is False
+
+    def test_table_marks_lower_bound(self, tmp_path, monkeypatch):
+        result = self._run(tmp_path, monkeypatch, True, "--no-color", "status")
+        assert result.exit_code == 0, result.output
+        assert "\u226510,000" in result.output
+        assert "page cap" in result.output
+
+        result = self._run(tmp_path, monkeypatch, False, "--no-color", "status")
+        assert "\u2265" not in result.output
+        assert "10,000" in result.output

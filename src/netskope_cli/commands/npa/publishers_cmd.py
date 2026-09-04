@@ -20,6 +20,7 @@ from netskope_cli.commands.npa._helpers import (
 )
 from netskope_cli.commands.npa.local_brokers_cmd import local_brokers_app
 from netskope_cli.commands.npa.upgrade_profiles_cmd import upgrade_profiles_app
+from netskope_cli.core.datasearch import resolve_api_fields
 from netskope_cli.core.output import echo_success, spinner
 
 # ---------------------------------------------------------------------------
@@ -66,13 +67,14 @@ def list_publishers(
         "-F",
         help="Filter expression to narrow results (API-specific syntax).",
     ),
-    fields: Optional[str] = typer.Option(
+    api_fields: Optional[str] = typer.Option(
         None,
-        "--fields",
+        "--api-fields",
         help=(
-            "Comma-separated list of fields to include in the output."
-            " Sent to the API (top-level fields only). For nested paths, globs, or client-side "
-            "selection on any command see the global --fields and 'ntsk docs fields'."
+            "Comma-separated top-level field names the API should return (server-side projection). "
+            "Widened automatically with any field named by --fields, --where or --sort; output shows these "
+            "columns in this order unless --fields picks others. For client-side selection (nested paths, "
+            "globs) use the global --fields; see 'ntsk docs fields'."
         ),
     ),
     count: bool = typer.Option(
@@ -101,21 +103,21 @@ def list_publishers(
         params["offset"] = offset
     if filter_query is not None:
         params["filter"] = filter_query
-    if fields is not None:
-        params["fields"] = fields
+    selection = resolve_api_fields(ctx, api_fields)
+    if selection.request is not None:
+        params["fields"] = selection.request
 
     with spinner("Fetching publishers..."):
         data = client.request("GET", "/api/v2/infrastructure/publishers", params=params or None)
 
-    if count:
-        formatter.format_output(data, fmt=fmt, title="Publishers", count_only=True)
-    else:
-        formatter.format_output(
-            data,
-            fmt=fmt,
-            title="Publishers",
-            default_fields=["publisher_name", "publisher_id", "status", "version", "apps_count"],
-        )
+    formatter.format_output(
+        data,
+        fmt=fmt,
+        title="Publishers",
+        fields=selection.display,
+        default_fields=["publisher_name", "publisher_id", "status", "version", "apps_count"],
+        count_only=count,
+    )
 
 
 @publishers_app.command("get")

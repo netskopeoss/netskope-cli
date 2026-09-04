@@ -152,12 +152,6 @@ def url_list_list(
             "items 21-30. Defaults to 0 (start from the beginning)."
         ),
     ),
-    fields: Optional[str] = typer.Option(
-        None,
-        "--fields",
-        "-f",
-        help="Comma-separated list of field names to include in the response.",
-    ),
     count: bool = typer.Option(False, "--count", help="Print only the total count."),
 ) -> None:
     """List all URL lists configured in the tenant.
@@ -184,13 +178,11 @@ def url_list_list(
 
     result = client.request("GET", "/api/v2/policy/urllist", params=params or None)
 
-    field_list = [f.strip() for f in fields.split(",") if f.strip()] if fields else None
     formatter.format_output(
         result,
         fmt=fmt,
         title="URL Lists",
         default_fields=["id", "name", "modify_by", "modify_time", "pending"],
-        fields=field_list,
         count_only=count,
         strip_internal=not (state.raw if state else False),
         add_iso_timestamps=not (state.epoch if state else False),

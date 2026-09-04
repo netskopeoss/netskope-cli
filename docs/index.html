@@ -842,7 +842,12 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
         <tr>
           <td><code class="text-xs font-semibold">--count</code></td>
           <td><span class="badge badge-gray">flag</span></td>
-          <td>Print only the record count (subject to <code class="text-xs">--limit</code>). Saves bandwidth by skipping full record retrieval.</td>
+          <td>Print only the record count. Endpoints that return a total report it. <code>events</code>/<code>alerts</code>/<code>incidents</code> fetch one API page (10,000 rows, the datasearch cap) and print <code>N+</code> with a stderr notice when it fills up. Elsewhere the count is of the rows <code class="text-xs">--limit</code> fetched.</td>
+        </tr>
+        <tr>
+          <td><code class="text-xs font-semibold">--exact</code></td>
+          <td><span class="badge badge-gray">flag</span></td>
+          <td>With <code>--count</code> on <code>events</code>/<code>alerts</code>/<code>incidents</code>: page through the API in 10,000-row steps for the true total, applying <code>--where</code> per page. Stops at <code>NETSKOPE_COUNT_CEILING</code> rows (default 200,000) and prints <code>N+</code> if reached. Can issue many requests.</td>
         </tr>
         <tr>
           <td><code class="text-xs font-semibold">--no-color</code></td>
@@ -857,7 +862,12 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
         <tr>
           <td><code class="text-xs font-semibold">-f, --fields A,B</code></td>
           <td><span class="badge badge-gray">string</span></td>
-          <td>Pick output fields on <em>any</em> command, in the order given. Dotted paths (<code>host_info.os</code>), list hops (<code>protocols[].port</code>), globs (<code>epdlp.*</code>). Unknown names warn with close matches. See <a href="#querying" class="text-primary underline">Querying Results</a>.</td>
+          <td>Pick output fields on <em>any</em> command, in the order given. Dotted paths (<code>host_info.os</code>), list hops (<code>protocols[].port</code>), globs (<code>epdlp.*</code>). A name no record has exits 2 with close matches. See <a href="#querying" class="text-primary underline">Querying Results</a>.</td>
+        </tr>
+        <tr>
+          <td><code class="text-xs font-semibold">--lenient</code></td>
+          <td><span class="badge badge-gray">flag</span></td>
+          <td>Do not fail on unknown <code>--fields</code> names: warn with close matches and render the column blank (table/csv) or <code>null</code> (json/yaml).</td>
         </tr>
         <tr>
           <td><code class="text-xs font-semibold">--list-fields</code></td>
@@ -885,7 +895,7 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
       <code><span class="prompt">$</span> ntsk <span class="flag">-o</span> <span class="string">json</span> alerts list <span class="flag">--limit</span> <span class="string">5</span>
 <span class="prompt">$</span> ntsk alerts list <span class="flag">-o</span> <span class="string">json</span> <span class="flag">--limit</span> <span class="string">5</span>   <span class="comment"># same result</span></code>
     </div>
-    <p class="text-sm text-muted-foreground mt-3">One rule keeps this unambiguous: a global flag is only moved in front of the subcommand when the subcommand does <strong>not</strong> declare the same flag itself. So <code>events alerts --fields</code> is still the events API's server-side projection, <code>dem sites summary --where</code> is still the DEM JSON where-clause, and <code>atp scan-file -f</code> still means <code>--file</code>. Everywhere else, <code>--fields</code>, <code>--where</code>, <code>--sort</code> and <code>--list-fields</code> are the client-side <a href="#querying" class="text-primary underline">query options</a>.</p>
+    <p class="text-sm text-muted-foreground mt-3">One rule keeps this unambiguous: a global flag is only moved in front of the subcommand when the subcommand does <strong>not</strong> declare the same flag itself. So <code>dem sites summary --where</code> is still the DEM JSON where-clause and <code>atp scan-file -f</code> still means <code>--file</code>. Server-side field projections have their own name, <code>--api-fields</code>, so <code>--fields</code>, <code>--where</code>, <code>--sort</code> and <code>--list-fields</code> are always the client-side <a href="#querying" class="text-primary underline">query options</a>.</p>
   </div>
 </section>
 
@@ -926,7 +936,8 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
 <span class="prompt">$</span> ntsk npa apps list <span class="flag">--fields</span> <span class="string">app_name,protocols[].port,service_publisher_assignments[].publisher_name</span> <span class="flag">-o</span> <span class="string">csv</span>
 <span class="prompt">$</span> ntsk publishers list <span class="flag">--fields</span> <span class="string">'publisher_name,assessment.version,capabilities.*'</span>
 <span class="prompt">$</span> ntsk devices list <span class="flag">--fields</span> <span class="string">hostnme</span>
-<span class="comment">--fields: 'hostnme' not found in any record. Did you mean hostname, host_info.hostname? Run with --list-fields ...</span></code>
+<span class="comment">Error: --fields: 'hostnme' not found in any record. Did you mean hostname, host_info.hostname?   (exit 2)</span>
+<span class="comment">Hint: Run with --list-fields to see every field, or add --lenient to print blank/null columns ...</span></code>
       </div>
     </div>
 
@@ -990,7 +1001,8 @@ Hint: Run 'ntsk docs fields' for the --where syntax ...   (exit 2, no API call m
 
   <div class="card p-4 bg-secondary/30">
     <h4 class="font-semibold text-sm mb-2">Client-side vs server-side</h4>
-    <p class="text-sm text-muted-foreground">Some commands declare their <strong>own</strong> option with the same name. Those are sent to the API and keep their meaning: <code>events</code>/<code>alerts</code>/<code>incidents --fields</code> (server-side projection, top-level fields only) and <code>--query</code> (server-side JQL), <code>dns</code>/<code>dspm</code>/<code>publishers --filter</code>, <code>dem ... --where</code> (DEM JSON syntax), <code>aicc ... --sort-by</code>. Use the server-side option to fetch less, and the global ones to shape what came back &mdash; they combine: <code>ntsk events alerts --query 'app eq "Slack"' --where 'user like "*@corp.com"' --fields user,timestamp</code>.</p>
+    <p class="text-sm text-muted-foreground">Some commands also have <strong>server-side</strong> options, with distinct names, that change what the API returns: <code>events</code>/<code>alerts</code>/<code>incidents --api-fields</code> (server-side projection, top-level fields only; widened automatically with whatever <code>--fields</code>, <code>--where</code> and <code>--sort</code> reference, so a filter on a field you did not project still works) and <code>--query</code> (server-side JQL), <code>dns</code>/<code>dspm</code>/<code>publishers --filter</code>, <code>dem ... --where</code> (DEM JSON syntax), <code>aicc ... --sort-by</code>. Use the server-side option to fetch less, and the global ones to shape what came back &mdash; they combine: <code>ntsk events alerts --query 'app eq "Slack"' --api-fields user,timestamp,app --where 'user like "*@corp.com"' --fields user,timestamp</code>.</p>
+    <p class="text-sm text-muted-foreground mt-3"><code>--count</code> on those three groups fetches one API page (10,000 rows, the datasearch maximum) and prints <code>10000+</code> with a stderr notice when it filled up, instead of reporting the cap as the total. Add <code>--exact</code> to page for the true total; <code>ntsk status</code> renders capped counts as <code>&ge;10,000</code> and sets <code>alerts_capped: true</code> in JSON.</p>
   </div>
 </section>
 
@@ -1116,7 +1128,7 @@ Hint: Run 'ntsk docs fields' for the --where syntax ...   (exit 2, no API call m
               <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
               <tbody>
                 <tr><td><code class="text-xs">--query</code></td><td>string</td><td>&mdash;</td><td>JQL filter. E.g. <code>'alert_type eq "DLP"'</code></td></tr>
-                <tr><td><code class="text-xs">-f, --fields</code></td><td>string</td><td>&mdash;</td><td>Comma-separated field list, <strong>sent to the API</strong> (top-level fields only). For nested paths or globs use the global option, see <a href="#querying" class="text-primary underline">Querying Results</a></td></tr>
+                <tr><td><code class="text-xs">--api-fields</code></td><td>string</td><td>&mdash;</td><td>Comma-separated top-level field list, <strong>sent to the API</strong> as a server-side projection and widened with whatever <code>--fields</code>/<code>--where</code>/<code>--sort</code> reference. Pick columns client-side (nested paths, globs) with the global <code>--fields</code>, see <a href="#querying" class="text-primary underline">Querying Results</a></td></tr>
                 <tr><td><code class="text-xs">-s, --start, --since</code></td><td>string</td><td>&mdash;</td><td>Start time. Epoch or relative: <code>24h</code>, <code>7d</code>, <code>1h</code></td></tr>
                 <tr><td><code class="text-xs">-e, --end</code></td><td>string</td><td>now</td><td>End time</td></tr>
                 <tr><td><code class="text-xs">-l, --limit</code></td><td>int</td><td>25</td><td>Max records</td></tr>
@@ -1132,9 +1144,12 @@ Hint: Run 'ntsk docs fields' for the --where syntax ...   (exit 2, no API call m
             <code><span class="comment"># Recent DLP alerts as JSON</span>
 <span class="prompt">$</span> ntsk <span class="flag">-o</span> <span class="string">json</span> alerts list <span class="flag">--query</span> <span class="string">'alert_type eq "DLP"'</span> <span class="flag">--since</span> <span class="string">7d</span> <span class="flag">--limit</span> <span class="string">50</span>
 
-<span class="comment"># Count all alerts</span>
-<span class="prompt">$</span> ntsk alerts list <span class="flag">--count</span>
-<span class="output">10000</span>
+<span class="comment"># Count alerts; a full 10,000-row API page is reported as a lower bound</span>
+<span class="prompt">$</span> ntsk alerts list <span class="flag">--since</span> <span class="string">24h</span> <span class="flag">--count</span>
+<span class="output">10000+</span>
+<span class="comment">Count capped at the API maximum of 10,000 rows; narrow the time range or use --exact.</span>
+<span class="prompt">$</span> ntsk alerts list <span class="flag">--since</span> <span class="string">24h</span> <span class="flag">--count</span> <span class="flag">--exact</span>
+<span class="output">23871</span>
 
 <span class="comment"># Only specific fields, sorted by timestamp</span>
 <span class="prompt">$</span> ntsk alerts list <span class="flag">-f</span> <span class="string">alert_name,severity,user,timestamp</span> <span class="flag">--order-by</span> <span class="string">timestamp</span> <span class="flag">--desc</span></code>
@@ -1322,7 +1337,7 @@ Hint: Run 'ntsk docs fields' for the --where syntax ...   (exit 2, no API call m
             <tbody>
               <tr><td><code class="text-xs">-t, --type</code></td><td>string</td><td>&mdash;</td><td>Event type (required for <code>events list</code>)</td></tr>
               <tr><td><code class="text-xs">--query</code></td><td>string</td><td>&mdash;</td><td>JQL filter expression</td></tr>
-              <tr><td><code class="text-xs">-f, --fields</code></td><td>string</td><td>&mdash;</td><td>Comma-separated field list, <strong>sent to the API</strong> (top-level fields only). For nested paths or globs use the global option, see <a href="#querying" class="text-primary underline">Querying Results</a></td></tr>
+              <tr><td><code class="text-xs">--api-fields</code></td><td>string</td><td>&mdash;</td><td>Comma-separated top-level field list, <strong>sent to the API</strong> as a server-side projection and widened with whatever <code>--fields</code>/<code>--where</code>/<code>--sort</code> reference. Pick columns client-side (nested paths, globs) with the global <code>--fields</code>, see <a href="#querying" class="text-primary underline">Querying Results</a></td></tr>
               <tr><td><code class="text-xs">-s, --start</code></td><td>string</td><td>&mdash;</td><td>Start time (epoch or relative)</td></tr>
               <tr><td><code class="text-xs">-e, --end</code></td><td>string</td><td>now</td><td>End time</td></tr>
               <tr><td><code class="text-xs">-l, --limit</code></td><td>int</td><td>25</td><td>Max records</td></tr>
@@ -1383,7 +1398,7 @@ Hint: Run 'ntsk docs fields' for the --where syntax ...   (exit 2, no API call m
               <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
               <tbody>
                 <tr><td><code class="text-xs">-q, --query</code></td><td>string</td><td>&mdash;</td><td>JQL filter (required for <code>search</code>)</td></tr>
-                <tr><td><code class="text-xs">-f, --fields</code></td><td>string</td><td>&mdash;</td><td>Comma-separated fields, <strong>sent to the API</strong>. See <a href="#querying" class="text-primary underline">Querying Results</a> for nested paths</td></tr>
+                <tr><td><code class="text-xs">--api-fields</code></td><td>string</td><td>&mdash;</td><td>Comma-separated top-level fields, <strong>sent to the API</strong> and widened with whatever <code>--fields</code>/<code>--where</code>/<code>--sort</code> reference. Pick columns with the global <code>--fields</code>, see <a href="#querying" class="text-primary underline">Querying Results</a></td></tr>
                 <tr><td><code class="text-xs">-s, --start</code></td><td>string</td><td>24h</td><td>Start time</td></tr>
                 <tr><td><code class="text-xs">-e, --end</code></td><td>string</td><td>now</td><td>End time</td></tr>
                 <tr><td><code class="text-xs">-l, --limit</code></td><td>int</td><td>100</td><td>Max records</td></tr>
@@ -1829,7 +1844,7 @@ Hint: Run 'ntsk docs fields' for the --where syntax ...   (exit 2, no API call m
 <span class="prompt">$</span> ntsk aicc models list <span class="flag">--deployment</span> <span class="string">endpoint</span>   <span class="comment"># locally-run models</span>
 <span class="prompt">$</span> ntsk aicc agents list</code>
         </div>
-        <p class="text-xs text-muted-foreground mt-2">Shared flags: <code>--search</code>, <code>--limit/--offset</code>, <code>--all</code> (fetch every page), <code>--sort-by/--sort-dir</code>, <code>--fields</code> (client-side, same syntax as the global <a href="#querying" class="text-primary underline">--fields</a>). CCI score (0&ndash;100) maps to CCL: Poor &lt; Low &lt; Medium &lt; High &lt; Excellent.</p>
+        <p class="text-xs text-muted-foreground mt-2">Shared flags: <code>--search</code>, <code>--limit/--offset</code>, <code>--all</code> (fetch every page), <code>--sort-by/--sort-dir</code>; pick columns with the global <a href="#querying" class="text-primary underline">--fields</a>. CCI score (0&ndash;100) maps to CCL: Poor &lt; Low &lt; Medium &lt; High &lt; Excellent.</p>
       </div>
 
       <!-- Drill-down -->

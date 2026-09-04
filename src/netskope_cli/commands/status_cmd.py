@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Coroutine
+from dataclasses import dataclass
 from typing import Any
 
 import typer
@@ -23,7 +24,18 @@ from netskope_cli.utils.helpers import validate_time_range
 
 status_app = typer.Typer(name="status", invoke_without_command=True)
 
-_EVENT_LIMIT = 10000  # high enough for accurate daily counts
+# The datasearch endpoints return at most this many rows per request and no
+# total, so a count that reaches it is a lower bound.  Busy tenants exceed it
+# within a day; the ``*_capped`` metrics say when that happened.
+_EVENT_LIMIT = 10000
+
+
+@dataclass(frozen=True)
+class EventCount:
+    """An event count and whether it stopped at the API page cap (lower bound)."""
+
+    count: int | None
+    capped: bool
 
 
 def _build_client(ctx: typer.Context) -> tuple[NetskopeClient, str]:
@@ -39,8 +51,13 @@ def _build_client(ctx: typer.Context) -> tuple[NetskopeClient, str]:
 
 async def _fetch_event_count(
     base_url: str, headers: dict, path: str, params: dict, errors: list[str] | None = None, cookies: dict | None = None
-) -> int | None:
-    """Fetch event count from a datasearch endpoint."""
+) -> EventCount:
+    """Fetch an event count from a datasearch endpoint.
+
+    ``status.count`` is preferred when present, else the number of rows.  The
+    count is flagged ``capped`` when the page filled the requested ``limit``
+    and nothing in the response says the real total is larger.
+    """
     import httpx
 
     try:
@@ -49,21 +66,26 @@ async def _fetch_event_count(
             if resp.status_code != 200:
                 if errors is not None:
                     errors.append(f"{path}: HTTP {resp.status_code}")
-                return None
+                return EventCount(None, False)
             data = resp.json()
             if isinstance(data, dict):
-                status = data.get("status")
-                if isinstance(status, dict):
-                    count = status.get("count")
-                    if count is not None:
-                        return int(count)
                 result = data.get("result")
-                if isinstance(result, list):
-                    return len(result)
+                rows = len(result) if isinstance(result, list) else None
+                count: int | None = None
+                status = data.get("status")
+                if isinstance(status, dict) and status.get("count") is not None:
+                    count = int(status["count"])
+                elif rows is not None:
+                    count = rows
+                if count is None:
+                    return EventCount(None, False)
+                limit = params.get("limit")
+                capped = rows is not None and limit is not None and rows >= int(limit) and count <= rows
+                return EventCount(count, capped)
     except Exception as exc:
         if errors is not None:
             errors.append(f"{path}: {exc}")
-    return None
+    return EventCount(None, False)
 
 
 async def _fetch_resource_total(
@@ -241,7 +263,12 @@ async def _gather_status(
     metrics: dict[str, Any] = {}
     for i, etype in enumerate(event_types):
         val = results[i]
-        metrics[f"{etype}_events_24h"] = val if isinstance(val, int) else None
+        if isinstance(val, EventCount):
+            metrics[f"{etype}_events_24h"] = val.count
+            metrics[f"{etype}_events_capped"] = val.capped
+        else:
+            metrics[f"{etype}_events_24h"] = None
+            metrics[f"{etype}_events_capped"] = False
 
     base_idx = len(event_types)
     pub_result = results[base_idx]
@@ -271,11 +298,11 @@ async def _gather_status(
 # ------------------------------------------------------------------
 
 
-def _fmt(value: int | None) -> str:
-    """Format an integer with commas, or 'N/A'."""
+def _fmt(value: int | None, *, capped: bool = False) -> str:
+    """Format an integer with commas, or 'N/A'; a capped count is shown as a lower bound (>=N)."""
     if value is None:
         return "N/A"
-    return f"{value:,}"
+    return f"\u2265{value:,}" if capped else f"{value:,}"
 
 
 def _color_status(connected: int | None, total: int | None) -> Text:
@@ -324,11 +351,14 @@ def _render_table(base_url: str, metrics: dict[str, Any], period: str, no_color:
         ("network_events_24h", "Network"),
         ("page_events_24h", "Page"),
     ]
+    capped_any = False
     for key, label in event_labels:
         val = metrics.get(key)
-        count_text = _fmt(val)
+        capped = bool(metrics.get(key.replace("_24h", "_capped"), False))
+        capped_any = capped_any or capped
+        count_text = _fmt(val, capped=capped)
         style = ""
-        if val is not None and val > 0 and key in ("alert_events_24h", "incident_events_24h"):
+        if capped or (val is not None and val > 0 and key in ("alert_events_24h", "incident_events_24h")):
             style = "yellow"
         events_table.add_row(label, Text(count_text, style=style))
 
@@ -343,6 +373,14 @@ def _render_table(base_url: str, metrics: dict[str, Any], period: str, no_color:
     output.add_row(infra_table)
     output.add_row(Text(f"\nEvents (last {period})", style="bold magenta"))
     output.add_row(events_table)
+    if capped_any:
+        output.add_row(
+            Text(
+                f"\u2265 marks a count that hit the API page cap of {_EVENT_LIMIT:,} rows (at least that many); "
+                "use a shorter --period or 'ntsk alerts list --count --exact'.",
+                style="dim",
+            )
+        )
 
     # Extended configuration section
     if extended:
@@ -391,10 +429,15 @@ def _render_json(base_url: str, metrics: dict[str, Any], period: str, extended: 
         },
         "events": {
             "alerts": metrics.get("alert_events_24h"),
+            "alerts_capped": bool(metrics.get("alert_events_capped", False)),
             "incidents": metrics.get("incident_events_24h"),
+            "incidents_capped": bool(metrics.get("incident_events_capped", False)),
             "application": metrics.get("application_events_24h"),
+            "application_capped": bool(metrics.get("application_events_capped", False)),
             "network": metrics.get("network_events_24h"),
+            "network_capped": bool(metrics.get("network_events_capped", False)),
             "page": metrics.get("page_events_24h"),
+            "page_capped": bool(metrics.get("page_events_capped", False)),
         },
     }
     if extended:

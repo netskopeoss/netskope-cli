@@ -367,9 +367,9 @@ They run client-side on the rows the API returned (so --limit still applies).
      epdlp.*                  glob: every field under epdlp
      *_timestamp              glob: every field ending in _timestamp
 
-   Unknown names print a warning with close matches; nothing is silently
-   dropped. Quote globs in zsh:  --fields 'epdlp.*'
-   Missing values render blank in table/csv and null in json/yaml.
+   A name no returned record has stops the command (exit 2) and suggests
+   close matches; add --lenient to warn instead and render that column
+   blank (table/csv) or null (json/yaml). Quote globs in zsh:  --fields 'epdlp.*'
 
      ntsk devices list --fields hostname,host_info.os,last_event_timestamp
      ntsk npa apps list --fields app_name,protocols[].port -o csv
@@ -410,17 +410,27 @@ Combining
 
 Client-side vs server-side
 --------------------------
-   These four options never change the API request. Some commands also have
-   their OWN options with the same name that are sent to the API instead and
-   therefore keep their original meaning:
+   These options never change the API request. Some commands have their own
+   server-side options, with distinct names, that shape what the API returns:
 
-     events/alerts/incidents --fields    server-side projection (top-level fields only)
-     events/alerts/incidents --query     server-side JQL filter (use it to fetch less)
-     dns/dspm/publishers     --filter    server-side filter expression
-     dem ... --where / --select          DEM JSON query syntax
-     aicc ... --sort-by                  server-side sort
+     events/alerts/incidents --api-fields  server-side projection, top-level names only.
+                                           Widened automatically with every top-level name
+                                           that --fields, --where or --sort reference, so a
+                                           filter on a field you did not project still works.
+     events/alerts/incidents --query       server-side JQL filter (use it to fetch less)
+     dns/dspm/publishers     --filter      server-side filter expression
+     dem ... --where / --select            DEM JSON query syntax
+     aicc ... --sort-by                    server-side sort
 
-   Tip: on events, combine both:  --query 'app eq "Slack"' --where 'user like "*@corp.com"'
+   Tip: on events, combine them:
+     --query 'app eq "Slack"' --api-fields user,timestamp,app --where 'user like "*@corp.com"'
+
+Counting
+--------
+   --count on events/alerts/incidents fetches one API page (10,000 rows) and
+   prints N+ when it filled up, with a notice on stderr. Add --exact to page
+   through the endpoint for the true total (bounded by NETSKOPE_COUNT_CEILING,
+   default 200,000 rows; N+ again if reached). --where is applied per page.
 """
 
 
@@ -468,11 +478,13 @@ def fields_reference(
 ) -> None:
     """Show how to discover, select, filter and sort fields on any command.
 
-    Displays an inline reference for the four global query options that
-    work on every command: --list-fields (discover the response schema),
-    --fields (pick columns incl. nested paths and globs), --where
-    (client-side JQL row filter) and --sort. Explains the path grammar,
-    comparison rules, and which per-command options are server-side instead.
+    Displays an inline reference for the global query options that work on
+    every command: --list-fields (discover the response schema), --fields
+    (pick columns incl. nested paths and globs; --lenient to tolerate unknown
+    names), --where (client-side JQL row filter) and --sort. Explains the
+    path grammar, comparison rules, which per-command options are
+    server-side (--api-fields, --query, --filter) and how --count/--exact
+    behave on the 10,000-row datasearch page cap.
 
     This is a local reference and does not call any API.
 

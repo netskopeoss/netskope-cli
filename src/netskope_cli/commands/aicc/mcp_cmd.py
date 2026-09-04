@@ -13,7 +13,6 @@ from netskope_cli.commands.aicc._common import (
     HELP_ACTIVE_ONLY,
     HELP_ALL,
     HELP_END,
-    HELP_FIELDS,
     HELP_LIMIT,
     HELP_OFFSET,
     HELP_SEARCH,
@@ -98,7 +97,6 @@ def list_mcp(
     limit: int = typer.Option(50, "--limit", "-l", help=HELP_LIMIT),
     offset: int = typer.Option(0, "--offset", help=HELP_OFFSET),
     fetch_all: bool = typer.Option(False, "--all", help=HELP_ALL),
-    fields: Optional[str] = typer.Option(None, "--fields", "-f", help=HELP_FIELDS),
 ) -> None:
     """List discovered MCP servers with usage and risk data.
 
@@ -130,7 +128,6 @@ def list_mcp(
         limit=limit,
         offset=offset,
         fetch_all=fetch_all,
-        fields=fields,
         default_fields=["name", "category", "cci_score", "ccl", "users", "events", "sessions", "first_seen"],
         empty_hint="No MCP servers found in this window. Try a longer --start (e.g. 30d, 90d).",
     )
@@ -148,7 +145,6 @@ def get_mcp(
     ),
     start: Optional[str] = typer.Option(None, "--start", "-s", "--since", help=HELP_START),
     end: Optional[str] = typer.Option(None, "--end", "-e", help=HELP_END),
-    fields: Optional[str] = typer.Option(None, "--fields", "-f", help=HELP_FIELDS),
 ) -> None:
     """Show full details for one MCP server.
 
@@ -167,7 +163,7 @@ def get_mcp(
         {"start_time": start_iso, "end_time": end_iso},
         spinner_text=f"Fetching {server_name}...",
     )
-    show_payload(ctx, unwrap_data(response), title=f"AICC MCP Server — {server_name}", fields=fields)
+    show_payload(ctx, unwrap_data(response), title=f"AICC MCP Server — {server_name}")
 
 
 @mcp_app.command("identities")
@@ -184,7 +180,6 @@ def mcp_identities(
     limit: int = typer.Option(50, "--limit", "-l", help=HELP_LIMIT),
     offset: int = typer.Option(0, "--offset", help=HELP_OFFSET),
     fetch_all: bool = typer.Option(False, "--all", help=HELP_ALL),
-    fields: Optional[str] = typer.Option(None, "--fields", "-f", help=HELP_FIELDS),
 ) -> None:
     """List the identities connecting to an MCP server.
 
@@ -210,7 +205,6 @@ def mcp_identities(
         limit=limit,
         offset=offset,
         fetch_all=fetch_all,
-        fields=fields,
         default_fields=["name", "type", "sessions", "events", "uploaded_bytes", "downloaded_bytes"],
     )
 
@@ -233,7 +227,6 @@ def mcp_deployments(
     limit: int = typer.Option(50, "--limit", "-l", help=HELP_LIMIT),
     offset: int = typer.Option(0, "--offset", help=HELP_OFFSET),
     fetch_all: bool = typer.Option(False, "--all", help=HELP_ALL),
-    fields: Optional[str] = typer.Option(None, "--fields", "-f", help=HELP_FIELDS),
 ) -> None:
     """List deployment instances of an MCP server (per footprint type).
 
@@ -253,7 +246,6 @@ def mcp_deployments(
         limit=limit,
         offset=offset,
         fetch_all=fetch_all,
-        fields=fields,
         empty_hint=(
             "No deployments of this type. Run 'ntsk aicc mcp get' and use one of the "
             "footprint.types values as --type."
@@ -319,7 +311,6 @@ def mcp_violations(
     limit: int = typer.Option(50, "--limit", "-l", help=HELP_LIMIT),
     offset: int = typer.Option(0, "--offset", help=HELP_OFFSET),
     fetch_all: bool = typer.Option(False, "--all", help=HELP_ALL),
-    fields: Optional[str] = typer.Option(None, "--fields", "-f", help=HELP_FIELDS),
 ) -> None:
     """List policy violations triggered by an MCP server's traffic.
 
@@ -340,7 +331,6 @@ def mcp_violations(
         limit=limit,
         offset=offset,
         fetch_all=fetch_all,
-        fields=fields,
         default_fields=["policy_name", "severity", "category", "count"],
         empty_hint="No policy violations for this MCP server in the window.",
     )

@@ -10,7 +10,7 @@ import pytest
 import respx
 from typer.testing import CliRunner
 
-from netskope_cli.core.output import OutputFormatter, build_formatter, resolve_fields
+from netskope_cli.core.output import OutputFormatter, UnknownFieldError, build_formatter
 from netskope_cli.main import State, _hoist_global_options, app, cli
 
 BASE = "https://test.goskope.com"
@@ -77,8 +77,18 @@ class TestFormatterFields:
         out, _ = _out(capsys)
         assert out.splitlines()[0] == "hostname"
 
-    def test_unknown_field_warns_with_suggestion(self, capsys: pytest.CaptureFixture[str]) -> None:
-        OutputFormatter(no_color=True, fields=["hostnme", "nothing.*"]).format_output(DEVICES, fmt="json")
+    def test_unknown_field_is_an_error_with_suggestion(self, capsys: pytest.CaptureFixture[str]) -> None:
+        with pytest.raises(UnknownFieldError) as exc:
+            OutputFormatter(no_color=True, fields=["hostnme", "nothing.*"]).format_output(DEVICES, fmt="json")
+        assert exc.value.exit_code == 2
+        assert "'hostnme' not found in any record" in exc.value.message
+        assert "hostname" in exc.value.message
+        assert "pattern 'nothing.*' matched no fields" in exc.value.message
+        assert "--list-fields" in (exc.value.suggestion or "") and "--lenient" in (exc.value.suggestion or "")
+        assert _out(capsys)[0] == ""  # nothing reached stdout
+
+    def test_lenient_unknown_field_warns(self, capsys: pytest.CaptureFixture[str]) -> None:
+        OutputFormatter(no_color=True, lenient=True, fields=["hostnme", "nothing.*"]).format_output(DEVICES, fmt="json")
         out, err = _out(capsys)
         assert "'hostnme' not found in any record" in err
         assert "hostname" in err
@@ -223,21 +233,16 @@ class TestWideHint:
 class TestFactory:
     def test_build_formatter_reads_state(self) -> None:
         class Ctx:
-            obj = State(fields=["a"], where="x eq 1", sort="a:desc", list_fields=True, quiet=True, wide=True)
+            obj = State(
+                fields=["a"], where="x eq 1", sort="a:desc", list_fields=True, quiet=True, wide=True, lenient=True
+            )
 
         fmt = build_formatter(Ctx())
         assert fmt._global_fields == ["a"]
         assert fmt._where is not None and fmt._sort == [("a", True)] and fmt._list_fields and fmt._quiet
+        assert fmt._lenient
         assert build_formatter(object())._global_fields is None
-
-    def test_resolve_fields(self) -> None:
-        class Ctx:
-            obj = State(fields=["g"])
-
-        assert resolve_fields(Ctx(), "a, b,") == ["a", "b"]
-        assert resolve_fields(Ctx(), None) == ["g"]
-        assert resolve_fields(Ctx(), ["x"]) == ["x"]
-        assert resolve_fields(object(), None) is None
+        assert not build_formatter(object())._lenient
 
 
 # ---------------------------------------------------------------------------
@@ -300,15 +305,19 @@ class TestEndToEnd:
         assert result.stdout.strip() == "1"
 
     @respx.mock
-    def test_events_fields_stay_server_side(self, runner: CliRunner) -> None:
+    def test_events_api_fields_go_server_side_and_fields_stay_client_side(self, runner: CliRunner) -> None:
         route = respx.get(f"{BASE}/api/v2/events/datasearch/alert").mock(
             return_value=httpx.Response(200, json={"ok": 1, "result": [{"alert_name": "x", "severity": "high"}]})
         )
-        result = _invoke_hoisted(runner, "events", "alerts", "--fields", "alert_name,severity", "-o", "json")
+        result = _invoke_hoisted(runner, "events", "alerts", "--api-fields", "alert_name,severity", "-o", "json")
         assert result.exit_code == 0, result.output
-        assert "fields=alert_name%2Cseverity" in str(route.calls[0].request.url) or "fields=alert_name,severity" in str(
-            route.calls[0].request.url
-        )
+        url = str(route.calls[0].request.url)
+        assert "fields=alert_name%2Cseverity" in url or "fields=alert_name,severity" in url
+
+        result = _invoke_hoisted(runner, "events", "alerts", "--fields", "severity", "-o", "json")
+        assert result.exit_code == 0, result.output
+        assert "fields=" not in str(route.calls[1].request.url)
+        assert json.loads(result.stdout) == [{"severity": "high"}]
 
     def test_where_syntax_error_exits_2_before_any_call(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(sys, "argv", ["ntsk", "users", "list", "--where", "userName eq"])

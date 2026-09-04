@@ -13,7 +13,6 @@ from netskope_cli.commands.aicc._common import (
     HELP_ACTIVE_ONLY,
     HELP_ALL,
     HELP_END,
-    HELP_FIELDS,
     HELP_FIRST_SEEN_AFTER,
     HELP_LIMIT,
     HELP_OFFSET,
@@ -82,7 +81,6 @@ def _sub_resource(
     limit: int,
     offset: int,
     fetch_all: bool,
-    fields: Optional[str],
     title: str,
 ) -> None:
     start_iso, end_iso = resolve_time_range(ctx, start, end)
@@ -101,7 +99,6 @@ def _sub_resource(
         limit=limit,
         offset=offset,
         fetch_all=fetch_all,
-        fields=fields,
     )
 
 
@@ -143,7 +140,6 @@ def list_identities(
     limit: int = typer.Option(50, "--limit", "-l", help=HELP_LIMIT),
     offset: int = typer.Option(0, "--offset", help=HELP_OFFSET),
     fetch_all: bool = typer.Option(False, "--all", help=HELP_ALL),
-    fields: Optional[str] = typer.Option(None, "--fields", "-f", help=HELP_FIELDS),
 ) -> None:
     """List identities with their AI usage footprint.
 
@@ -182,7 +178,6 @@ def list_identities(
         limit=limit,
         offset=offset,
         fetch_all=fetch_all,
-        fields=fields,
         default_fields=[
             "user_id",
             "type",
@@ -212,7 +207,6 @@ def get_identity(
     ),
     start: Optional[str] = typer.Option(None, "--start", "-s", "--since", help=HELP_START),
     end: Optional[str] = typer.Option(None, "--end", "-e", help=HELP_END),
-    fields: Optional[str] = typer.Option(None, "--fields", "-f", help=HELP_FIELDS),
 ) -> None:
     """Show full details for one identity.
 
@@ -232,7 +226,7 @@ def get_identity(
         {"start_time": start_iso, "end_time": end_iso},
         spinner_text=f"Fetching {identity_id}...",
     )
-    show_payload(ctx, unwrap_data(response), title=f"AICC Identity — {identity_id}", fields=fields)
+    show_payload(ctx, unwrap_data(response), title=f"AICC Identity — {identity_id}")
 
 
 @identities_app.command("trend")
@@ -290,7 +284,6 @@ def identity_models(
     limit: int = typer.Option(50, "--limit", "-l", help=HELP_LIMIT),
     offset: int = typer.Option(0, "--offset", help=HELP_OFFSET),
     fetch_all: bool = typer.Option(False, "--all", help=HELP_ALL),
-    fields: Optional[str] = typer.Option(None, "--fields", "-f", help=HELP_FIELDS),
 ) -> None:
     """List the AI models an identity has accessed.
 
@@ -311,7 +304,6 @@ def identity_models(
         limit=limit,
         offset=offset,
         fetch_all=fetch_all,
-        fields=fields,
         title=f"AICC Identity Models — {identity_id}",
     )
 
@@ -328,7 +320,6 @@ def identity_agents(
     limit: int = typer.Option(50, "--limit", "-l", help=HELP_LIMIT),
     offset: int = typer.Option(0, "--offset", help=HELP_OFFSET),
     fetch_all: bool = typer.Option(False, "--all", help=HELP_ALL),
-    fields: Optional[str] = typer.Option(None, "--fields", "-f", help=HELP_FIELDS),
 ) -> None:
     """List the native AI agents an identity has used.
 
@@ -349,7 +340,6 @@ def identity_agents(
         limit=limit,
         offset=offset,
         fetch_all=fetch_all,
-        fields=fields,
         title=f"AICC Identity Agents — {identity_id}",
     )
 
@@ -366,7 +356,6 @@ def identity_mcp(
     limit: int = typer.Option(50, "--limit", "-l", help=HELP_LIMIT),
     offset: int = typer.Option(0, "--offset", help=HELP_OFFSET),
     fetch_all: bool = typer.Option(False, "--all", help=HELP_ALL),
-    fields: Optional[str] = typer.Option(None, "--fields", "-f", help=HELP_FIELDS),
 ) -> None:
     """List the MCP servers an identity has connected to.
 
@@ -387,6 +376,5 @@ def identity_mcp(
         limit=limit,
         offset=offset,
         fetch_all=fetch_all,
-        fields=fields,
         title=f"AICC Identity MCP Servers — {identity_id}",
     )

@@ -12,6 +12,14 @@ from typing import Optional
 import typer
 
 from netskope_cli.core.client import NetskopeClient, build_client
+from netskope_cli.core.datasearch import (
+    DATASEARCH_PAGE_CAP,
+    count_ceiling,
+    count_exact,
+    is_page_capped,
+    print_exact_count,
+    resolve_api_fields,
+)
 from netskope_cli.core.exceptions import APIError, ValidationError
 from netskope_cli.core.output import (
     OutputFormatter,
@@ -87,6 +95,81 @@ def _get_output_format(ctx: typer.Context) -> str:
     return state.output.value if state is not None else "table"
 
 
+_INCIDENT_EVENTS_ENDPOINT = "/api/v2/events/datasearch/incident"
+
+_HELP_API_FIELDS = (
+    "Comma-separated top-level field names the API should return, e.g. 'incident_id,user,severity,timestamp'. "
+    "Sent to the API as a server-side projection to reduce payload size; automatically widened with any field "
+    "named by --fields, --where or --sort so those keep working. Output shows these columns in this order "
+    "unless --fields picks others. Omit to return every field. To choose columns client-side (nested paths, "
+    "globs) use the global --fields; see 'ntsk docs fields'."
+)
+
+
+def _query_incident_events(
+    ctx: typer.Context,
+    params: dict[str, object],
+    *,
+    api_fields: Optional[str],
+    limit: int,
+    count: bool,
+    title: str,
+    default_fields: Optional[list[str]] = None,
+    spinner_text: str,
+) -> None:
+    """Run a datasearch/incident query and render it (shared by 'list' and 'search').
+
+    ``--count`` fetches a full API page (10,000 rows) instead of ``--limit``
+    and reports ``N+`` when the page filled up; ``--exact`` pages for the
+    true total.  ``--api-fields`` is widened so client-side ``--fields``,
+    ``--where`` and ``--sort`` still see the fields they reference.
+    """
+    state = ctx.obj
+    client = _build_client(ctx)
+    formatter = _get_formatter(ctx)
+    fmt = _get_output_format(ctx)
+    quiet = bool(getattr(state, "quiet", False))
+    no_color = bool(getattr(state, "no_color", False))
+
+    selection = resolve_api_fields(ctx, api_fields)
+    if selection.request is not None:
+        params["fields"] = selection.request
+
+    if count and getattr(state, "exact", False):
+        where_expr = getattr(state, "where_expr", None)
+        ceiling = count_ceiling()
+        result = count_exact(
+            client,
+            _INCIDENT_EVENTS_ENDPOINT,
+            params,
+            where=where_expr,
+            ceiling=ceiling,
+            quiet=quiet,
+            no_color=no_color,
+        )
+        print_exact_count(result, where=where_expr is not None, ceiling=ceiling, quiet=quiet, no_color=no_color)
+        return
+
+    params["limit"] = DATASEARCH_PAGE_CAP if count else limit
+
+    with spinner(spinner_text, no_color=no_color, quiet=quiet):
+        data = client.request("GET", _INCIDENT_EVENTS_ENDPOINT, params=params)
+
+    capped_at = DATASEARCH_PAGE_CAP if count and is_page_capped(data, DATASEARCH_PAGE_CAP) else None
+
+    formatter.format_output(
+        data,
+        fmt=fmt,
+        fields=selection.display,
+        title=title,
+        default_fields=default_fields,
+        count_only=count,
+        capped_at=capped_at,
+        strip_internal=not bool(getattr(state, "raw", False)),
+        add_iso_timestamps=not bool(getattr(state, "epoch", False)),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
@@ -104,16 +187,7 @@ def incidents_list(
             "and logical operators. Omit to return all recent incidents."
         ),
     ),
-    fields: Optional[str] = typer.Option(
-        None,
-        "--fields",
-        "-f",
-        help=(
-            "Comma-separated list of field names to include in the response."
-            " Sent to the API (top-level fields only). For nested paths, globs, or client-side "
-            "selection on any command see the global --fields and 'ntsk docs fields'."
-        ),
-    ),
+    api_fields: Optional[str] = typer.Option(None, "--api-fields", help=_HELP_API_FIELDS),
     start: str = typer.Option(
         "24h",
         "--start",
@@ -135,7 +209,10 @@ def incidents_list(
     count: bool = typer.Option(
         False,
         "--count",
-        help="Print only the total count of matching incidents.",
+        help=(
+            "Print only the count of matching incidents. Fetches up to 10,000 rows (the API page cap) and "
+            "prints N+ when that cap is hit; add the global --exact to page for the true total."
+        ),
     ),
 ) -> None:
     """List recent incidents (alias for 'incidents search' with optional query).
@@ -146,46 +223,28 @@ def incidents_list(
     Examples:
         netskope incidents list
         netskope incidents list --query 'severity eq "critical"' --start 7d
+        netskope incidents list --fields incident_id,severity,user -o csv
+        netskope incidents list --api-fields incident_id,severity --where 'status eq "open"'
         netskope incidents list --count
     """
     state = ctx.obj
-    client = _build_client(ctx)
-    formatter = _get_formatter(ctx)
-    fmt = _get_output_format(ctx)
+    count = count or bool(getattr(state, "count", False))
 
     start_ts, end_ts = validate_time_range(start, end)
 
-    params: dict[str, object] = {
-        "starttime": start_ts,
-        "endtime": end_ts,
-        "limit": limit,
-    }
+    params: dict[str, object] = {"starttime": start_ts, "endtime": end_ts}
     if query:
         params["query"] = query
-    if fields:
-        params["fields"] = fields
 
-    field_list = [f.strip() for f in fields.split(",")] if fields else None
-
-    with spinner("Fetching incidents...", no_color=state.no_color):
-        data = client.request(
-            "GET",
-            "/api/v2/events/datasearch/incident",
-            params=params,
-        )
-
-    strip_internal = not (state.raw if state else False)
-    add_iso = not (state.epoch if state else False)
-
-    formatter.format_output(
-        data,
-        fmt=fmt,
-        fields=field_list,
+    _query_incident_events(
+        ctx,
+        params,
+        api_fields=api_fields,
+        limit=limit,
+        count=count,
         title="Incidents",
         default_fields=["_id", "incident_id", "user", "severity", "status", "timestamp"],
-        count_only=count,
-        strip_internal=strip_internal,
-        add_iso_timestamps=add_iso,
+        spinner_text="Fetching incidents...",
     )
 
 
@@ -538,18 +597,7 @@ def search(
             'or \'status eq "open" AND user eq "alice@example.com"\'. This option is required.'
         ),
     ),
-    fields: Optional[str] = typer.Option(
-        None,
-        "--fields",
-        "-f",
-        help=(
-            "Comma-separated list of field names to include in the response. Reduces payload "
-            "size and focuses on relevant data. For example: 'incident_id,user,severity,timestamp'. "
-            "Omit to return all available fields."
-            " Sent to the API (top-level fields only). For nested paths, globs, or client-side "
-            "selection on any command see the global --fields and 'ntsk docs fields'."
-        ),
-    ),
+    api_fields: Optional[str] = typer.Option(None, "--api-fields", help=_HELP_API_FIELDS),
     start: str = typer.Option(
         "24h",
         "--start",
@@ -590,39 +638,22 @@ def search(
     Examples:
         netskope incidents search --query 'severity eq "critical"' --start 7d
         netskope incidents search --query 'status eq "open"' --fields incident_id,user,severity --limit 50
+        netskope incidents search --query 'status eq "open"' --api-fields incident_id,user,severity
         netskope -o json incidents search --query 'user eq "alice@example.com"' --start 30d
     """
     state = ctx.obj
-    client = _build_client(ctx)
-    formatter = _get_formatter(ctx)
-    fmt = _get_output_format(ctx)
-
     start_ts, end_ts = validate_time_range(start, end)
 
-    params: dict[str, object] = {
-        "query": query,
-        "starttime": start_ts,
-        "endtime": end_ts,
-        "limit": limit,
-    }
+    params: dict[str, object] = {"query": query, "starttime": start_ts, "endtime": end_ts}
 
-    if fields:
-        params["fields"] = fields
-
-    field_list = [f.strip() for f in fields.split(",")] if fields else None
-
-    with spinner("Searching incident events...", no_color=state.no_color):
-        data = client.request(
-            "GET",
-            "/api/v2/events/datasearch/incident",
-            params=params,
-        )
-
-    formatter.format_output(
-        data,
-        fmt=fmt,
-        fields=field_list,
+    _query_incident_events(
+        ctx,
+        params,
+        api_fields=api_fields,
+        limit=limit,
+        count=bool(getattr(state, "count", False)),
         title="Incident Event Search Results",
+        spinner_text="Searching incident events...",
     )
 
 

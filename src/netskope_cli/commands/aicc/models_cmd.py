@@ -13,7 +13,6 @@ from netskope_cli.commands.aicc._common import (
     HELP_ACTIVE_ONLY,
     HELP_ALL,
     HELP_END,
-    HELP_FIELDS,
     HELP_FIRST_SEEN_AFTER,
     HELP_LIMIT,
     HELP_OFFSET,
@@ -82,7 +81,6 @@ def list_models(
     limit: int = typer.Option(50, "--limit", "-l", help=HELP_LIMIT),
     offset: int = typer.Option(0, "--offset", help=HELP_OFFSET),
     fetch_all: bool = typer.Option(False, "--all", help=HELP_ALL),
-    fields: Optional[str] = typer.Option(None, "--fields", "-f", help=HELP_FIELDS),
 ) -> None:
     """List AI models observed in your environment.
 
@@ -116,7 +114,6 @@ def list_models(
         limit=limit,
         offset=offset,
         fetch_all=fetch_all,
-        fields=fields,
         default_fields=["name", "provider", "bytes", "identities", "first_seen", "last_seen"],
         empty_hint="No models found in this window. Try a longer --start (e.g. 30d, 90d).",
     )
@@ -134,7 +131,6 @@ def get_model(
     ),
     start: Optional[str] = typer.Option(None, "--start", "-s", "--since", help=HELP_START),
     end: Optional[str] = typer.Option(None, "--end", "-e", help=HELP_END),
-    fields: Optional[str] = typer.Option(None, "--fields", "-f", help=HELP_FIELDS),
 ) -> None:
     """Show full details for one model.
 
@@ -150,7 +146,7 @@ def get_model(
         {"start_time": start_iso, "end_time": end_iso},
         spinner_text=f"Fetching {model_name}...",
     )
-    show_payload(ctx, unwrap_data(response), title=f"AICC Model — {model_name}", fields=fields)
+    show_payload(ctx, unwrap_data(response), title=f"AICC Model — {model_name}")
 
 
 @models_app.command("identities")
@@ -165,7 +161,6 @@ def model_identities(
     limit: int = typer.Option(50, "--limit", "-l", help=HELP_LIMIT),
     offset: int = typer.Option(0, "--offset", help=HELP_OFFSET),
     fetch_all: bool = typer.Option(False, "--all", help=HELP_ALL),
-    fields: Optional[str] = typer.Option(None, "--fields", "-f", help=HELP_FIELDS),
 ) -> None:
     """List the identities that accessed a model.
 
@@ -190,7 +185,6 @@ def model_identities(
         limit=limit,
         offset=offset,
         fetch_all=fetch_all,
-        fields=fields,
     )
 
 
@@ -213,7 +207,6 @@ def model_deployments(
     limit: int = typer.Option(50, "--limit", "-l", help=HELP_LIMIT),
     offset: int = typer.Option(0, "--offset", help=HELP_OFFSET),
     fetch_all: bool = typer.Option(False, "--all", help=HELP_ALL),
-    fields: Optional[str] = typer.Option(None, "--fields", "-f", help=HELP_FIELDS),
 ) -> None:
     """List deployment instances of a model (per footprint type).
 
@@ -234,7 +227,6 @@ def model_deployments(
         limit=limit,
         offset=offset,
         fetch_all=fetch_all,
-        fields=fields,
         empty_hint=(
             "No deployments of this type. Run 'ntsk aicc models get' and use one of the "
             "footprint.types values as --type."

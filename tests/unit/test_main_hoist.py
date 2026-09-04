@@ -46,13 +46,28 @@ class TestQueryOptions:
         assert hoist("users", "list", "-f", "id") == ["ntsk", "-f", "id", "users", "list"]
         assert hoist("users", "list", "--fields=id,email") == ["ntsk", "--fields=id,email", "users", "list"]
 
-    def test_fields_stays_local_on_events(self) -> None:
+    def test_fields_is_global_even_on_events(self) -> None:
+        # events/alerts/incidents no longer declare --fields; their server-side
+        # projection is --api-fields, which is local and stays put.
         argv = hoist("events", "alerts", "--fields", "a,b", "-o", "json")
-        assert argv == ["ntsk", "-o", "json", "events", "alerts", "--fields", "a,b"]
+        assert argv == ["ntsk", "--fields", "a,b", "-o", "json", "events", "alerts"]
+        argv = hoist("events", "alerts", "--api-fields", "a,b", "-o", "json")
+        assert argv == ["ntsk", "-o", "json", "events", "alerts", "--api-fields", "a,b"]
+        assert hoist("alerts", "list", "--api-fields=a") == ["ntsk", "alerts", "list", "--api-fields=a"]
 
-    def test_short_f_stays_local_when_declared(self) -> None:
-        assert hoist("events", "alerts", "-f", "a") == ["ntsk", "events", "alerts", "-f", "a"]
+    def test_short_f_is_global_unless_declared(self) -> None:
+        assert hoist("events", "alerts", "-f", "a") == ["ntsk", "-f", "a", "events", "alerts"]
         assert hoist("atp", "scan-file", "-f", "./x") == ["ntsk", "atp", "scan-file", "-f", "./x"]
+
+    def test_lenient_and_exact_are_global_bool_flags(self) -> None:
+        assert hoist("alerts", "list", "--count", "--exact", "--lenient") == [
+            "ntsk",
+            "--exact",
+            "--lenient",
+            "alerts",
+            "list",
+            "--count",
+        ]
 
     def test_where_hoisted_and_kept_local_for_dem(self) -> None:
         assert hoist("users", "list", "--where", "a eq 1") == ["ntsk", "--where", "a eq 1", "users", "list"]
@@ -134,7 +149,8 @@ class TestResolveLeaf:
         leaf = _resolve_leaf_command(["ntsk", "-o", "json", "events", "alerts", "--limit", "5"])
         assert leaf is not None
         assert leaf.name == "alerts"
-        assert {"--fields", "-f", "--query"} <= _local_option_names(leaf)
+        assert {"--api-fields", "--query"} <= _local_option_names(leaf)
+        assert not {"--fields", "-f"} & _local_option_names(leaf)
 
     def test_real_app_group_only_returns_none(self) -> None:
         assert _resolve_leaf_command(["ntsk", "devices"]) is None

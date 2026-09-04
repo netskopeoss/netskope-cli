@@ -55,6 +55,8 @@ class State:
     raw: bool = False
     epoch: bool = False
     count: bool = False
+    # ``--exact``: with ``--count`` on datasearch commands, page for the true total.
+    exact: bool = False
     wide: bool = False
     # Global query options (see ``ntsk docs fields``).  ``where_expr`` and
     # ``sort_spec`` are the parsed forms of ``where`` / ``sort``.
@@ -64,6 +66,8 @@ class State:
     where_expr: Any = None
     sort: str | None = None
     sort_spec: list[tuple[str, bool]] | None = None
+    # ``--lenient``: warn about unknown ``--fields`` names instead of exiting 2.
+    lenient: bool = False
 
     # Lazily initialised console respects --no-color
     _console: Console | None = field(default=None, repr=False)
@@ -238,10 +242,20 @@ def main(
         False,
         "--count",
         help=(
-            "Print only the record count instead of full results. Returns the count "
-            "of records fetched, which may be limited by --limit. For some endpoints "
-            "the API provides a total field and --count returns that instead. "
-            "Use 'ntsk status' for tenant-wide event totals."
+            "Print only the record count instead of full results. Endpoints that return a total "
+            "report that total. Events, alerts and incidents commands fetch up to 10,000 rows (the API "
+            "page cap) and print N+ when that cap is hit; add --exact to page for the true total. "
+            "Elsewhere the count is of the rows --limit fetched."
+        ),
+    ),
+    exact: bool = typer.Option(
+        False,
+        "--exact",
+        help=(
+            "With --count on events, alerts and incidents commands: page through the API in 10,000-row "
+            "steps until the result set ends instead of stopping at the first page. Prints N+ if the "
+            "NETSKOPE_COUNT_CEILING (default 200,000 rows) is reached first. Can issue many requests. "
+            "No effect on other commands."
         ),
     ),
     wide: bool = typer.Option(
@@ -260,11 +274,12 @@ def main(
         "--fields",
         "-f",
         help=(
-            "Comma-separated fields to output, in the order given. Works on every command. "
-            "Dotted paths reach nested values (host_info.os), a[].b maps over lists, and * globs expand "
-            "(epdlp.*). Example: --fields hostname,host_info.os,last_event_timestamp. Discover names with "
-            "--list-fields. Commands that declare their own --fields (events, alerts, incidents) send it to "
-            "the API instead; see 'ntsk docs fields'."
+            "Comma-separated fields to output, in the order given. Works on every command and never changes "
+            "the API request. Dotted paths reach nested values (host_info.os), a[].b maps over lists, and * "
+            "globs expand (epdlp.*). Example: --fields hostname,host_info.os,last_event_timestamp. Discover "
+            "names with --list-fields. A name no record has stops the command with exit 2 unless --lenient. "
+            "Events, alerts and incidents commands also take --api-fields for a server-side projection; "
+            "see 'ntsk docs fields'."
         ),
         rich_help_panel="Query options (client-side, any command)",
     ),
@@ -299,6 +314,15 @@ def main(
         ),
         rich_help_panel="Query options (client-side, any command)",
     ),
+    lenient: bool = typer.Option(
+        False,
+        "--lenient",
+        help=(
+            "Do not fail when --fields names a field no returned record has: print a warning with close "
+            "matches and render the column blank (table/csv) or null (json/yaml) instead of exiting 2."
+        ),
+        rich_help_panel="Query options (client-side, any command)",
+    ),
     _version: Optional[bool] = typer.Option(
         None,
         "--version",
@@ -327,6 +351,7 @@ def main(
         raw=raw,
         epoch=epoch,
         count=count,
+        exact=exact,
         wide=wide,
         fields=field_list,
         list_fields=list_fields,
@@ -334,6 +359,7 @@ def main(
         where_expr=where_expr,
         sort=sort,
         sort_spec=sort_spec,
+        lenient=lenient,
     )
     ctx.obj = state
 
@@ -987,7 +1013,21 @@ _error_displayed = False
 # Global flags that take a value / are boolean, hoisted to the global position.
 _GLOBAL_VALUE_FLAGS = frozenset({"--output", "-o", "--profile", "--fields", "-f", "--where", "--sort"})
 _GLOBAL_BOOL_FLAGS = frozenset(
-    {"--quiet", "-q", "--no-color", "--verbose", "-v", "--raw", "--epoch", "--count", "--wide", "-W", "--list-fields"}
+    {
+        "--quiet",
+        "-q",
+        "--no-color",
+        "--verbose",
+        "-v",
+        "--raw",
+        "--epoch",
+        "--count",
+        "--exact",
+        "--wide",
+        "-W",
+        "--list-fields",
+        "--lenient",
+    }
 )
 
 
@@ -1057,10 +1097,11 @@ def _hoist_global_options(argv: list[str]) -> list[str]:
     both orderings work transparently.
 
     A flag is only hoisted when the leaf subcommand does **not** declare it
-    itself, so ``events alerts --fields`` keeps its server-side projection,
-    ``dem ... --where`` keeps its JSON where-clause and ``atp scan-file -f``
-    keeps meaning ``--file``.  Combined short flags (``-Wq``) are not
-    recognised.
+    itself, so ``dem ... --where`` keeps its JSON where-clause, ``atp
+    scan-file -f`` keeps meaning ``--file`` and ``policy url-list list
+    --count`` stays local.  Server-side projections use the distinct
+    ``--api-fields`` name, so ``--fields``/``-f`` is always the global
+    client-side option.  Combined short flags (``-Wq``) are not recognised.
     """
     if len(argv) < 2:
         return argv
@@ -1197,7 +1238,7 @@ def cli() -> None:
                 if close:
                     msg = re.sub(r"\s*Did you mean '[^']*'\?", "", msg)
                     option_hint = f"Did you mean [cyan]{close[0]}[/cyan]?"
-                    if close[0] in ("--fields", "--where", "--sort", "--list-fields"):
+                    if close[0] in ("--fields", "--where", "--sort", "--list-fields", "--lenient", "--api-fields"):
                         option_hint += " See 'ntsk docs fields' for the query options."
 
         if not redirected:
