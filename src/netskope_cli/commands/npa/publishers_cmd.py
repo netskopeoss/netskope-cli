@@ -69,7 +69,11 @@ def list_publishers(
     fields: Optional[str] = typer.Option(
         None,
         "--fields",
-        help="Comma-separated list of fields to include in the output.",
+        help=(
+            "Comma-separated list of fields to include in the output."
+            " Sent to the API (top-level fields only). For nested paths, globs, or client-side "
+            "selection on any command see the global --fields and 'ntsk docs fields'."
+        ),
     ),
     count: bool = typer.Option(
         False,

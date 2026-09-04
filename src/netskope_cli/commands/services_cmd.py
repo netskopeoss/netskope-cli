@@ -12,6 +12,7 @@ import typer
 
 from netskope_cli.core.client import NetskopeClient, build_client
 from netskope_cli.core.output import OutputFormatter, echo_success
+from netskope_cli.core.output import build_formatter as _core_build_formatter
 
 # ---------------------------------------------------------------------------
 # Typer sub-apps
@@ -77,12 +78,8 @@ def _build_client(ctx: typer.Context) -> NetskopeClient:
 
 
 def _get_formatter(ctx: typer.Context) -> OutputFormatter:
-    """Return an :class:`OutputFormatter` respecting global flags."""
-    state = ctx.obj
-    no_color = state.no_color if state else False
-    count_only = getattr(state, "count", False) if state is not None else False
-    wide = getattr(state, "wide", False) if state is not None else False
-    return OutputFormatter(no_color=no_color, count_only=count_only, wide=wide)
+    """Build the shared OutputFormatter for this context (delegates to core.output.build_formatter)."""
+    return _core_build_formatter(ctx)
 
 
 def _output_format(ctx: typer.Context) -> str:

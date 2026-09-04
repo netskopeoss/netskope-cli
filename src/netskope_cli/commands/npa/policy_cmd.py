@@ -78,7 +78,11 @@ def list_rules(
     fields: Optional[str] = typer.Option(
         None,
         "--fields",
-        help="Comma-separated list of fields to include in the output.",
+        help=(
+            "Comma-separated list of fields to include in the output."
+            " Sent to the API (top-level fields only). For nested paths, globs, or client-side "
+            "selection on any command see the global --fields and 'ntsk docs fields'."
+        ),
     ),
     sort_by: Optional[str] = typer.Option(
         None,
@@ -141,7 +145,11 @@ def get_rule(
     fields: Optional[str] = typer.Option(
         None,
         "--fields",
-        help="Comma-separated list of fields to include in the output.",
+        help=(
+            "Comma-separated list of fields to include in the output."
+            " Sent to the API (top-level fields only). For nested paths, globs, or client-side "
+            "selection on any command see the global --fields and 'ntsk docs fields'."
+        ),
     ),
 ) -> None:
     """Retrieve a specific NPA policy rule by ID.
@@ -329,7 +337,11 @@ def list_groups(
     fields: Optional[str] = typer.Option(
         None,
         "--fields",
-        help="Comma-separated list of fields to include in the output.",
+        help=(
+            "Comma-separated list of fields to include in the output."
+            " Sent to the API (top-level fields only). For nested paths, globs, or client-side "
+            "selection on any command see the global --fields and 'ntsk docs fields'."
+        ),
     ),
     count: bool = typer.Option(
         False,

@@ -169,6 +169,48 @@ ntsk users list -o csv > users.csv
 | `-q` / `--quiet` | Suppress spinners and informational messages     |
 | `--no-color`   | Disable coloured output                             |
 | `-v` / `--verbose` | Increase verbosity (-vv for debug)              |
+| `-f` / `--fields A,B` | Pick output fields on any command, in order. Dotted paths, `a[].b` lists, `*` globs |
+| `--list-fields` | Show every field in the response (nested paths, type, presence, sample) instead of the records |
+| `--where 'EXPR'` | Client-side JQL row filter (`eq ne gt ge lt le in like between and or not`) |
+| `--sort FIELD[:desc]` | Client-side sort, comma-separated for several keys, missing values last |
+
+### Querying results: discover, select, filter, sort
+
+The four query flags above work on **every** command and never change the API request. They run on the rows the
+command fetched, so `--limit` still applies. Hints and warnings go to stderr, so `-o json | jq` stays clean.
+
+```bash
+# 1. Discover: what fields does this response actually have?
+ntsk devices list --list-fields
+#   field                        type      present  sample                default
+#   hostname                     str       100%     LAPTOP-7Q2            *
+#   host_info.os                 str       100%     Windows
+#   epdlp.criticalErrorsCount    str       61%      0
+#   on_premises_detail[].match_ip str      12%      10.0.4.1
+#   63 fields across 25 records · pick: --fields hostname,host_info.os · filter: --where 'hostname eq "..."'
+
+# 2. Select: nested paths, list hops, globs, in the order you give them (quote globs in zsh)
+ntsk devices list --fields hostname,host_info.os,host_info.os_version,last_event_timestamp
+ntsk npa apps list --fields app_name,protocols[].port,service_publisher_assignments[].publisher_name -o csv
+ntsk publishers list --fields 'publisher_name,assessment.version,capabilities.*'
+
+# 3. Filter: the JQL syntax from `ntsk docs jql`, evaluated locally
+ntsk devices list --where 'host_info.os like "win*" and epdlp.criticalErrorsCount gt 0'
+ntsk publishers list --where 'status in ["disconnected","upgrading"]'
+ntsk devices list --where 'idps eq null' --count          # counts the filtered rows
+
+# 4. Sort, and combine everything
+ntsk devices list --where 'host_info.os like "mac*"' --sort last_event_timestamp:desc \
+                  --fields hostname,host_info.os_version -o csv > macs.csv
+```
+
+Unknown field names print a warning with close matches instead of silently blanking a column, and a `--where`
+syntax error is reported (exit code 2) before any API call. Run `ntsk docs fields` for the full reference.
+
+A few commands declare their **own** option with the same name; those are sent to the API and keep their original
+meaning: `events`/`alerts`/`incidents --fields` (server-side projection) and `--query` (server-side JQL),
+`dns`/`dspm`/`publishers --filter`, `dem ... --where` (DEM JSON syntax), `aicc ... --sort-by`. On those commands
+use the server-side option to fetch less, and the global ones to shape what you got back.
 
 ---
 
@@ -202,7 +244,7 @@ ntsk users list -o csv > users.csv
 | **DEM**               | `dem metrics query`, `dem dataset query`, `dem sites summary`, `dem entities list`, `dem fields list`, `dem experience-alerts search`, `dem apps list`, `dem probes list` |
 | **DEM User Telemetry**| `dem users diagnose`, `dem users devices`, `dem users device-details`, `dem users applications`, `dem users scores`, `dem users npa-network-paths`, `dem users rca` |
 | **Notifications**     | `notifications templates list`                             |
-| **Docs**              | `docs open`, `docs search`, `docs jql`                     |
+| **Docs**              | `docs open`, `docs search`, `docs jql`, `docs fields`      |
 
 Run `ntsk --help` or `ntsk <command> --help` for full details.
 

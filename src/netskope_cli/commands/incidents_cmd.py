@@ -20,6 +20,9 @@ from netskope_cli.core.output import (
     echo_warning,
     spinner,
 )
+from netskope_cli.core.output import (
+    build_formatter as _core_build_formatter,
+)
 from netskope_cli.utils.helpers import validate_time_range
 
 # Fields the update API accepts, and the values each one recognises.
@@ -74,12 +77,8 @@ def _build_client(ctx: typer.Context) -> NetskopeClient:
 
 
 def _get_formatter(ctx: typer.Context) -> OutputFormatter:
-    """Return an OutputFormatter configured from global state."""
-    state = ctx.obj
-    no_color = state.no_color if state is not None else False
-    count_only = getattr(state, "count", False) if state is not None else False
-    wide = getattr(state, "wide", False) if state is not None else False
-    return OutputFormatter(no_color=no_color, count_only=count_only, wide=wide)
+    """Build the shared OutputFormatter for this context (delegates to core.output.build_formatter)."""
+    return _core_build_formatter(ctx)
 
 
 def _get_output_format(ctx: typer.Context) -> str:
@@ -109,7 +108,11 @@ def incidents_list(
         None,
         "--fields",
         "-f",
-        help="Comma-separated list of field names to include in the response.",
+        help=(
+            "Comma-separated list of field names to include in the response."
+            " Sent to the API (top-level fields only). For nested paths, globs, or client-side "
+            "selection on any command see the global --fields and 'ntsk docs fields'."
+        ),
     ),
     start: str = typer.Option(
         "24h",
@@ -543,6 +546,8 @@ def search(
             "Comma-separated list of field names to include in the response. Reduces payload "
             "size and focuses on relevant data. For example: 'incident_id,user,severity,timestamp'. "
             "Omit to return all available fields."
+            " Sent to the API (top-level fields only). For nested paths, globs, or client-side "
+            "selection on any command see the global --fields and 'ntsk docs fields'."
         ),
     ),
     start: str = typer.Option(

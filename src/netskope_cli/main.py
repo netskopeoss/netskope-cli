@@ -9,18 +9,21 @@ from __future__ import annotations
 
 import difflib
 import logging
+import re
 import sys
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
+import click
 import click.exceptions
 import typer
 from rich.console import Console
 from typer._completion_classes import completion_init
 
 from netskope_cli.core.exceptions import NetskopeError
+from netskope_cli.core.filtering import parse_filter, parse_sort_spec
 
 # ---------------------------------------------------------------------------
 # Version — single source of truth
@@ -53,6 +56,14 @@ class State:
     epoch: bool = False
     count: bool = False
     wide: bool = False
+    # Global query options (see ``ntsk docs fields``).  ``where_expr`` and
+    # ``sort_spec`` are the parsed forms of ``where`` / ``sort``.
+    fields: list[str] | None = None
+    list_fields: bool = False
+    where: str | None = None
+    where_expr: Any = None
+    sort: str | None = None
+    sort_spec: list[tuple[str, bool]] | None = None
 
     # Lazily initialised console respects --no-color
     _console: Console | None = field(default=None, repr=False)
@@ -105,6 +116,12 @@ app = typer.Typer(
         "  ntsk publishers list -o json                   # all publishers\n"
         "  ntsk services private-apps list -o json        # all private apps\n"
         "  ntsk users list --limit 50 -o json             # SCIM users\n\n"
+        "[bold]Query any command (client-side, works everywhere):[/bold]\n\n"
+        "  ntsk devices list --list-fields                # discover every field, nested paths included\n"
+        "  ntsk devices list --fields hostname,host_info.os,epdlp.*   # pick columns, in this order\n"
+        "  ntsk devices list --where 'host_info.os like \"win*\" and epdlp.criticalErrorsCount gt 0'\n"
+        "  ntsk devices list --sort last_event_timestamp:desc --count\n"
+        "  ntsk docs fields                               # full reference for --fields/--where/--sort\n\n"
         "[bold]Output formats:[/bold]  --output json | table | csv | yaml | jsonl\n\n"
         "[bold]Write command safety:[/bold]\n\n"
         "  Commands tagged \\[write] in 'ntsk commands --flat' modify tenant state.\n"
@@ -126,6 +143,11 @@ app = typer.Typer(
 # completion works even though add_completion=False disables the built-in
 # --install-completion flag (which would normally trigger this registration).
 completion_init()
+
+
+def _stdout_is_tty() -> bool:
+    """Whether stdout is interactive (separate function so tests can override it)."""
+    return sys.stdout.isatty()
 
 
 # ---------------------------------------------------------------------------
@@ -233,6 +255,50 @@ def main(
             "NETSKOPE_WIDE=1 environment variable."
         ),
     ),
+    fields: Optional[str] = typer.Option(
+        None,
+        "--fields",
+        "-f",
+        help=(
+            "Comma-separated fields to output, in the order given. Works on every command. "
+            "Dotted paths reach nested values (host_info.os), a[].b maps over lists, and * globs expand "
+            "(epdlp.*). Example: --fields hostname,host_info.os,last_event_timestamp. Discover names with "
+            "--list-fields. Commands that declare their own --fields (events, alerts, incidents) send it to "
+            "the API instead; see 'ntsk docs fields'."
+        ),
+        rich_help_panel="Query options (client-side, any command)",
+    ),
+    list_fields: bool = typer.Option(
+        False,
+        "--list-fields",
+        help=(
+            "Run the command, then list every field in the response (nested paths included) with its type, "
+            "how many records carry it, and a sample value, instead of printing the records. "
+            "Example: ntsk devices list --list-fields. Add -o json for a machine-readable schema."
+        ),
+        rich_help_panel="Query options (client-side, any command)",
+    ),
+    where: Optional[str] = typer.Option(
+        None,
+        "--where",
+        help=(
+            "Client-side row filter in JQL syntax, applied after the API returns (so it works on every "
+            "command, but only sees the rows --limit fetched). Operators: eq ne gt ge lt le in like between, "
+            "and / or / not, parentheses, dotted paths, case-insensitive strings. "
+            "Example: --where 'status eq connected and host_info.os like \"win*\"'. "
+            "Syntax errors are reported before any API call. See 'ntsk docs fields'."
+        ),
+        rich_help_panel="Query options (client-side, any command)",
+    ),
+    sort: Optional[str] = typer.Option(
+        None,
+        "--sort",
+        help=(
+            "Client-side sort: FIELD or FIELD:desc, comma-separated for several keys. Dotted paths allowed. "
+            "Example: --sort host_info.os,last_event_timestamp:desc. Missing values sort last."
+        ),
+        rich_help_panel="Query options (client-side, any command)",
+    ),
     _version: Optional[bool] = typer.Option(
         None,
         "--version",
@@ -243,8 +309,14 @@ def main(
 ) -> None:
     """Global options applied to every subcommand."""
     # Auto-enable quiet mode when stdout is not a TTY (piped output).
-    if not quiet and not sys.stdout.isatty():
+    if not quiet and not _stdout_is_tty():
         quiet = True
+
+    # Parse the query options up front so a typo fails fast (exit 2) before
+    # any API call is made.
+    field_list = [f.strip() for f in fields.split(",") if f.strip()] if fields else None
+    where_expr = parse_filter(where) if where else None
+    sort_spec = parse_sort_spec(sort) if sort else None
 
     state = State(
         profile=profile,
@@ -256,8 +328,23 @@ def main(
         epoch=epoch,
         count=count,
         wide=wide,
+        fields=field_list,
+        list_fields=list_fields,
+        where=where,
+        where_expr=where_expr,
+        sort=sort,
+        sort_spec=sort_spec,
     )
     ctx.obj = state
+
+    # --where is client-side; on commands with a server-side --query, say so once.
+    if where and not quiet:
+        leaf = _resolve_leaf_command(sys.argv)
+        if leaf is not None and "--query" in _local_option_names(leaf):
+            state.console.print(
+                "[dim]--where filters client-side after the API returned the rows --limit fetched; "
+                "use --query for server-side JQL on this command.[/dim]"
+            )
 
     # --- Configure logging based on verbosity ---
     if verbose >= 2:
@@ -600,7 +687,7 @@ def _tenant_cmd(ctx: typer.Context) -> None:
         get_tenant_url,
         load_config,
     )
-    from netskope_cli.core.output import OutputFormatter
+    from netskope_cli.core.output import build_formatter
 
     state: State = ctx.obj or State()
     console = Console(stderr=True, no_color=state.no_color)
@@ -659,7 +746,7 @@ def _tenant_cmd(ctx: typer.Context) -> None:
         "api_status": api_status,
     }
 
-    formatter = OutputFormatter()
+    formatter = build_formatter(ctx)
     formatter.format_output(
         info,
         fmt=state.output.value,
@@ -897,21 +984,90 @@ for _module, _attr, _help, _panel in _optional_groups:
 _error_displayed = False
 
 
+# Global flags that take a value / are boolean, hoisted to the global position.
+_GLOBAL_VALUE_FLAGS = frozenset({"--output", "-o", "--profile", "--fields", "-f", "--where", "--sort"})
+_GLOBAL_BOOL_FLAGS = frozenset(
+    {"--quiet", "-q", "--no-color", "--verbose", "-v", "--raw", "--epoch", "--count", "--wide", "-W", "--list-fields"}
+)
+
+
+def _option_takes_value(cmd: click.Command, flag: str) -> bool:
+    for param in cmd.params:
+        if isinstance(param, click.Option) and flag in (*param.opts, *param.secondary_opts):
+            return not (param.is_flag or param.count)
+    return False
+
+
+def _local_option_names(cmd: click.Command | None) -> set[str]:
+    """Every option spelling (``--fields``, ``-f`` ...) the command declares itself."""
+    names: set[str] = set()
+    if cmd is None:
+        return names
+    for param in cmd.params:
+        if isinstance(param, click.Option):
+            names.update(param.opts)
+            names.update(param.secondary_opts)
+    return names
+
+
+def _resolve_leaf_command(argv: list[str]) -> click.Command | None:
+    """Walk the Click tree to the leaf subcommand named in *argv*.
+
+    Returns ``None`` when the leaf cannot be determined (unknown command,
+    ``help``, a bare group, or any unexpected error), in which case callers
+    fall back to the historical behaviour.
+    """
+    try:
+        root = typer.main.get_command(app)
+        current: click.Command = root
+        ctx = click.Context(root, info_name=argv[0] if argv else "netskope")
+        i = 1
+        while i < len(argv):
+            tok = argv[i]
+            if tok == "--":
+                break
+            if tok.startswith("-"):
+                if "=" in tok:
+                    i += 1
+                    continue
+                takes_value = tok in _GLOBAL_VALUE_FLAGS or _option_takes_value(current, tok)
+                i += 2 if takes_value else 1
+                continue
+            if not isinstance(current, click.Group):
+                return current
+            nxt = current.get_command(ctx, tok)
+            if nxt is None:
+                return None
+            ctx = click.Context(nxt, parent=ctx, info_name=tok)
+            current = nxt
+            if not isinstance(nxt, click.Group):
+                return nxt
+            i += 1
+        return None if isinstance(current, click.Group) else current
+    except Exception:  # pragma: no cover - defensive: argv rewriting must never crash
+        return None
+
+
 def _hoist_global_options(argv: list[str]) -> list[str]:
-    """Move --output/-o (and other global flags) to before the subcommand.
+    """Move global flags (``-o``, ``--fields`` ...) to before the subcommand.
 
     Users naturally write ``netskope alerts list -o json`` but Typer/Click
     requires global options before the subcommand name.  This function
     rewrites *argv* so the option appears in the global position, making
     both orderings work transparently.
+
+    A flag is only hoisted when the leaf subcommand does **not** declare it
+    itself, so ``events alerts --fields`` keeps its server-side projection,
+    ``dem ... --where`` keeps its JSON where-clause and ``atp scan-file -f``
+    keeps meaning ``--file``.  Combined short flags (``-Wq``) are not
+    recognised.
     """
     if len(argv) < 2:
         return argv
 
-    # Flags that take a value and should be hoisted to the global position.
-    _VALUE_FLAGS = {"--output", "-o", "--profile"}
-    # Boolean flags that should be hoisted.
-    _BOOL_FLAGS = {"--quiet", "-q", "--no-color", "--verbose", "-v", "--raw", "--epoch", "--count", "--wide", "-W"}
+    local = _local_option_names(_resolve_leaf_command(argv))
+    value_flags = {f for f in _GLOBAL_VALUE_FLAGS if f not in local}
+    bool_flags = {f for f in _GLOBAL_BOOL_FLAGS if f not in local}
 
     result = [argv[0]]
     hoisted: list[str] = []
@@ -922,12 +1078,12 @@ def _hoist_global_options(argv: list[str]) -> list[str]:
         arg = argv[i]
 
         # Handle --output=json style
-        if any(arg.startswith(f"{f}=") for f in _VALUE_FLAGS):
+        if any(arg.startswith(f"{f}=") for f in value_flags):
             hoisted.append(arg)
             i += 1
             continue
 
-        if arg in _VALUE_FLAGS:
+        if arg in value_flags:
             hoisted.append(arg)
             if i + 1 < len(argv):
                 hoisted.append(argv[i + 1])
@@ -936,7 +1092,7 @@ def _hoist_global_options(argv: list[str]) -> list[str]:
                 i += 1
             continue
 
-        if arg in _BOOL_FLAGS:
+        if arg in bool_flags:
             hoisted.append(arg)
             i += 1
             continue
@@ -1029,9 +1185,26 @@ def cli() -> None:
                     redirected = True
                 break
 
+        # Unknown option: replace Click's guess with the closest global or
+        # subcommand option (Click only knows the options of one command).
+        option_hint: str | None = None
+        if "No such option" in msg:
+            bad = re.search(r"No such option:? '?(-{1,2}[\w-]+)", msg)
+            if bad:
+                candidates = set(_GLOBAL_VALUE_FLAGS | _GLOBAL_BOOL_FLAGS)
+                candidates.update(_local_option_names(_resolve_leaf_command(sys.argv)))
+                close = difflib.get_close_matches(bad.group(1), sorted(candidates), n=1, cutoff=0.6)
+                if close:
+                    msg = re.sub(r"\s*Did you mean '[^']*'\?", "", msg)
+                    option_hint = f"Did you mean [cyan]{close[0]}[/cyan]?"
+                    if close[0] in ("--fields", "--where", "--sort", "--list-fields"):
+                        option_hint += " See 'ntsk docs fields' for the query options."
+
         if not redirected:
             # With standalone_mode=False, print the error ourselves (once).
             console.print(f"[bold red]Error:[/bold red] {msg}")
+        if option_hint:
+            console.print(f"[dim]Hint:[/dim] {option_hint}")
 
         # Issue 10: suggest close matches for unknown subcommands
         if not redirected and ("No such command" in msg or "Error" in msg):

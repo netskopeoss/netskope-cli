@@ -20,6 +20,7 @@ from rich.console import Console
 from rich.panel import Panel
 
 from netskope_cli.core.output import OutputFormatter, echo_error, echo_info, spinner
+from netskope_cli.core.output import build_formatter as _core_build_formatter
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -135,12 +136,8 @@ def _get_console(ctx: typer.Context) -> Console:
 
 
 def _get_formatter(ctx: typer.Context) -> OutputFormatter:
-    """Build an OutputFormatter from the current context."""
-    state = ctx.obj
-    no_color = state.no_color if state is not None else False
-    count_only = getattr(state, "count", False) if state is not None else False
-    wide = getattr(state, "wide", False) if state is not None else False
-    return OutputFormatter(no_color=no_color, count_only=count_only, wide=wide)
+    """Build the shared OutputFormatter for this context (delegates to core.output.build_formatter)."""
+    return _core_build_formatter(ctx)
 
 
 def _get_output_format(ctx: typer.Context) -> str:
@@ -344,6 +341,89 @@ def api_reference(
         typer.echo(_API_DOCS_URL)
 
 
+_FIELDS_REFERENCE = """\
+Querying Any Command: Discover, Select, Filter, Sort
+=====================================================
+
+Four global options work on EVERY command, before or after the subcommand.
+They run client-side on the rows the API returned (so --limit still applies).
+
+1. DISCOVER   --list-fields
+   Runs the command, then prints every field in the response instead of the
+   records: nested paths included, with type, how many records carry it, a
+   sample value, and a * for the command's default table columns.
+
+     ntsk devices list --list-fields
+     ntsk devices list --list-fields -o json      # machine-readable schema
+     ntsk devices list --raw --list-fields        # include internal _ fields
+
+2. SELECT     --fields A,B,C   (-f)
+   Comma-separated paths, output in the order given. Works in every format.
+
+     hostname                 top-level key
+     host_info.os             nested object
+     protocols[].port         every element of a list  (protocols.port works too)
+     protocols[0].port        one element by index
+     epdlp.*                  glob: every field under epdlp
+     *_timestamp              glob: every field ending in _timestamp
+
+   Unknown names print a warning with close matches; nothing is silently
+   dropped. Quote globs in zsh:  --fields 'epdlp.*'
+   Missing values render blank in table/csv and null in json/yaml.
+
+     ntsk devices list --fields hostname,host_info.os,last_event_timestamp
+     ntsk npa apps list --fields app_name,protocols[].port -o csv
+
+3. FILTER     --where 'EXPR'
+   JQL syntax, the same language as --query (see: ntsk docs jql).
+
+     field eq "value"      field ne 5          field gt 100      field ge 1
+     field lt 10           field le 10         field like "win*"
+     field in ["a", "b"]   field not in [1]    field between [10, 100]
+     a eq 1 and (b eq 2 or not c eq 3)          field eq null   field eq true
+
+   Rules: keywords are case-insensitive; strings compare case-insensitively;
+   numeric strings compare as numbers; like uses * and ? wildcards (brackets
+   are literal); a path that hits a list matches if ANY element matches;
+   eq null also matches a missing field; bare words need no quotes
+   (status eq connected). Timestamps stay raw epoch ints for comparison.
+   Syntax errors are reported (exit 2) before any API call.
+
+     ntsk devices list --where 'host_info.os like "win*" and epdlp.criticalErrorsCount gt 0'
+     ntsk publishers list --where 'status in ["disconnected","upgrading"]'
+     ntsk devices list --where 'idps eq null' --count      # counts the filtered rows
+
+4. SORT       --sort FIELD[:desc][,FIELD2...]
+   Stable client-side sort on any path, even one you do not display.
+   Missing values always sort last.
+
+     ntsk devices list --sort last_event_timestamp:desc --fields hostname,last_event_timestamp
+     ntsk devices list --sort host_info.os,hostname
+
+Combining
+---------
+   --where runs first, then --count / --list-fields, then --sort, then --fields.
+   All hints go to stderr, so -o json | jq and -o csv > file stay clean.
+
+     ntsk devices list --where 'host_info.os like "mac*"' --sort hostname \\
+                       --fields hostname,host_info.os_version -o csv > macs.csv
+
+Client-side vs server-side
+--------------------------
+   These four options never change the API request. Some commands also have
+   their OWN options with the same name that are sent to the API instead and
+   therefore keep their original meaning:
+
+     events/alerts/incidents --fields    server-side projection (top-level fields only)
+     events/alerts/incidents --query     server-side JQL filter (use it to fetch less)
+     dns/dspm/publishers     --filter    server-side filter expression
+     dem ... --where / --select          DEM JSON query syntax
+     aicc ... --sort-by                  server-side sort
+
+   Tip: on events, combine both:  --query 'app eq "Slack"' --where 'user like "*@corp.com"'
+"""
+
+
 @docs_app.command("jql")
 def jql_reference(
     ctx: typer.Context,
@@ -372,6 +452,44 @@ def jql_reference(
     panel = Panel(
         _JQL_REFERENCE,
         title="JQL Syntax Reference",
+        border_style="blue",
+        expand=False,
+    )
+    console.print(panel)
+    console.print(
+        "[dim]The same syntax filters any command's output client-side via the global --where option. "
+        "See: ntsk docs fields[/dim]"
+    )
+
+
+@docs_app.command("fields")
+def fields_reference(
+    ctx: typer.Context,
+) -> None:
+    """Show how to discover, select, filter and sort fields on any command.
+
+    Displays an inline reference for the four global query options that
+    work on every command: --list-fields (discover the response schema),
+    --fields (pick columns incl. nested paths and globs), --where
+    (client-side JQL row filter) and --sort. Explains the path grammar,
+    comparison rules, and which per-command options are server-side instead.
+
+    This is a local reference and does not call any API.
+
+    Examples:
+
+        # Show the field selection and filtering reference
+        netskope docs fields
+
+        # Then try it on any command
+        netskope devices list --list-fields
+        netskope devices list --fields hostname,host_info.os --where 'host_info.os like "win*"'
+    """
+    console = _get_console(ctx)
+
+    panel = Panel(
+        _FIELDS_REFERENCE,
+        title="Fields, Filtering & Sorting (any command)",
         border_style="blue",
         expand=False,
     )

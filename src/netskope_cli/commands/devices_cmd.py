@@ -16,6 +16,7 @@ from rich.console import Console
 
 from netskope_cli.core.client import NetskopeClient, build_client
 from netskope_cli.core.output import OutputFormatter, echo_error, echo_success, spinner
+from netskope_cli.core.output import build_formatter as _core_build_formatter
 
 # ---------------------------------------------------------------------------
 # Typer sub-apps
@@ -53,12 +54,8 @@ def _build_client(ctx: typer.Context) -> NetskopeClient:
 
 
 def _build_formatter(ctx: typer.Context) -> OutputFormatter:
-    """Create an OutputFormatter respecting global flags."""
-    state = ctx.obj
-    no_color = state.no_color if state is not None else False
-    count_only = getattr(state, "count", False) if state is not None else False
-    wide = getattr(state, "wide", False) if state is not None else False
-    return OutputFormatter(no_color=no_color, count_only=count_only, wide=wide)
+    """Build the shared OutputFormatter for this context (delegates to core.output.build_formatter)."""
+    return _core_build_formatter(ctx)
 
 
 def _get_output_format(ctx: typer.Context) -> str:
@@ -152,7 +149,8 @@ def devices_list(
             console.print(
                 "[yellow]The devices list endpoint is not available on this tenant.[/yellow]\n"
                 "Falling back to [bold]'events client-status'[/bold] endpoint...\n"
-                "[dim]Warning: The fallback response uses a different schema with different field names.[/dim]"
+                "[dim]Warning: The fallback response uses a different schema with different field names. "
+                "Run with --list-fields to see it.[/dim]"
             )
             fallback_params: dict[str, object] = {"limit": limit}
             try:

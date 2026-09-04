@@ -13,6 +13,7 @@ from rich.console import Console
 
 from netskope_cli.core.client import NetskopeClient, build_client
 from netskope_cli.core.output import OutputFormatter, echo_success, spinner
+from netskope_cli.core.output import build_formatter as _core_build_formatter
 
 # ---------------------------------------------------------------------------
 # Typer sub-apps
@@ -51,12 +52,8 @@ def _get_console(ctx: typer.Context) -> Console:
 
 
 def _get_formatter(ctx: typer.Context) -> OutputFormatter:
-    """Build an OutputFormatter from the current context."""
-    state = ctx.obj
-    no_color = state.no_color if state is not None else False
-    count_only = getattr(state, "count", False) if state is not None else False
-    wide = getattr(state, "wide", False) if state is not None else False
-    return OutputFormatter(no_color=no_color, count_only=count_only, wide=wide)
+    """Build the shared OutputFormatter for this context (delegates to core.output.build_formatter)."""
+    return _core_build_formatter(ctx)
 
 
 def _get_output_format(ctx: typer.Context) -> str:

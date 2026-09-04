@@ -181,6 +181,7 @@
           <a href="#authentication" class="toc-item block py-1 text-muted-foreground hover:text-foreground">Authentication</a>
           <a href="#output-formats" class="toc-item block py-1 text-muted-foreground hover:text-foreground">Output Formats</a>
           <a href="#global-flags" class="toc-item block py-1 text-muted-foreground hover:text-foreground">Global Flags</a>
+          <a href="#querying" class="toc-item block py-1 text-muted-foreground hover:text-foreground">Querying Results</a>
           <a href="#commands" class="toc-item block py-1 text-muted-foreground hover:text-foreground">Commands</a>
           <a href="#cmd-alerts" class="toc-item block py-1 pl-4 text-muted-foreground hover:text-foreground">Alerts</a>
           <a href="#cmd-events" class="toc-item block py-1 pl-4 text-muted-foreground hover:text-foreground">Events</a>
@@ -853,6 +854,26 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
           <td><span class="badge badge-gray">flag</span></td>
           <td>Print version and exit.</td>
         </tr>
+        <tr>
+          <td><code class="text-xs font-semibold">-f, --fields A,B</code></td>
+          <td><span class="badge badge-gray">string</span></td>
+          <td>Pick output fields on <em>any</em> command, in the order given. Dotted paths (<code>host_info.os</code>), list hops (<code>protocols[].port</code>), globs (<code>epdlp.*</code>). Unknown names warn with close matches. See <a href="#querying" class="text-primary underline">Querying Results</a>.</td>
+        </tr>
+        <tr>
+          <td><code class="text-xs font-semibold">--list-fields</code></td>
+          <td><span class="badge badge-gray">flag</span></td>
+          <td>Run the command, then print every field in the response (nested paths, type, presence %, sample, default-column marker) instead of the records. <code>-o json</code> for a machine-readable schema.</td>
+        </tr>
+        <tr>
+          <td><code class="text-xs font-semibold">--where 'EXPR'</code></td>
+          <td><span class="badge badge-gray">string</span></td>
+          <td>Client-side row filter in <a href="#jql" class="text-primary underline">JQL</a> syntax: <code>eq ne gt ge lt le in like between</code>, <code>and/or/not</code>, parentheses, dotted paths. Runs before <code>--count</code>. Syntax errors exit 2 before any API call.</td>
+        </tr>
+        <tr>
+          <td><code class="text-xs font-semibold">--sort FIELD[:desc]</code></td>
+          <td><span class="badge badge-gray">string</span></td>
+          <td>Client-side stable sort on any path (comma-separate several keys). Missing values sort last.</td>
+        </tr>
       </tbody>
     </table>
   </div>
@@ -864,6 +885,112 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
       <code><span class="prompt">$</span> ntsk <span class="flag">-o</span> <span class="string">json</span> alerts list <span class="flag">--limit</span> <span class="string">5</span>
 <span class="prompt">$</span> ntsk alerts list <span class="flag">-o</span> <span class="string">json</span> <span class="flag">--limit</span> <span class="string">5</span>   <span class="comment"># same result</span></code>
     </div>
+    <p class="text-sm text-muted-foreground mt-3">One rule keeps this unambiguous: a global flag is only moved in front of the subcommand when the subcommand does <strong>not</strong> declare the same flag itself. So <code>events alerts --fields</code> is still the events API's server-side projection, <code>dem sites summary --where</code> is still the DEM JSON where-clause, and <code>atp scan-file -f</code> still means <code>--file</code>. Everywhere else, <code>--fields</code>, <code>--where</code>, <code>--sort</code> and <code>--list-fields</code> are the client-side <a href="#querying" class="text-primary underline">query options</a>.</p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- QUERYING RESULTS -->
+<!-- ============================================================ -->
+<section id="querying" class="section-anchor">
+  <h2 class="text-3xl font-bold tracking-tight mb-2">Querying Results: Discover, Select, Filter, Sort</h2>
+  <p class="text-muted-foreground mb-6">Four global options that work on <em>every</em> command. They run on the rows the command fetched (so <code>--limit</code> still applies), never change the API request, and print all hints on stderr so <code>-o json | jq</code> and <code>-o csv &gt; file</code> stay clean. Run <code class="text-sm bg-secondary px-1.5 py-0.5 rounded font-mono">ntsk docs fields</code> for the in-terminal version of this page.</p>
+
+  <div class="grid gap-4 mb-6">
+    <div class="card p-5">
+      <div class="flex items-center gap-2 mb-2"><span class="badge badge-blue">1</span><h3 class="font-semibold">Discover &mdash; <code>--list-fields</code></h3></div>
+      <p class="text-sm text-muted-foreground mb-3">What fields does this response actually contain? Nested paths included, with type, how many records carry the field, a sample value, and <code>*</code> on the command's default columns.</p>
+      <div class="code-block p-4 relative text-xs overflow-x-auto">
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        <code><span class="prompt">$</span> ntsk devices list <span class="flag">--list-fields</span>
+<span class="comment">  field                          type     present  sample          default
+  hostname                       str      100%     LAPTOP-7Q2      *
+  host_info.os                   str      100%     Windows
+  host_info.mac_addresses        list[str] 98%     aa:bb:cc:...
+  epdlp.criticalErrorsCount      str      61%      0
+  on_premises_detail[].match_ip  str      12%      10.0.4.1
+  last_event_timestamp           int      100%     1756412345      *
+  63 fields across 25 records · pick: --fields hostname,host_info.os · filter: --where 'hostname eq "..."'</span>
+
+<span class="prompt">$</span> ntsk devices list <span class="flag">--list-fields</span> <span class="flag">-o</span> <span class="string">json</span>   <span class="comment"># {"field","type","present_pct","sample","in_default"}</span>
+<span class="prompt">$</span> ntsk devices list <span class="flag">--raw</span> <span class="flag">--list-fields</span>      <span class="comment"># include internal _ fields</span></code>
+      </div>
+    </div>
+
+    <div class="card p-5">
+      <div class="flex items-center gap-2 mb-2"><span class="badge badge-blue">2</span><h3 class="font-semibold">Select &mdash; <code>--fields</code> / <code>-f</code></h3></div>
+      <p class="text-sm text-muted-foreground mb-3">Comma-separated paths, output in the order you give them, in every format. Unknown names print a warning with close matches instead of silently blanking a column. Quote globs in zsh.</p>
+      <div class="code-block p-4 relative text-xs">
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        <code><span class="prompt">$</span> ntsk devices list <span class="flag">--fields</span> <span class="string">hostname,host_info.os,host_info.os_version,last_event_timestamp</span>
+<span class="prompt">$</span> ntsk npa apps list <span class="flag">--fields</span> <span class="string">app_name,protocols[].port,service_publisher_assignments[].publisher_name</span> <span class="flag">-o</span> <span class="string">csv</span>
+<span class="prompt">$</span> ntsk publishers list <span class="flag">--fields</span> <span class="string">'publisher_name,assessment.version,capabilities.*'</span>
+<span class="prompt">$</span> ntsk devices list <span class="flag">--fields</span> <span class="string">hostnme</span>
+<span class="comment">--fields: 'hostnme' not found in any record. Did you mean hostname, host_info.hostname? Run with --list-fields ...</span></code>
+      </div>
+    </div>
+
+    <div class="card p-5">
+      <div class="flex items-center gap-2 mb-2"><span class="badge badge-blue">3</span><h3 class="font-semibold">Filter &mdash; <code>--where</code></h3></div>
+      <p class="text-sm text-muted-foreground mb-3">The same <a href="#jql" class="text-primary underline">JQL</a> you already use with <code>--query</code>, evaluated locally on any command. Runs before <code>--count</code>, so the count is the filtered count.</p>
+      <div class="code-block p-4 relative text-xs">
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        <code><span class="prompt">$</span> ntsk devices list <span class="flag">--where</span> <span class="string">'host_info.os like "win*" and epdlp.criticalErrorsCount gt 0'</span>
+<span class="prompt">$</span> ntsk publishers list <span class="flag">--where</span> <span class="string">'status in ["disconnected","upgrading"]'</span>
+<span class="prompt">$</span> ntsk devices list <span class="flag">--where</span> <span class="string">'idps eq null'</span> <span class="flag">--count</span>
+<span class="prompt">$</span> ntsk devices list <span class="flag">--where</span> <span class="string">'hostname eq'</span>
+<span class="comment">Error: Invalid --where expression: expected a value after 'eq'
+    hostname eq
+               ^
+Hint: Run 'ntsk docs fields' for the --where syntax ...   (exit 2, no API call made)</span></code>
+      </div>
+    </div>
+
+    <div class="card p-5">
+      <div class="flex items-center gap-2 mb-2"><span class="badge badge-blue">4</span><h3 class="font-semibold">Sort &mdash; <code>--sort</code>, and combine</h3></div>
+      <p class="text-sm text-muted-foreground mb-3">Stable sort on any path, even one you do not display. Missing values sort last. Order of operations: <code>--where</code> &rarr; <code>--count</code> / <code>--list-fields</code> &rarr; <code>--sort</code> &rarr; <code>--fields</code>.</p>
+      <div class="code-block p-4 relative text-xs">
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        <code><span class="prompt">$</span> ntsk devices list <span class="flag">--sort</span> <span class="string">last_event_timestamp:desc</span> <span class="flag">--fields</span> <span class="string">hostname,last_event_timestamp</span>
+<span class="prompt">$</span> ntsk devices list <span class="flag">--sort</span> <span class="string">host_info.os,hostname</span>
+<span class="prompt">$</span> ntsk devices list <span class="flag">--where</span> <span class="string">'host_info.os like "mac*"'</span> <span class="flag">--sort</span> <span class="string">hostname</span> \
+      <span class="flag">--fields</span> <span class="string">hostname,host_info.os_version</span> <span class="flag">-o</span> <span class="string">csv</span> &gt; macs.csv</code>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid md:grid-cols-2 gap-4 mb-6">
+    <div class="table-wrapper card">
+      <table>
+        <thead><tr><th class="w-56">Path syntax</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code class="text-xs">hostname</code></td><td>Top-level key</td></tr>
+          <tr><td><code class="text-xs">host_info.os</code></td><td>Nested object key</td></tr>
+          <tr><td><code class="text-xs">protocols[].port</code></td><td>Every element of a list (<code>protocols.port</code> works too)</td></tr>
+          <tr><td><code class="text-xs">protocols[0].port</code></td><td>One element by index (negative indexes allowed)</td></tr>
+          <tr><td><code class="text-xs">epdlp.*</code> / <code class="text-xs">*_timestamp</code></td><td>Glob; expands to every matching leaf field. Brackets are literal.</td></tr>
+          <tr><td><code class="text-xs">status.count</code></td><td>A literal key containing a dot is tried first</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="table-wrapper card">
+      <table>
+        <thead><tr><th class="w-56"><code>--where</code> rule</th><th>Behaviour</th></tr></thead>
+        <tbody>
+          <tr><td>Strings</td><td>Case-insensitive; bare words need no quotes (<code>status eq connected</code>)</td></tr>
+          <tr><td>Numbers</td><td>Numeric strings compare as numbers; timestamps stay raw epoch ints</td></tr>
+          <tr><td><code class="text-xs">like</code></td><td><code>*</code> and <code>?</code> wildcards, case-insensitive, brackets literal</td></tr>
+          <tr><td>Lists</td><td>A path that hits a list matches if <em>any</em> element matches; <code>ne</code> means no element matches</td></tr>
+          <tr><td><code class="text-xs">eq null</code></td><td>Matches null <em>and</em> missing fields</td></tr>
+          <tr><td>Precedence</td><td><code>not</code> &gt; <code>and</code> &gt; <code>or</code>; use parentheses</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card p-4 bg-secondary/30">
+    <h4 class="font-semibold text-sm mb-2">Client-side vs server-side</h4>
+    <p class="text-sm text-muted-foreground">Some commands declare their <strong>own</strong> option with the same name. Those are sent to the API and keep their meaning: <code>events</code>/<code>alerts</code>/<code>incidents --fields</code> (server-side projection, top-level fields only) and <code>--query</code> (server-side JQL), <code>dns</code>/<code>dspm</code>/<code>publishers --filter</code>, <code>dem ... --where</code> (DEM JSON syntax), <code>aicc ... --sort-by</code>. Use the server-side option to fetch less, and the global ones to shape what came back &mdash; they combine: <code>ntsk events alerts --query 'app eq "Slack"' --where 'user like "*@corp.com"' --fields user,timestamp</code>.</p>
   </div>
 </section>
 
@@ -989,7 +1116,7 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
               <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
               <tbody>
                 <tr><td><code class="text-xs">--query</code></td><td>string</td><td>&mdash;</td><td>JQL filter. E.g. <code>'alert_type eq "DLP"'</code></td></tr>
-                <tr><td><code class="text-xs">-f, --fields</code></td><td>string</td><td>&mdash;</td><td>Comma-separated field list</td></tr>
+                <tr><td><code class="text-xs">-f, --fields</code></td><td>string</td><td>&mdash;</td><td>Comma-separated field list, <strong>sent to the API</strong> (top-level fields only). For nested paths or globs use the global option, see <a href="#querying" class="text-primary underline">Querying Results</a></td></tr>
                 <tr><td><code class="text-xs">-s, --start, --since</code></td><td>string</td><td>&mdash;</td><td>Start time. Epoch or relative: <code>24h</code>, <code>7d</code>, <code>1h</code></td></tr>
                 <tr><td><code class="text-xs">-e, --end</code></td><td>string</td><td>now</td><td>End time</td></tr>
                 <tr><td><code class="text-xs">-l, --limit</code></td><td>int</td><td>25</td><td>Max records</td></tr>
@@ -1195,7 +1322,7 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
             <tbody>
               <tr><td><code class="text-xs">-t, --type</code></td><td>string</td><td>&mdash;</td><td>Event type (required for <code>events list</code>)</td></tr>
               <tr><td><code class="text-xs">--query</code></td><td>string</td><td>&mdash;</td><td>JQL filter expression</td></tr>
-              <tr><td><code class="text-xs">-f, --fields</code></td><td>string</td><td>&mdash;</td><td>Comma-separated field list</td></tr>
+              <tr><td><code class="text-xs">-f, --fields</code></td><td>string</td><td>&mdash;</td><td>Comma-separated field list, <strong>sent to the API</strong> (top-level fields only). For nested paths or globs use the global option, see <a href="#querying" class="text-primary underline">Querying Results</a></td></tr>
               <tr><td><code class="text-xs">-s, --start</code></td><td>string</td><td>&mdash;</td><td>Start time (epoch or relative)</td></tr>
               <tr><td><code class="text-xs">-e, --end</code></td><td>string</td><td>now</td><td>End time</td></tr>
               <tr><td><code class="text-xs">-l, --limit</code></td><td>int</td><td>25</td><td>Max records</td></tr>
@@ -1256,7 +1383,7 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
               <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
               <tbody>
                 <tr><td><code class="text-xs">-q, --query</code></td><td>string</td><td>&mdash;</td><td>JQL filter (required for <code>search</code>)</td></tr>
-                <tr><td><code class="text-xs">-f, --fields</code></td><td>string</td><td>&mdash;</td><td>Comma-separated fields</td></tr>
+                <tr><td><code class="text-xs">-f, --fields</code></td><td>string</td><td>&mdash;</td><td>Comma-separated fields, <strong>sent to the API</strong>. See <a href="#querying" class="text-primary underline">Querying Results</a> for nested paths</td></tr>
                 <tr><td><code class="text-xs">-s, --start</code></td><td>string</td><td>24h</td><td>Start time</td></tr>
                 <tr><td><code class="text-xs">-e, --end</code></td><td>string</td><td>now</td><td>End time</td></tr>
                 <tr><td><code class="text-xs">-l, --limit</code></td><td>int</td><td>100</td><td>Max records</td></tr>
@@ -1643,6 +1770,8 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
     <div class="code-block p-4 text-xs">
       <code><span class="prompt">$</span> ntsk devices list <span class="flag">--limit</span> <span class="string">25</span>
 <span class="prompt">$</span> ntsk devices list <span class="flag">--no-fallback</span>          <span class="comment"># disable v1 API fallback</span>
+<span class="prompt">$</span> ntsk devices list <span class="flag">--list-fields</span>          <span class="comment"># see every field, whichever schema came back</span>
+<span class="prompt">$</span> ntsk devices list <span class="flag">--fields</span> <span class="string">hostname,host_info.os,last_event_timestamp</span> <span class="flag">--where</span> <span class="string">'host_info.os like "win*"'</span>
 <span class="prompt">$</span> ntsk devices supported-os
 
 <span class="comment"># Device tags management</span>
@@ -1650,7 +1779,7 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
 <span class="prompt">$</span> ntsk devices tags create <span class="string">"Corporate Laptops"</span>
 <span class="prompt">$</span> ntsk devices tags delete <span class="string">TAG_ID</span></code>
     </div>
-    <p class="text-xs text-muted-foreground mt-2"><code>--no-fallback</code> disables the automatic v1 API fallback. Note that the fallback schema may differ from the v2 response (different field names and structure).</p>
+    <p class="text-xs text-muted-foreground mt-2"><code>--no-fallback</code> disables the automatic v1 API fallback. Note that the fallback schema may differ from the v2 response (different field names and structure) &mdash; run <code>--list-fields</code> to see exactly which fields you got, then pick them with the global <a href="#querying" class="text-primary underline">--fields / --where</a>.</p>
   </div>
 
   <!-- ==================== CLOUD SECURITY ==================== -->
@@ -1700,7 +1829,7 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
 <span class="prompt">$</span> ntsk aicc models list <span class="flag">--deployment</span> <span class="string">endpoint</span>   <span class="comment"># locally-run models</span>
 <span class="prompt">$</span> ntsk aicc agents list</code>
         </div>
-        <p class="text-xs text-muted-foreground mt-2">Shared flags: <code>--search</code>, <code>--limit/--offset</code>, <code>--all</code> (fetch every page), <code>--sort-by/--sort-dir</code>, <code>--fields</code> (client-side). CCI score (0&ndash;100) maps to CCL: Poor &lt; Low &lt; Medium &lt; High &lt; Excellent.</p>
+        <p class="text-xs text-muted-foreground mt-2">Shared flags: <code>--search</code>, <code>--limit/--offset</code>, <code>--all</code> (fetch every page), <code>--sort-by/--sort-dir</code>, <code>--fields</code> (client-side, same syntax as the global <a href="#querying" class="text-primary underline">--fields</a>). CCI score (0&ndash;100) maps to CCL: Poor &lt; Low &lt; Medium &lt; High &lt; Excellent.</p>
       </div>
 
       <!-- Drill-down -->
@@ -1909,7 +2038,7 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
 
 <span class="comment"># Per-site ISP table: avg DNS, ISP latency to POP, POPs used, apps reached (last 24h)</span>
 <span class="prompt">$</span> ntsk dem sites summary
-<span class="prompt">$</span> ntsk dem sites summary <span class="flag">--where</span> <span class="string">'["=", "country", ["$", "France"]]'</span>
+<span class="prompt">$</span> ntsk dem sites summary <span class="flag">--where</span> <span class="string">'["=", "country", ["$", "France"]]'</span>   <span class="comment"># DEM JSON syntax, sent to the API (not the global --where)</span>
 
 <span class="comment"># Public 48h dataset endpoint (works with scoped API tokens; countDistinct/topK5, µs -> ms via "/")</span>
 <span class="prompt">$</span> ntsk dem dataset query <span class="flag">-d</span> http_steered \
@@ -2076,6 +2205,11 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
 <section id="jql" class="section-anchor">
   <h2 class="text-3xl font-bold tracking-tight mb-2">JQL Query Syntax</h2>
   <p class="text-muted-foreground mb-6">JSON Query Language for filtering events, alerts, and incidents. Run <code class="text-sm bg-secondary px-1.5 py-0.5 rounded font-mono">ntsk docs jql</code> for the full reference.</p>
+
+  <div class="card p-4 bg-secondary/30 mb-6">
+    <h4 class="font-semibold text-sm mb-2">Same syntax, client-side: <code>--where</code></h4>
+    <p class="text-sm text-muted-foreground">Every operator below also works locally on <em>any</em> command's output via the global <code>--where</code> option, with dotted paths into nested fields (<code>host_info.os like "win*"</code>). See <a href="#querying" class="text-primary underline">Querying Results</a>. On events, alerts and incidents keep using <code>--query</code> to fetch less, then <code>--where</code> to refine.</p>
+  </div>
 
   <div class="grid sm:grid-cols-2 gap-4 mb-6">
     <div class="card p-5">
@@ -2309,6 +2443,30 @@ ntsk publishers list
 <span class="comment"># Compromised credentials</span>
 echo <span class="string">"=== Compromised Credentials ==="</span>
 ntsk alerts list <span class="flag">-t</span> <span class="string">"Compromised Credential"</span> <span class="flag">--since</span> <span class="string">24h</span></code>
+      </div>
+    </div>
+
+    <!-- Recipe: Fleet inventory -->
+    <div class="card p-6">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="badge badge-green">Inventory</span>
+        <h3 class="font-semibold">Fleet Inventory from <code>devices list</code></h3>
+      </div>
+      <p class="text-sm text-muted-foreground mb-3">Discover the device schema, then build a CSV of stale Windows endpoints &mdash; entirely with the global query options, no <code>jq</code> needed.</p>
+      <div class="code-block p-4 relative text-xs">
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        <code><span class="comment"># 1. What fields are there? (works on the v1 fallback schema too)</span>
+ntsk devices list <span class="flag">--limit</span> <span class="string">50</span> <span class="flag">--list-fields</span>
+
+<span class="comment"># 2. Windows devices with EPDLP errors, newest first, four columns, as CSV</span>
+ntsk devices list <span class="flag">--limit</span> <span class="string">500</span> \
+  <span class="flag">--where</span> <span class="string">'host_info.os like "win*" and epdlp.criticalErrorsCount gt 0'</span> \
+  <span class="flag">--sort</span> <span class="string">last_event_timestamp:desc</span> \
+  <span class="flag">--fields</span> <span class="string">hostname,host_info.os_version,epdlp.criticalErrorsCount,last_event_timestamp</span> \
+  <span class="flag">-o</span> <span class="string">csv</span> &gt; windows-epdlp-errors.csv
+
+<span class="comment"># 3. How many devices have never reported an IdP?</span>
+ntsk devices list <span class="flag">--limit</span> <span class="string">500</span> <span class="flag">--where</span> <span class="string">'idps eq null'</span> <span class="flag">--count</span></code>
       </div>
     </div>
 

@@ -24,6 +24,18 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.syntax import Syntax
 from rich.table import Table
 
+from netskope_cli.core.fieldpaths import (
+    FieldInfo,
+    discover_schema,
+    expand_field_specs,
+    find_unmatched,
+    is_glob,
+    project_records,
+    schema_rows,
+    suggest_fields,
+)
+from netskope_cli.core.filtering import Expr, apply_filter, parse_filter, parse_sort_spec, sort_records
+
 # ---------------------------------------------------------------------------
 # API response envelope unwrapping
 # ---------------------------------------------------------------------------
@@ -215,14 +227,41 @@ class OutputFormatter:
     FORMATS = ("json", "table", "csv", "yaml", "jsonl", "human")
 
     def __init__(
-        self, *, no_color: bool = False, max_col_width: int = 80, count_only: bool = False, wide: bool = False
+        self,
+        *,
+        no_color: bool = False,
+        max_col_width: int = 80,
+        count_only: bool = False,
+        wide: bool = False,
+        fields: Sequence[str] | None = None,
+        where: Expr | str | None = None,
+        sort: Sequence[tuple[str, bool]] | str | None = None,
+        list_fields: bool = False,
+        quiet: bool = False,
     ) -> None:
+        """Create a formatter.
+
+        The keyword arguments mirror the global CLI options: ``fields`` is the
+        global ``--fields`` list, ``where`` a parsed (or raw) ``--where``
+        expression, ``sort`` a parsed (or raw) ``--sort`` specification and
+        ``list_fields`` the ``--list-fields`` switch.  Strings are parsed here
+        so tests and ad-hoc callers can pass them directly.
+        """
         self.no_color = no_color
+        self.console = _make_console(no_color=no_color)
+        self.err_console = _make_console(no_color=no_color, stderr=True)
         self.max_col_width = 0 if wide else max_col_width
         self._default_count_only = count_only
         self._wide = wide
-        self.console = _make_console(no_color=no_color)
-        self.err_console = _make_console(no_color=no_color, stderr=True)
+        self._quiet = quiet
+        self._global_fields: list[str] | None = [f.strip() for f in fields if f.strip()] if fields else None
+        self._where: Expr | None = parse_filter(where) if isinstance(where, str) else where
+        self._sort: list[tuple[str, bool]] | None = (
+            parse_sort_spec(sort) if isinstance(sort, str) else (list(sort) if sort else None)
+        )
+        self._list_fields = list_fields
+        self._fields_applied = False
+        self._schema_cache: list[FieldInfo] | None = None
 
     # ----- public API -------------------------------------------------------
 
@@ -289,22 +328,45 @@ class OutputFormatter:
             self.max_col_width = 0
 
         self._show_all_columns = show_all_columns
+        self._fields_applied = False
+        self._schema_cache = None
 
         # Auto-unwrap API response envelopes so that table/csv/etc. operate
         # on the actual records instead of the envelope keys.
         metadata: dict[str, Any] = {}
         if unwrap:
             data, metadata = unwrap_api_response(data)
+
+        # Flatten group-by responses before any client-side processing so
+        # --where / --sort / --fields see the aggregation columns.
+        is_grouped = False
+        if isinstance(data, list):
+            old_data = data
+            data = self._flatten_grouped_results(data)
+            if data is not old_data:
+                is_grouped = True
+
+        # Client-side --where filter.  Runs before counting so that --count,
+        # the "N results" line and --list-fields all reflect the filtered set.
+        removed = 0
+        if self._where is not None:
+            self._warn_where_paths(data)
+            data, removed = apply_filter(data, self._where)
+
+        if unwrap and metadata and verbose and fmt in ("table", "human"):
             # Only print metadata when verbose is True and format is
             # interactive, so it never pollutes machine-consumable output.
-            if metadata and verbose and fmt in ("table", "human"):
-                parts: list[str] = []
-                for mk, mv in metadata.items():
-                    parts.append(f"{mk}={mv}")
-                self.err_console.print(f"[dim]API metadata: {', '.join(parts)}[/dim]")
+            parts: list[str] = []
+            for mk, mv in metadata.items():
+                parts.append(f"{mk}={mv}")
+            self.err_console.print(f"[dim]API metadata: {', '.join(parts)}[/dim]")
 
-            # Show record count for table/human/csv formats when there are results.
-            if fmt in ("table", "human", "csv") and isinstance(data, list) and len(data) > 0:
+        # Show record count for table/human/csv formats when there are results.
+        if fmt in ("table", "human", "csv") and isinstance(data, list) and len(data) > 0:
+            if removed > 0:
+                if not self._quiet:
+                    self.err_console.print(f"[dim]{len(data)} of {len(data) + removed} results matched --where[/dim]")
+            elif unwrap:
                 total = None
                 if metadata:
                     total = (
@@ -325,19 +387,23 @@ class OutputFormatter:
                 else:
                     self.err_console.print(f"[dim]{len(data)} results returned[/dim]")
 
-            # Show time range for table/human formats with list data.
-            if fmt in ("table", "human") and isinstance(data, list) and all(isinstance(r, dict) for r in data):
-                self._print_time_range(data)
+        # Show time range for table/human formats with list data.
+        if unwrap and fmt in ("table", "human") and isinstance(data, list) and all(isinstance(r, dict) for r in data):
+            self._print_time_range(data)
 
-        # --count mode: print the count and return immediately.
+        # --count mode: print the count and return immediately.  When a
+        # --where filter is active the envelope total is meaningless, so the
+        # filtered record count is reported instead.
         count_only = count_only or self._default_count_only
         if count_only:
-            total = (
-                metadata.get("total")
-                or metadata.get("totalResults")
-                or metadata.get("status.count")
-                or metadata.get("status.total")
-            )
+            total = None
+            if self._where is None:
+                total = (
+                    metadata.get("total")
+                    or metadata.get("totalResults")
+                    or metadata.get("status.count")
+                    or metadata.get("status.total")
+                )
             if total is not None:
                 print(int(total))
             elif isinstance(data, list):
@@ -348,41 +414,47 @@ class OutputFormatter:
 
         # If the unwrapped data is empty, inform the user (except
         # for JSON, which should faithfully output the raw value).
-        if fmt != "json":
-            if isinstance(data, list) and len(data) == 0:
+        is_empty = (isinstance(data, list) and len(data) == 0) or data is None or data == {}
+        if is_empty and removed > 0:
+            self.err_console.print(
+                f"[yellow]--where matched 0 of {removed} records.[/yellow] "
+                "[dim]Check field names with --list-fields; string compares are case-insensitive, "
+                'use like "*x*" for partial matches.[/dim]'
+            )
+        if fmt != "json" and is_empty:
+            if removed == 0:
                 msg = "[dim]No matching records found.[/dim]"
                 if empty_hint:
                     msg += f"\n[dim]{empty_hint}[/dim]"
                 self.err_console.print(msg)
-                return
-            if data is None or data == {}:
-                msg = "[dim]No matching records found.[/dim]"
-                if empty_hint:
-                    msg += f"\n[dim]{empty_hint}[/dim]"
-                self.err_console.print(msg)
-                return
+            if self._list_fields:
+                self.err_console.print(
+                    "[dim]No records returned, so there are no fields to list. "
+                    "Widen the query (--limit, --start) or drop --where.[/dim]"
+                )
+            return
 
         # Strip internal _-prefixed fields (except _id) from records.
         if strip_internal and isinstance(data, list):
             data = self._strip_internal_fields(data)
 
+        # --list-fields: describe the schema instead of rendering records.
+        if self._list_fields:
+            self._render_field_list(data, fmt=fmt, default_fields=default_fields, title=title)
+            return
+
         # Add ISO timestamp companion fields for machine-readable formats.
         if add_iso_timestamps and fmt in ("json", "jsonl", "csv", "yaml"):
             data = self._add_iso_timestamps(data)
 
-        # Flatten group-by responses before rendering.
-        is_grouped = False
-        if isinstance(data, list):
-            old_data = data
-            data = self._flatten_grouped_results(data)
-            if data is not old_data:
-                is_grouped = True
+        # Client-side --sort (on unprojected rows so hidden fields can be sort keys).
+        if self._sort:
+            data = self._apply_sort(data)
 
-        # Apply default_fields for table/human when no explicit fields given.
-        # When grouped results are detected, clear default_fields so all
-        # aggregation columns (e.g. alert_type, count) are shown.
-        # When wide mode is active, skip default_fields so all columns are visible.
-        effective_fields = fields
+        # Field precedence: explicit per-command fields -> global --fields ->
+        # default_fields (table/human/csv only, not grouped, not wide).
+        explicit = fields if fields is not None else self._global_fields
+        effective_fields = explicit
         if is_grouped:
             effective_fields = None
         elif self._wide:
@@ -390,26 +462,29 @@ class OutputFormatter:
         elif effective_fields is None and default_fields and fmt in ("table", "human", "csv"):
             effective_fields = list(default_fields)
 
-        # For CSV/YAML/JSONL, apply explicit --fields even when default_fields
-        # would normally be ignored, so that user-specified --fields always work.
-        if effective_fields is None and fields is not None:
-            effective_fields = list(fields)
+        # An explicit selection always wins, whatever the format or mode.
+        if effective_fields is None and explicit is not None:
+            effective_fields = list(explicit)
+        explicit_requested = explicit is not None
 
         # Apply field selection AFTER unwrapping so that --fields applies to
         # individual records, not envelope keys.
         pre_selection_data = data
-        data = self._apply_field_selection(data, effective_fields)
+        data = self._project(data, effective_fields, fmt=fmt, warn=explicit_requested)
 
-        # Fallback: if field selection removed all columns (e.g. grouped
-        # results where default_fields don't match the aggregation keys),
-        # re-render without field selection so the user still sees output.
+        # Fallback: if default_fields removed every column (e.g. grouped
+        # results whose keys differ), re-render without selection so the
+        # user still sees output.  Never applied to an explicit selection.
+        missing_marker = "" if fmt in ("table", "human", "csv") else None
         if (
-            isinstance(data, list)
+            not explicit_requested
+            and isinstance(data, list)
             and data
             and isinstance(data[0], dict)
-            and all(len(row) == 0 for row in data if isinstance(row, dict))
+            and all(all(v == missing_marker for v in row.values()) for row in data if isinstance(row, dict))
         ):
             data = pre_selection_data
+        self._fields_applied = explicit_requested and effective_fields is not None
 
         handler = {
             "json": self._render_json,
@@ -431,18 +506,147 @@ class OutputFormatter:
             return "human"
         return "json"
 
-    # ----- field selection --------------------------------------------------
+    # ----- field selection, filtering, sorting ------------------------------
+
+    @staticmethod
+    def _records_of(data: Any) -> list[dict[str, Any]]:
+        if isinstance(data, list):
+            return [r for r in data if isinstance(r, dict)]
+        if isinstance(data, dict):
+            return [data]
+        return []
+
+    def _schema_for(self, records: Sequence[dict[str, Any]]) -> list[FieldInfo]:
+        if self._schema_cache is None:
+            self._schema_cache = discover_schema(records)
+        return self._schema_cache
+
+    def _suggestion_text(self, name: str, records: Sequence[dict[str, Any]]) -> str:
+        candidates = [info.path for info in self._schema_for(records)]
+        matches = suggest_fields(name, candidates)
+        if not matches:
+            return ""
+        return " Did you mean " + ", ".join(f"[cyan]{rich_escape(m)}[/cyan]" for m in matches) + "?"
+
+    def _project(self, data: Any, fields: Sequence[str] | None, *, fmt: str, warn: bool) -> Any:
+        """Project *data* onto *fields* (dotted paths, globs), warning about unknown names."""
+        if fields is None:
+            return data
+        specs = [f.strip() for f in fields if f and f.strip()]
+        if not specs:
+            return data
+        records = self._records_of(data)
+        unmatched_globs: list[str] = []
+        if any(is_glob(spec) for spec in specs) and records:
+            paths, unmatched_globs = expand_field_specs(specs, self._schema_for(records))
+        else:
+            paths = list(dict.fromkeys(specs))
+        if warn and records:
+            for spec in unmatched_globs:
+                self.err_console.print(
+                    f"[yellow]--fields:[/yellow] pattern '{rich_escape(spec)}' matched no fields. "
+                    "[dim]Try --list-fields to see every field.[/dim]"
+                )
+            for path in find_unmatched(records, paths):
+                self.err_console.print(
+                    f"[yellow]--fields:[/yellow] '{rich_escape(path)}' not found in any record."
+                    f"{self._suggestion_text(path, records)} [dim]Run with --list-fields to see every field.[/dim]"
+                )
+        if not paths:
+            return data
+        missing = "" if fmt in ("table", "human", "csv") else None
+        return project_records(data, paths, missing=missing)
 
     @staticmethod
     def _apply_field_selection(data: Any, fields: Sequence[str] | None) -> Any:
+        """Backwards-compatible exact-key projection (see :func:`project_records`)."""
         if fields is None:
             return data
-        fields_set = list(fields)
-        if isinstance(data, dict):
-            return {k: v for k, v in data.items() if k in fields_set}
-        if isinstance(data, list):
-            return [{k: v for k, v in row.items() if k in fields_set} for row in data if isinstance(row, dict)]
-        return data
+        return project_records(data, list(fields), missing=None)
+
+    def _warn_where_paths(self, data: Any) -> None:
+        """Warn when a --where field resolves in no record (the filter would match nothing)."""
+        if self._where is None:
+            return
+        records = self._records_of(data)
+        if not records:
+            return
+        for path in dict.fromkeys(self._where.paths()):
+            if find_unmatched(records, [path]):
+                self.err_console.print(
+                    f"[yellow]--where:[/yellow] '{rich_escape(path)}' is not present in any record."
+                    f"{self._suggestion_text(path, records)} [dim]Nothing will match; see --list-fields.[/dim]"
+                )
+
+    def _apply_sort(self, data: Any) -> Any:
+        if not self._sort or not isinstance(data, list):
+            return data
+        records = self._records_of(data)
+        if not records:
+            return data
+        specs = list(self._sort)
+        unmatched = set(find_unmatched(records, [path for path, _ in specs]))
+        for path in unmatched:
+            self.err_console.print(
+                f"[yellow]--sort:[/yellow] '{rich_escape(path)}' not found in any record."
+                f"{self._suggestion_text(path, records)} [dim]Rows left in API order for that key.[/dim]"
+            )
+        specs = [(path, desc) for path, desc in specs if path not in unmatched]
+        if not specs:
+            return data
+        return sort_records(data, specs)
+
+    def _render_field_list(
+        self, data: Any, *, fmt: str, default_fields: Sequence[str] | None, title: str | None
+    ) -> None:
+        """Render the discovered schema of *data* for ``--list-fields``."""
+        records = self._records_of(data)
+        if not records:
+            self.err_console.print(
+                "[dim]No records returned, so there are no fields to list. "
+                "Widen the query (--limit, --start) or drop --where.[/dim]"
+            )
+            if fmt == "json":
+                print("[]")
+            return
+        schema = self._schema_for(records)
+        machine = fmt in ("json", "jsonl", "yaml", "csv")
+        rows = schema_rows(schema, len(records), default_fields, machine=machine)
+        if machine:
+            handler = {
+                "json": self._render_json,
+                "csv": self._render_csv,
+                "yaml": self._render_yaml,
+                "jsonl": self._render_jsonl,
+            }[fmt]
+            handler(rows, title=title)
+            return
+        self._show_all_columns = True
+        saved_width = self.max_col_width
+        self.max_col_width = 0  # never truncate field paths; samples are pre-truncated
+        try:
+            self._render_table(rows, title=f"Fields in: {title}" if title else "Fields")
+        finally:
+            self.max_col_width = saved_width
+        if self._quiet:
+            return
+        leaves = [info.path for info in schema if not info.container]
+        pick = ",".join(leaves[:2]) if leaves else "a,b"
+        str_info = next((info for info in schema if not info.container and "str" in info.types), None)
+        if str_info is not None and str_info.sample is not None and not isinstance(str_info.sample, (list, dict)):
+            where_example = f'{str_info.path} eq "{str_info.sample}"'
+        else:
+            where_example = f"{leaves[0] if leaves else 'a'} eq \"x\""
+        sort_example = f"{leaves[0] if leaves else 'a'}:desc"
+        self.err_console.print(
+            rich_escape(
+                f"{len(schema)} fields across {len(records)} records \u00b7 pick: --fields {pick} "
+                f"\u00b7 filter: --where '{where_example}' \u00b7 sort: --sort {sort_example} "
+                "\u00b7 nested: dots (a.b), lists: a[].b"
+            ),
+            style="dim",
+            soft_wrap=True,
+        )
 
     # ----- renderers --------------------------------------------------------
 
@@ -528,14 +732,15 @@ class OutputFormatter:
                         seen.add(k)
 
         # Wide-table auto-selection: when there are too many columns,
-        # pick the most informative ones and notify the user.
+        # pick the most informative ones and notify the user.  Never trims a
+        # column set the user chose explicitly with --fields.
         display_keys = all_keys
         wide_note: str | None = None
-        show_all = getattr(self, "_show_all_columns", False)
+        show_all = getattr(self, "_show_all_columns", False) or getattr(self, "_fields_applied", False)
         if not show_all and len(all_keys) > _WIDE_TABLE_MAX_COLUMNS:
             display_keys = self._select_priority_columns(all_keys)
-            # Suggest a handful of present fields that match common useful patterns,
-            # excluding internal columns that start with '_'.
+            # Suggest a handful of useful-looking fields drawn from ALL columns,
+            # including the hidden ones, excluding internal '_' columns.
             _suggest_patterns = (
                 "name",
                 "id",
@@ -548,15 +753,16 @@ class OutputFormatter:
                 "email",
                 "action",
                 "alert_name",
+                "host",
             )
             suggestions = [
-                k for k in display_keys if not k.startswith("_") and any(p in k.lower() for p in _suggest_patterns)
-            ][:6]
-            if suggestions:
-                hint = f" \u2014 try: --fields {','.join(suggestions)}"
-            else:
-                hint = ", use --fields to select specific columns"
-            wide_note = f"(showing {len(display_keys)} of {len(all_keys)} columns{hint})"
+                k for k in all_keys if not k.startswith("_") and any(p in k.lower() for p in _suggest_patterns)
+            ][:4]
+            pick = ",".join(suggestions) if suggestions else "a,b,c"
+            wide_note = (
+                f"showing {len(display_keys)} of {len(all_keys)} columns \u00b7 see all: --list-fields "
+                f"\u00b7 pick: --fields {pick} \u00b7 everything: -W"
+            )
 
         table = Table(title=title, show_header=True, header_style="bold cyan", expand=False)
         for key in display_keys:
@@ -570,7 +776,7 @@ class OutputFormatter:
 
         self.console.print(table)
         if wide_note:
-            self.err_console.print(f"[dim]{wide_note}[/dim]")
+            self.err_console.print(rich_escape(wide_note), style="dim", soft_wrap=True)
 
     def _render_kv_table(self, data: dict, *, title: str | None = None) -> None:
         table = Table(title=title, show_header=True, header_style="bold cyan", expand=False)
@@ -817,14 +1023,41 @@ class OutputFormatter:
 def build_formatter(ctx: Any) -> "OutputFormatter":
     """Create an ``OutputFormatter`` pre-configured from the global CLI state.
 
-    Reads ``no_color``, ``count``, and ``wide`` from ``ctx.obj`` (the ``State``
-    dataclass set by the main callback).  Safe to call even when ``ctx.obj`` is *None*.
+    Reads ``no_color``, ``count``, ``wide``, ``quiet`` and the query options
+    (``fields``, ``where_expr``, ``sort_spec``, ``list_fields``) from
+    ``ctx.obj`` (the ``State`` dataclass set by the main callback).  Safe to
+    call even when ``ctx.obj`` is *None*.  Every command module's
+    ``_get_formatter`` / ``_build_formatter`` helper delegates here so the
+    global options are honoured uniformly.
     """
     state = getattr(ctx, "obj", None)
-    no_color = getattr(state, "no_color", False) if state is not None else False
-    count_only = getattr(state, "count", False) if state is not None else False
-    wide = getattr(state, "wide", False) if state is not None else False
-    return OutputFormatter(no_color=no_color, count_only=count_only, wide=wide)
+
+    def opt(name: str, default: Any) -> Any:
+        return getattr(state, name, default) if state is not None else default
+
+    return OutputFormatter(
+        no_color=opt("no_color", False),
+        count_only=opt("count", False),
+        wide=opt("wide", False),
+        quiet=opt("quiet", False),
+        fields=opt("fields", None),
+        where=opt("where_expr", None) or opt("where", None),
+        sort=opt("sort_spec", None) or opt("sort", None),
+        list_fields=opt("list_fields", False),
+    )
+
+
+def resolve_fields(ctx: Any, local: str | Sequence[str] | None) -> list[str] | None:
+    """Merge a command's own ``--fields`` value with the global one (local wins)."""
+    if isinstance(local, str):
+        parsed = [f.strip() for f in local.split(",") if f.strip()]
+        if parsed:
+            return parsed
+    elif local:
+        return [f for f in local if f]
+    state = getattr(ctx, "obj", None)
+    global_fields = getattr(state, "fields", None) if state is not None else None
+    return list(global_fields) if global_fields else None
 
 
 # ---------------------------------------------------------------------------
