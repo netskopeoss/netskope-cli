@@ -15,31 +15,38 @@ netskope = "netskope_cli.main:cli"
 ntsk = "netskope_cli.main:cli"
 
 [tool.poetry.dependencies]
+# Runtime dependencies are pinned exactly. typer 0.26 shipped a vendored copy of
+# click that silently broke isinstance(obj, click.Group) checks (see v1.4.6), and
+# open ranges let fresh installs drift away from the versions the test suite runs
+# against. Bump deliberately: change the pin, `poetry lock`, run the full suite,
+# then re-verify `netskope commands` on a fresh install of the built wheel.
 python = "^3.11"
-typer = {extras = ["all"], version = ">=0.9,<0.26"}
-rich = ">=13.0,<15.0"
-httpx = ">=0.25,<1.0"
-toml = ">=0.10,<1.0"
-keyring = ">=24.0,<27.0"
-pydantic = ">=2.0,<3.0"
-pydantic-settings = ">=2.0,<3.0"
-pyyaml = ">=6.0,<7.0"
-playwright = {version = ">=1.40,<2.0", optional = true}
+typer = {extras = ["all"], version = "==0.25.1"}
+click = "==8.5.0"
+rich = "==14.3.4"
+shellingham = "==1.5.4"
+httpx = "==0.28.1"
+toml = "==0.10.2"
+keyring = "==25.7.0"
+pydantic = "==2.13.5"
+pydantic-settings = "==2.15.0"
+pyyaml = "==6.0.3"
+playwright = {version = "==1.58.0", optional = true}
 
 [tool.poetry.extras]
 browser = ["playwright"]
 
 [tool.poetry.group.dev.dependencies]
-pytest = ">=9.0.3,<10.0"
-pytest-asyncio = ">=0.21,<2.0"
-pytest-cov = ">=4.0,<8.0"
-pytest-mock = ">=3.0,<4.0"
-respx = ">=0.20,<1.0"
-ruff = ">=0.1,<1.0"
-black = ">=23.0,<27.0"
-mypy = ">=1.0,<2.0"
-types-toml = ">=0.10,<1.0"
-types-pyyaml = ">=6.0"
+pytest = "==9.1.1"
+pytest-asyncio = "==1.4.0"
+pytest-cov = "==7.1.0"
+pytest-mock = "==3.15.1"
+respx = "==0.22.0"
+ruff = "==0.15.5"
+black = "==26.1.0"
+mypy = "==1.19.1"
+types-toml = "==0.10.8.20260518"
+types-pyyaml = "==6.0.12.20260518"
 
 [build-system]
 requires = ["poetry-core"]
