@@ -1907,6 +1907,15 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
     <span class="flag">--select</span> <span class="string">'["user_id", {"avg": ["avg", "score"]}]'</span> \
     <span class="flag">--groupby</span> user_id <span class="flag">--begin</span> 1711929600000 <span class="flag">--end</span> 1712016000000
 
+<span class="comment"># Per-site ISP table: avg DNS, ISP latency to POP, POPs used, apps reached (last 24h)</span>
+<span class="prompt">$</span> ntsk dem sites summary
+<span class="prompt">$</span> ntsk dem sites summary <span class="flag">--where</span> <span class="string">'["=", "country", ["$", "France"]]'</span>
+
+<span class="comment"># Public 48h dataset endpoint (works with scoped API tokens; countDistinct/topK5, µs -> ms via "/")</span>
+<span class="prompt">$</span> ntsk dem dataset query <span class="flag">-d</span> http_steered \
+    <span class="flag">--select</span> <span class="string">'["site_name", {"avg_dns_ms": ["/", ["avg", "dns_time"], 1000]}, {"pops_used": ["countDistinct", "pop_name"]}]'</span> \
+    <span class="flag">--groupby</span> site_name <span class="flag">--begin</span> 1725364316000 <span class="flag">--end</span> 1725450716000
+
 <span class="comment"># List users with poor experience scores</span>
 <span class="prompt">$</span> ntsk dem entities list <span class="flag">--start-time</span> 1710000000 <span class="flag">--end-time</span> 1710086400 \
     <span class="flag">--exp-score</span> <span class="string">"0~30"</span>

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 import urllib.parse
 from typing import Any, Optional
 
@@ -51,7 +52,51 @@ STATE_DATA_SOURCES = ["agent_status", "client_status"]
 
 TRACEROUTE_DATA_SOURCES = ["traceroute_pop", "traceroute_bypassed"]
 
+# Public ``getdataset`` endpoint: only the synthetic/RUM sources (no ux_score, NPA, or state sources).
+DATASET_DATA_SOURCES = [
+    "rum_steered",
+    "rum_bypassed",
+    "traceroute_pop",
+    "traceroute_bypassed",
+    "traceroute_all",
+    "http_steered",
+    "http_bypassed",
+    "http_all",
+]
+
 MAX_ENTITIES_WINDOW = 48 * 3600  # 48 hours in seconds
+DATASET_MAX_WINDOW_MS = 48 * 3600 * 1000  # getdataset window cap, epoch milliseconds
+DATASET_MAX_LIMIT = 9999  # getdataset limit has exclusiveMaximum 10000
+DEFAULT_SITE_SUMMARY_WINDOW_MS = 24 * 3600 * 1000  # ``dem sites summary`` default lookback
+
+# Per-site query recipes shared by ``dem sites summary``. Time metrics are microseconds, so "/" 1000 -> ms.
+SITE_SUMMARY_HTTP_SELECT: list[Any] = [
+    "site_name",
+    {"avg_dns_ms": ["/", ["avg", "dns_time"], 1000]},
+    {"avg_proxy_connect_ms": ["/", ["avg", "proxy_connection_time"], 1000]},
+    {"apps_reached": ["countDistinct", "application_name"]},
+    {"apps": ["topK10", "application_name"]},
+    {"pops": ["topK10", "pop_name"]},
+    {"http_requests": ["count", "user_id"]},
+]
+SITE_SUMMARY_TRACEROUTE_SELECT: list[Any] = [
+    "site_name",
+    {"avg_isp_latency_ms": ["/", ["avg", "rtt_e2e"], 1000]},
+    {"avg_isp_latency_furthest_ms": ["/", ["avg", "rtt_furthest"], 1000]},
+    {"avg_packet_loss": ["avg", "loss_furthest"]},
+    {"pops": ["topK10", "pop_name"]},
+    {"traceroutes": ["count", "user_id"]},
+]
+SITE_SUMMARY_DEFAULT_FIELDS = [
+    "site_name",
+    "avg_dns_ms",
+    "avg_isp_latency_ms",
+    "pops_used",
+    "apps_reached",
+    "avg_packet_loss_pct",
+    "http_requests",
+    "traceroutes",
+]
 
 # ---------------------------------------------------------------------------
 # Typer sub-apps
@@ -129,7 +174,21 @@ apps_app = typer.Typer(
     no_args_is_help=True,
 )
 
+dataset_app = typer.Typer(
+    name="dataset",
+    help="Query the public 48h DEM dataset endpoint (synthetic/RUM sources only).",
+    no_args_is_help=True,
+)
+
+sites_app = typer.Typer(
+    name="sites",
+    help="Per-site network summaries (avg DNS, ISP latency to POP, POPs used, apps reached).",
+    no_args_is_help=True,
+)
+
 dem_app.add_typer(metrics_app, name="metrics")
+dem_app.add_typer(dataset_app, name="dataset")
+dem_app.add_typer(sites_app, name="sites")
 dem_app.add_typer(entities_app, name="entities")
 dem_app.add_typer(states_app, name="states")
 dem_app.add_typer(traceroute_app, name="traceroute")
@@ -197,6 +256,86 @@ def _csv_to_list(value: str | None) -> list[str] | None:
     if value is None:
         return None
     return [v.strip() for v in value.split(",") if v.strip()]
+
+
+def _now_ms() -> int:
+    """Current time in epoch milliseconds (patched in tests)."""
+    return int(time.time() * 1000)
+
+
+def _validate_dataset_window(begin: int, end: int) -> None:
+    """Enforce the getdataset 48-hour window before calling the API."""
+    if end <= begin:
+        raise ValidationError(
+            "--end must be greater than --begin",
+            suggestion="Provide begin/end as epoch milliseconds with end > begin.",
+        )
+    if (end - begin) > DATASET_MAX_WINDOW_MS:
+        raise ValidationError(
+            "Time window exceeds the 48-hour maximum for the dataset endpoint",
+            suggestion=(
+                f"Narrow --begin/--end so that end - begin <= {DATASET_MAX_WINDOW_MS} ms. "
+                "Use 'dem metrics query' for longer ranges."
+            ),
+        )
+
+
+def _merge_site_summary(http_rows: list[dict[str, Any]], tr_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Join per-site http_steered and traceroute_pop aggregates into one row per site.
+
+    The empty site name means the user was not matched to any configured
+    Site; the DEM UI labels those "Remote".  POPs are unioned across both
+    sources.  Rows are sorted by avg_isp_latency_ms descending, with sites
+    lacking traceroute data last.
+    """
+    merged: dict[str, dict[str, Any]] = {}
+
+    def row_for(site: Any) -> dict[str, Any]:
+        key = site or ""
+        if key not in merged:
+            merged[key] = {
+                "site_name": key or "Remote",
+                "avg_dns_ms": None,
+                "avg_isp_latency_ms": None,
+                "pops_used": 0,
+                "apps_reached": 0,
+                "avg_packet_loss_pct": None,
+                "http_requests": 0,
+                "traceroutes": 0,
+                "avg_isp_latency_furthest_ms": None,
+                "avg_proxy_connect_ms": None,
+                "pops": [],
+                "apps": [],
+            }
+        return merged[key]
+
+    for r in http_rows:
+        row = row_for(r.get("site_name", ""))
+        row["avg_dns_ms"] = r.get("avg_dns_ms")
+        row["avg_proxy_connect_ms"] = r.get("avg_proxy_connect_ms")
+        row["apps_reached"] = int(r.get("apps_reached") or 0)
+        row["apps"] = list(r.get("apps") or [])
+        row["http_requests"] = int(r.get("http_requests") or 0)
+        row["pops"] = sorted(set(row["pops"]) | set(r.get("pops") or []))
+    for r in tr_rows:
+        row = row_for(r.get("site_name", ""))
+        row["avg_isp_latency_ms"] = r.get("avg_isp_latency_ms")
+        row["avg_isp_latency_furthest_ms"] = r.get("avg_isp_latency_furthest_ms")
+        loss = r.get("avg_packet_loss")
+        row["avg_packet_loss_pct"] = None if loss is None else round(loss * 100, 3)
+        row["traceroutes"] = int(r.get("traceroutes") or 0)
+        row["pops"] = sorted(set(row["pops"]) | set(r.get("pops") or []))
+    for row in merged.values():
+        row["pops_used"] = len(row["pops"])
+        for k in ("avg_dns_ms", "avg_isp_latency_ms", "avg_isp_latency_furthest_ms", "avg_proxy_connect_ms"):
+            if isinstance(row.get(k), (int, float)):
+                row[k] = round(row[k], 2)
+
+    def sort_key(row: dict[str, Any]) -> tuple[int, float]:
+        lat = row["avg_isp_latency_ms"]
+        return (0 if lat is not None else 1, -(lat or 0))
+
+    return sorted(merged.values(), key=sort_key)
 
 
 # ---------------------------------------------------------------------------
@@ -712,9 +851,21 @@ def metrics_query(
     The --where clause uses operator-first format with ["$", "value"]
     for string literals.
 
+    Aggregation function names are exact and camelCase: avg, count,
+    countDistinct, sum, min, max, p50/p90/p99, topK3/topK5/topK10, and
+    "/" for unit conversion.  There is no count_distinct or count(*);
+    use ["countDistinct", "pop_name"] and ["count", "user_id"].  Time
+    metrics are MICROSECONDS: {"avg_dns_ms": ["/", ["avg", "dns_time"], 1000]}
+    yields milliseconds.  The "isp" key exists only on rum_steered /
+    rum_bypassed (browser RUM, often empty); per-site network views use
+    site_name, pop_name and application_name on the http_* and
+    traceroute_* sources.  Run 'dem fields list --source <src>' to see
+    the keys, metrics and functions each source supports.
+
     NOTE: This uses an internal endpoint not in the public API docs;
     scoped API tokens may receive 403.  Works with browser/session auth
-    (``netskope auth login``).
+    (``netskope auth login``).  For the public 48h equivalent, see
+    'dem dataset query'; for the per-site ISP table, see 'dem sites summary'.
 
     EXAMPLES
 
@@ -775,6 +926,235 @@ def metrics_query(
         result = client.request("POST", "/api/v2/dem/query/getdata", json_data=body)
 
     formatter.format_output(result, fmt=fmt, title=f"DEM Metrics — {data_source}")
+
+
+# ---------------------------------------------------------------------------
+# Dataset commands (public getdataset endpoint)
+# ---------------------------------------------------------------------------
+
+
+@dataset_app.command("query")
+def dataset_query(
+    ctx: typer.Context,
+    data_source: str = typer.Option(
+        ...,
+        "--data-source",
+        "-d",
+        help=(
+            "Data source to query. Valid values: rum_steered, rum_bypassed, "
+            "traceroute_pop, traceroute_bypassed, traceroute_all, http_steered, "
+            "http_bypassed, http_all. (No ux_score/NPA/state sources — use 'dem metrics query'.)"
+        ),
+    ),
+    select: str = typer.Option(
+        ...,
+        "--select",
+        "-s",
+        help=(
+            "JSON array of fields/aggregations to select. Metric fields require "
+            'aggregation: \'{"alias": ["avg", "metric"]}\'. '
+            'Example: \'["site_name", {"avg_dns_ms": ["/", ["avg", "dns_time"], 1000]}]\''
+        ),
+    ),
+    begin: int = typer.Option(..., "--begin", "-b", help="Start time in epoch milliseconds."),
+    end: int = typer.Option(..., "--end", "-e", help="End time in epoch milliseconds (max 48h after --begin)."),
+    where: Optional[str] = typer.Option(
+        None,
+        "--where",
+        "-w",
+        help=("JSON where clause (operator-first format). " 'Example: \'["=", "site_name", ["$", "Paris"]]\''),
+    ),
+    groupby: Optional[str] = typer.Option(
+        None,
+        "--groupby",
+        "-g",
+        help="Comma-separated list of fields to group by. Example: site_name,pop_name",
+    ),
+    orderby: Optional[str] = typer.Option(
+        None,
+        "--orderby",
+        help='JSON orderby clause. Example: \'[["avg_dns_ms", "desc"]]\'',
+    ),
+    limit: Optional[int] = typer.Option(
+        None, "--limit", "-l", help=f"Maximum rows to return (max {DATASET_MAX_LIMIT})."
+    ),
+) -> None:
+    """Query the public DEM dataset endpoint (48h dimensional metrics).
+
+    This is the documented ``/api/v2/dem/query/getdataset`` endpoint and
+    works with scoped API tokens.  It supports the 8 synthetic/RUM
+    sources only, a maximum window of 48 hours, and at most 9999 rows.
+    The query grammar (select/where/groupby/orderby) is identical to
+    'dem metrics query'; see that command's help for the exact function
+    names (countDistinct, topK5, "/" for microseconds to milliseconds).
+
+    EXAMPLES
+
+        # Per-site DNS time and POPs used (last 24h)
+        netskope dem dataset query \\
+            --data-source http_steered \\
+            --select '["site_name", {"avg_dns_ms": ["/", ["avg", "dns_time"], 1000]}, \\
+                      {"pops_used": ["countDistinct", "pop_name"]}]' \\
+            --groupby site_name \\
+            --begin 1725364316000 --end 1725450716000
+
+        # ISP latency to the Netskope POP per site
+        netskope -o json dem dataset query \\
+            --data-source traceroute_pop \\
+            --select '["site_name", {"avg_isp_latency_ms": ["/", ["avg", "rtt_e2e"], 1000]}]' \\
+            --groupby site_name \\
+            --begin 1725364316000 --end 1725450716000
+    """
+    if data_source not in DATASET_DATA_SOURCES:
+        raise ValidationError(
+            f"Invalid data source for dataset query: '{data_source}'",
+            suggestion=(
+                f"Valid dataset sources: {', '.join(DATASET_DATA_SOURCES)}. "
+                "For ux_score, NPA or state sources use 'dem metrics query'."
+            ),
+        )
+    _validate_dataset_window(begin, end)
+
+    client = _build_client(ctx)
+    formatter = _get_formatter(ctx)
+    fmt = _get_output_format(ctx)
+
+    select_parsed = _parse_json_option(select, "select")
+    where_parsed = _parse_json_option(where, "where")
+    orderby_parsed = _parse_json_option(orderby, "orderby")
+    groupby_parsed = _csv_to_list(groupby)
+
+    body: dict[str, Any] = {"from": data_source, "select": select_parsed}
+    if groupby_parsed:
+        body["groupby"] = groupby_parsed
+    if where_parsed is not None:
+        body["where"] = where_parsed
+    if orderby_parsed is not None:
+        body["orderby"] = orderby_parsed
+    body["begin"] = begin
+    body["end"] = end
+    if limit is not None:
+        body["limit"] = min(limit, DATASET_MAX_LIMIT)
+
+    if not _is_quiet(ctx):
+        with spinner(f"Querying {data_source} dataset...", no_color=_no_color(ctx)):
+            result = client.request("POST", "/api/v2/dem/query/getdataset", json_data=body)
+    else:
+        result = client.request("POST", "/api/v2/dem/query/getdataset", json_data=body)
+
+    formatter.format_output(result, fmt=fmt, title=f"DEM Dataset — {data_source}")
+
+
+# ---------------------------------------------------------------------------
+# Sites commands (per-site ISP summary)
+# ---------------------------------------------------------------------------
+
+
+@sites_app.command("summary")
+def sites_summary(
+    ctx: typer.Context,
+    begin: Optional[int] = typer.Option(
+        None, "--begin", "-b", help="Start time in epoch milliseconds. Default: 24h before --end."
+    ),
+    end: Optional[int] = typer.Option(None, "--end", "-e", help="End time in epoch milliseconds. Default: now."),
+    where: Optional[str] = typer.Option(
+        None,
+        "--where",
+        "-w",
+        help=(
+            "JSON where clause applied to both underlying queries. " 'Example: \'["=", "country", ["$", "France"]]\''
+        ),
+    ),
+    limit: Optional[int] = typer.Option(
+        None, "--limit", "-l", help=f"Maximum sites per source (default 100, max {DATASET_MAX_LIMIT})."
+    ),
+) -> None:
+    """Per-site network summary — the DEM "Sites" view columns in one call.
+
+    Returns one row per DEM Site with average DNS resolution time,
+    average ISP latency to the Netskope POP, POPs used, and applications
+    reached, plus packet loss and request counts.  Users not matched to
+    any configured Site are reported as "Remote".
+
+    Built from two public dataset queries grouped by site_name:
+    http_steered (dns_time, application_name, pop_name) and traceroute_pop
+    (rtt_e2e, rtt_furthest, loss_furthest, pop_name).  Defaults to the
+    last 24 hours; the window is capped at 48 hours.  Use -o json to see
+    the full pops/apps lists, or --verbose to widen the table.
+
+    To customise the recipe, run 'dem dataset query' with the same
+    select/groupby (see that command's examples).
+
+    EXAMPLES
+
+        # Site table for the last 24h
+        netskope dem sites summary
+
+        # Explicit window, JSON output
+        netskope -o json dem sites summary --begin 1725364316000 --end 1725450716000
+
+        # Only sites in one country
+        netskope dem sites summary --where '["=", "country", ["$", "France"]]'
+    """
+    if end is None:
+        end = _now_ms()
+    if begin is None:
+        begin = end - DEFAULT_SITE_SUMMARY_WINDOW_MS
+    _validate_dataset_window(begin, end)
+
+    client = _build_client(ctx)
+    formatter = _get_formatter(ctx)
+    fmt = _get_output_format(ctx)
+
+    where_parsed = _parse_json_option(where, "where")
+    site_limit = min(limit or 100, DATASET_MAX_LIMIT)
+
+    http_body: dict[str, Any] = {
+        "from": "http_steered",
+        "select": SITE_SUMMARY_HTTP_SELECT,
+        "groupby": ["site_name"],
+        "orderby": [["avg_dns_ms", "desc"]],
+        "begin": begin,
+        "end": end,
+        "limit": site_limit,
+    }
+    tr_body: dict[str, Any] = {
+        "from": "traceroute_pop",
+        "select": SITE_SUMMARY_TRACEROUTE_SELECT,
+        "groupby": ["site_name"],
+        "orderby": [["avg_isp_latency_ms", "desc"]],
+        "begin": begin,
+        "end": end,
+        "limit": site_limit,
+    }
+    if where_parsed is not None:
+        http_body["where"] = where_parsed
+        tr_body["where"] = where_parsed
+
+    def _fetch() -> tuple[Any, Any]:
+        http_res = client.request("POST", "/api/v2/dem/query/getdataset", json_data=http_body)
+        tr_res = client.request("POST", "/api/v2/dem/query/getdataset", json_data=tr_body)
+        return http_res, tr_res
+
+    if not _is_quiet(ctx):
+        with spinner("Querying per-site HTTP and traceroute datasets...", no_color=_no_color(ctx)):
+            http_res, tr_res = _fetch()
+    else:
+        http_res, tr_res = _fetch()
+
+    http_rows = http_res.get("data", []) if isinstance(http_res, dict) else []
+    tr_rows = tr_res.get("data", []) if isinstance(tr_res, dict) else []
+    sites = _merge_site_summary(http_rows, tr_rows)
+
+    formatter.format_output(
+        sites,
+        fmt=fmt,
+        default_fields=SITE_SUMMARY_DEFAULT_FIELDS,
+        title="DEM Sites — per-site network summary",
+        empty_hint=(
+            "No site data in this window. Sites need Netskope Client synthetic " "(http_steered/traceroute_pop) data."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------

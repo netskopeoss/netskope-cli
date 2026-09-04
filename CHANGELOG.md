@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+- Add `dem sites summary` — the DEM "Sites" view in one call: one row per site with `avg_dns_ms`, `avg_isp_latency_ms` (traceroute_pop `rtt_e2e` to the Netskope POP), `pops_used` (+ `pops`), `apps_reached` (+ `apps`), packet loss and request counts. Joins two public `getdataset` queries (`http_steered` and `traceroute_pop`) grouped by `site_name`; the empty site is reported as `Remote`. Defaults to the last 24h, capped at 48h; `--begin/--end`, `--where` and `--limit` are optional. Mirrors the `get_site_summary` action added to the MCP server in v3.7.0.
+- Add `dem dataset query` for the public `/api/v2/dem/query/getdataset` endpoint (8 synthetic/RUM sources, 48h window, 9999-row cap). Same select/where/groupby/orderby grammar as `dem metrics query`, but documented and usable with scoped API tokens.
+- Document the exact DEM aggregation function names in `dem metrics query --help` (`countDistinct`, `topK5`, `"/"` for µs→ms; there is no `count_distinct`), that time metrics are microseconds, and that the `isp` key only exists on the RUM sources. Per-site views should use `site_name`/`pop_name`/`application_name` on `http_*`/`traceroute_*`.
+
 ## [1.4.6] - 2026-09-02
 
 - Fix `netskope commands` returning an empty command tree on fresh installs. typer 0.26.0 began bundling its own vendored copy of `click`, so the `isinstance(obj, click.Group)` checks in `tree_cmd.py` and `main.py` silently evaluated to `False`. Because the dependency constraint allowed `typer <1.0`, any new `pip install` resolved a broken combination:

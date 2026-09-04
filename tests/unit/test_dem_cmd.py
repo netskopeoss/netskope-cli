@@ -804,5 +804,305 @@ class TestExistingDemCommands:
     def test_dem_help_shows_new_subcommands(self, runner):
         result = runner.invoke(app, ["dem", "--help"])
         assert result.exit_code == 0
-        for sub in ["metrics", "entities", "states", "traceroute", "fields", "experience-alerts", "apps"]:
+        for sub in [
+            "metrics",
+            "dataset",
+            "sites",
+            "entities",
+            "states",
+            "traceroute",
+            "fields",
+            "experience-alerts",
+            "apps",
+        ]:
             assert sub in result.output
+
+
+# ---------------------------------------------------------------------------
+# dem dataset query (public getdataset endpoint)
+# ---------------------------------------------------------------------------
+
+DATASET_URL = f"{BASE}/api/v2/dem/query/getdataset"
+
+MOCK_HTTP_SITE_ROWS = {
+    "data": [
+        {
+            "site_name": "",
+            "avg_dns_ms": 63.519,
+            "avg_proxy_connect_ms": 84.02,
+            "apps_reached": 9,
+            "apps": ["Slack", "Salesforce.com"],
+            "pops": ["FR-PAR2", "PT-LIS1"],
+            "http_requests": 11324,
+        },
+        {
+            "site_name": "Paris",
+            "avg_dns_ms": 27.094713,
+            "avg_proxy_connect_ms": 12.5,
+            "apps_reached": 4,
+            "apps": ["Slack"],
+            "pops": ["FR-PAR2"],
+            "http_requests": 2000,
+        },
+        {
+            "site_name": "Melbourne",
+            "avg_dns_ms": 305.78,
+            "avg_proxy_connect_ms": 40.0,
+            "apps_reached": 4,
+            "apps": ["Slack"],
+            "pops": ["AU-SYD2"],
+            "http_requests": 1974,
+        },
+    ],
+    "meta": {"fields": ["site_name", "avg_dns_ms"]},
+}
+
+MOCK_TR_SITE_ROWS = {
+    "data": [
+        {
+            "site_name": "",
+            "avg_isp_latency_ms": 15.392,
+            "avg_isp_latency_furthest_ms": 13.7,
+            "avg_packet_loss": 0.00104,
+            "pops": ["FR-PAR3", "FR-PAR2"],
+            "traceroutes": 1595,
+        },
+        {
+            "site_name": "Paris",
+            "avg_isp_latency_ms": 8.383,
+            "avg_isp_latency_furthest_ms": 8.0,
+            "avg_packet_loss": 0.0,
+            "pops": ["FR-PAR2"],
+            "traceroutes": 380,
+        },
+        {
+            "site_name": "Londres",
+            "avg_isp_latency_ms": 4.337,
+            "avg_isp_latency_furthest_ms": 4.0,
+            "avg_packet_loss": None,
+            "pops": ["UK-LON2"],
+            "traceroutes": 360,
+        },
+    ],
+    "meta": {},
+}
+
+
+class TestDatasetQuery:
+    @respx.mock
+    def test_query_success(self, runner):
+        route = respx.post(DATASET_URL).mock(return_value=httpx.Response(200, json=MOCK_HTTP_SITE_ROWS))
+        result = runner.invoke(
+            app,
+            [
+                "dem",
+                "dataset",
+                "query",
+                "--data-source",
+                "http_steered",
+                "--select",
+                '["site_name", {"avg_dns_ms": ["/", ["avg", "dns_time"], 1000]}]',
+                "--groupby",
+                "site_name",
+                "--orderby",
+                '[["avg_dns_ms", "desc"]]',
+                "--where",
+                '["=", "country", ["$", "France"]]',
+                "--begin",
+                "1725364316000",
+                "--end",
+                "1725450716000",
+                "--limit",
+                "50000",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        sent = json.loads(route.calls[0].request.content)
+        assert sent["from"] == "http_steered"
+        assert sent["select"] == ["site_name", {"avg_dns_ms": ["/", ["avg", "dns_time"], 1000]}]
+        assert sent["groupby"] == ["site_name"]
+        assert sent["orderby"] == [["avg_dns_ms", "desc"]]
+        assert sent["where"] == ["=", "country", ["$", "France"]]
+        assert sent["begin"] == 1725364316000
+        assert sent["end"] == 1725450716000
+        assert sent["limit"] == 9999  # capped at getdataset's exclusiveMaximum
+
+    @respx.mock
+    def test_query_json_output(self, runner):
+        respx.post(DATASET_URL).mock(return_value=httpx.Response(200, json=MOCK_HTTP_SITE_ROWS))
+        result = runner.invoke(
+            app,
+            [
+                "-o",
+                "json",
+                "dem",
+                "dataset",
+                "query",
+                "-d",
+                "traceroute_pop",
+                "-s",
+                '["site_name"]',
+                "-b",
+                "1725364316000",
+                "-e",
+                "1725450716000",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        assert data[1]["site_name"] == "Paris"
+
+    def test_query_rejects_non_dataset_source(self, runner):
+        result = runner.invoke(
+            app,
+            ["dem", "dataset", "query", "-d", "ux_score", "-s", '["user_id"]', "-b", "1", "-e", "2"],
+        )
+        assert result.exit_code != 0
+        assert "Invalid data source" in str(result.exception)
+        assert "dem metrics query" in str(result.exception.suggestion)
+
+    def test_query_rejects_window_over_48h(self, runner):
+        begin = 1725364316000
+        result = runner.invoke(
+            app,
+            [
+                "dem",
+                "dataset",
+                "query",
+                "-d",
+                "http_steered",
+                "-s",
+                '["site_name"]',
+                "-b",
+                str(begin),
+                "-e",
+                str(begin + 172_800_001),
+            ],
+        )
+        assert result.exit_code != 0
+        assert "48-hour" in str(result.exception)
+
+    def test_query_rejects_end_before_begin(self, runner):
+        result = runner.invoke(
+            app,
+            ["dem", "dataset", "query", "-d", "http_steered", "-s", '["site_name"]', "-b", "20", "-e", "10"],
+        )
+        assert result.exit_code != 0
+        assert "--end must be greater" in str(result.exception)
+
+
+# ---------------------------------------------------------------------------
+# dem sites summary
+# ---------------------------------------------------------------------------
+
+
+class TestSitesSummary:
+    @respx.mock
+    def test_summary_joins_both_sources(self, runner):
+        route = respx.post(DATASET_URL).mock(
+            side_effect=[
+                httpx.Response(200, json=MOCK_HTTP_SITE_ROWS),
+                httpx.Response(200, json=MOCK_TR_SITE_ROWS),
+            ]
+        )
+        result = runner.invoke(
+            app,
+            ["-o", "json", "dem", "sites", "summary", "--begin", "1725364316000", "--end", "1725450716000"],
+        )
+        assert result.exit_code == 0, result.output
+        assert route.call_count == 2
+        http_body = json.loads(route.calls[0].request.content)
+        tr_body = json.loads(route.calls[1].request.content)
+        assert http_body["from"] == "http_steered"
+        assert tr_body["from"] == "traceroute_pop"
+        for body in (http_body, tr_body):
+            assert body["groupby"] == ["site_name"]
+            assert body["begin"] == 1725364316000
+            assert body["end"] == 1725450716000
+            assert body["limit"] == 100
+            assert "where" not in body
+        # Exact function names the API accepts (countDistinct, not count_distinct)
+        assert {"apps_reached": ["countDistinct", "application_name"]} in http_body["select"]
+        assert {"avg_isp_latency_ms": ["/", ["avg", "rtt_e2e"], 1000]} in tr_body["select"]
+
+        rows = json.loads(result.output)
+        by_site = {r["site_name"]: r for r in rows}
+        assert set(by_site) == {"Remote", "Paris", "Melbourne", "Londres"}
+
+        remote = by_site["Remote"]
+        assert remote["avg_dns_ms"] == 63.52
+        assert remote["avg_isp_latency_ms"] == 15.39
+        assert remote["pops"] == ["FR-PAR2", "FR-PAR3", "PT-LIS1"]  # union of both sources
+        assert remote["pops_used"] == 3
+        assert remote["apps_reached"] == 9
+        assert remote["avg_packet_loss_pct"] == 0.104
+        assert remote["http_requests"] == 11324
+        assert remote["traceroutes"] == 1595
+
+        # Site only in traceroute data: HTTP columns stay empty
+        londres = by_site["Londres"]
+        assert londres["avg_dns_ms"] is None
+        assert londres["apps_reached"] == 0
+        assert londres["avg_packet_loss_pct"] is None
+        assert londres["avg_isp_latency_ms"] == 4.34
+
+        # Site only in HTTP data sorts last (no ISP latency)
+        assert rows[-1]["site_name"] == "Melbourne"
+        assert rows[-1]["avg_isp_latency_ms"] is None
+        # Otherwise sorted by ISP latency descending
+        assert [r["site_name"] for r in rows[:3]] == ["Remote", "Paris", "Londres"]
+
+    @respx.mock
+    def test_summary_defaults_to_last_24h(self, runner, monkeypatch):
+        import netskope_cli.commands.dem_cmd as dem_cmd
+
+        monkeypatch.setattr(dem_cmd, "_now_ms", lambda: 1_725_450_716_000)
+        route = respx.post(DATASET_URL).mock(return_value=httpx.Response(200, json={"data": []}))
+        result = runner.invoke(app, ["-o", "json", "dem", "sites", "summary"])
+        assert result.exit_code == 0, result.output
+        body = json.loads(route.calls[0].request.content)
+        assert body["end"] == 1_725_450_716_000
+        assert body["begin"] == 1_725_450_716_000 - 86_400_000
+
+    @respx.mock
+    def test_summary_where_and_limit_apply_to_both_queries(self, runner):
+        route = respx.post(DATASET_URL).mock(return_value=httpx.Response(200, json={"data": []}))
+        result = runner.invoke(
+            app,
+            [
+                "-o",
+                "json",
+                "dem",
+                "sites",
+                "summary",
+                "-b",
+                "1725364316000",
+                "-e",
+                "1725450716000",
+                "--where",
+                '["=", "country", ["$", "France"]]',
+                "--limit",
+                "5",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        for call in route.calls:
+            body = json.loads(call.request.content)
+            assert body["where"] == ["=", "country", ["$", "France"]]
+            assert body["limit"] == 5
+
+    def test_summary_rejects_window_over_48h(self, runner):
+        result = runner.invoke(
+            app, ["dem", "sites", "summary", "-b", "1725364316000", "-e", str(1725364316000 + 172_800_001)]
+        )
+        assert result.exit_code != 0
+        assert "48-hour" in str(result.exception)
+
+    @respx.mock
+    def test_summary_surfaces_upstream_error(self, runner):
+        respx.post(DATASET_URL).mock(
+            return_value=httpx.Response(422, json={"detail": [{"msg": "Cannot find function 'count_distinct'"}]})
+        )
+        result = runner.invoke(app, ["dem", "sites", "summary", "-b", "1725364316000", "-e", "1725450716000"])
+        assert result.exit_code != 0
+        assert "count_distinct" in str(result.exception)
