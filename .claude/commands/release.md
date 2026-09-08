@@ -33,12 +33,12 @@ Do not Ask the user for:
 ### 4. Lint, format, type-check, test
 ```bash
 uv run ruff check . --fix
-uv run black .
-uv run mypy src/
+uv run ruff format .
+uv run ty check
 uv run pytest
 ```
 - If there are lint errors that can't be auto-fixed, stop and report them.
-- mypy must report 0 errors and ALL tests must pass before continuing. If not, stop and report the issue — fix before continuing.
+- ty must report 0 diagnostics and ALL tests must pass before continuing. If not, stop and report the issue — fix before continuing.
 
 ### 5. Commit, push, tag, and create the GitHub Release
 ```bash
@@ -74,7 +74,7 @@ UV_PUBLISH_TOKEN="$token" uv publish --check-url https://pypi.org/simple/
   - Update the top-level `url` line with the new sdist URL
   - Update the top-level `sha256` line with the new hash
 - **Check every resource block, not just the top-level url**: from the CLI repo, run `uv export --no-dev --no-hashes --no-emit-project --format requirements-txt` for the runtime dependency set (outside the repo `uv pip list` silently describes some other interpreter, and the dev venv holds packages such as `click`, pulled in by black, that are not runtime resources). Compare it with the formula's `resource` blocks in both directions: add a block for every new package, delete the block for every package that is gone, and refresh URL + SHA256 from `https://pypi.org/pypi/<name>/<version>/json` for every version change.
-- Homebrew installs the sdist with pip's `--no-binary=:all:`, which also builds the build backend from source. hatchling is pure Python so that is quick; do not move to a compiled backend (uv_build, maturin) without re-testing the formula. After the sdist is on PyPI and the formula is pushed, run `brew install --build-from-source netskopeoss/tap/netskope` before announcing.
+- Homebrew installs the sdist with pip's `--no-binary=:all:`, which also builds the build backend from source. hatchling is pure Python so that is quick; do not move to a compiled backend (uv_build, maturin) without re-testing the formula. After the sdist is on PyPI and the formula is pushed, run `brew install --build-from-source netskopeoss/tap/netskope` before announcing. Homebrew passes `--uploaded-prior-to=P1D` to pip and refuses PyPI files younger than 24 hours, so this check, and any user's `brew install` of the new version, only works the day after `uv publish`; time the announcement accordingly.
   - Note: pip freeze shows jaraco packages with dots (`jaraco.context`) while the formula uses dashes (`jaraco-context`) — normalize names before comparing or you'll get false mismatches.
   - Note: Linux-only deps (e.g. `cryptography` via secretstorage) won't appear in a local macOS pip freeze and are not formula resources — skip them.
 - Commit and push the tap:
@@ -94,5 +94,5 @@ git push origin main
 ## Important
 - Never hardcode or echo API tokens, PyPI tokens, or secrets
 - If any step fails, stop and report the error — do not continue blindly
-- Always run linting, formatting, mypy, and the test suite before committing
+- Always run ruff check, ruff format, ty, and the test suite before committing
 - `uv.lock` is committed. A dependency bump edits the pin in `pyproject.toml` and then runs `uv lock`; commit both files together
