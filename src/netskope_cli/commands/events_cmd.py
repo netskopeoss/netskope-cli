@@ -13,17 +13,9 @@ from typing import Any, Optional
 import typer
 
 from netskope_cli.core.client import NetskopeClient, build_client
-from netskope_cli.core.datasearch import (
-    DATASEARCH_PAGE_CAP,
-    ApiFieldSelection,
-    count_ceiling,
-    count_exact,
-    is_page_capped,
-    print_exact_count,
-    resolve_api_fields,
-)
+from netskope_cli.core.datasearch import ApiFieldSelection, fetch_page, raise_on_error_envelope, resolve_api_fields
 from netskope_cli.core.exceptions import NetskopeError
-from netskope_cli.core.output import OutputFormatter, spinner
+from netskope_cli.core.output import OutputFormatter
 from netskope_cli.core.output import build_formatter as _core_build_formatter
 from netskope_cli.utils.helpers import validate_time_range
 
@@ -139,45 +131,31 @@ def _fetch_events(
     endpoint: str,
     params: dict[str, Any],
     *,
+    selection: ApiFieldSelection,
     limit: int,
     count_only: bool,
     spinner_text: str,
 ) -> tuple[Any, int | None] | None:
     """Run the request for an events command and return ``(data, capped_at)``.
 
-    ``--count`` asks for a full API page instead of ``--limit`` rows, and a
-    page that came back full is flagged as capped so the count is reported as
-    a lower bound.  With ``--exact`` the count is paged and printed here, in
-    which case ``None`` is returned and the caller is done.
+    The page-cap and ``--exact`` rules live in :func:`fetch_page`; ``None``
+    means the exact count was printed and the caller is done.
     """
     state = ctx.obj
-    no_color = state.no_color if state is not None else False
-    quiet = state.quiet if state is not None else False
-    client = _build_client(ctx)
-
-    exact = count_only and bool(getattr(state, "exact", False))
-    if exact and "/datasearch/" not in endpoint:
-        # Only the datasearch endpoints are known to page by offset and cap at
-        # 10,000 rows; elsewhere --exact would loop to the ceiling on a server
-        # that ignores offset, so it degrades to the single-page count.
-        typer.echo("--exact applies to the datasearch endpoints only; counting a single page.", err=True)
-        exact = False
-    if exact:
-        where_expr = getattr(state, "where_expr", None)
-        ceiling = count_ceiling()
-        result = count_exact(
-            client, endpoint, params, where=where_expr, ceiling=ceiling, quiet=quiet, no_color=no_color
-        )
-        print_exact_count(result, where=where_expr is not None, ceiling=ceiling, quiet=quiet, no_color=no_color)
-        return None
-
-    params["limit"] = DATASEARCH_PAGE_CAP if count_only else limit
-
-    with spinner(spinner_text, no_color=no_color, quiet=quiet):
-        data = client.request("GET", endpoint, params=params)
-
-    capped_at = DATASEARCH_PAGE_CAP if count_only and is_page_capped(data, DATASEARCH_PAGE_CAP) else None
-    return data, capped_at
+    page = fetch_page(
+        _build_client(ctx),
+        endpoint,
+        params,
+        selection=selection,
+        limit=limit,
+        count=count_only,
+        exact=bool(getattr(state, "exact", False)),
+        where=getattr(state, "where_expr", None),
+        quiet=bool(getattr(state, "quiet", False)),
+        no_color=bool(getattr(state, "no_color", False)),
+        spinner_text=spinner_text,
+    )
+    return None if page is None else (page.data, page.capped_at)
 
 
 def _run_event_query(
@@ -234,7 +212,13 @@ def _run_event_query(
 
     # -- Execute request ---------------------------------------------------
     fetched = _fetch_events(
-        ctx, endpoint, params, limit=limit, count_only=count_only, spinner_text="Querying events..."
+        ctx,
+        endpoint,
+        params,
+        selection=selection,
+        limit=limit,
+        count_only=count_only,
+        spinner_text="Querying events...",
     )
     if fetched is None:
         return
@@ -302,7 +286,13 @@ def _run_audit_query(
     endpoint = "/api/v2/events/data/audit"
 
     fetched = _fetch_events(
-        ctx, endpoint, params, limit=limit, count_only=count_only, spinner_text="Querying audit events..."
+        ctx,
+        endpoint,
+        params,
+        selection=selection,
+        limit=limit,
+        count_only=count_only,
+        spinner_text="Querying audit events...",
     )
     if fetched is None:
         return
@@ -352,10 +342,7 @@ def _render_event_response(
             details={"response": data},
         )
 
-    ok = data.get("ok")
-    if ok is not None and not ok:
-        msg = data.get("message") or data.get("error") or "Unknown API error"
-        raise NetskopeError(f"API returned an error: {msg}", details=data)
+    raise_on_error_envelope(data)
 
     results = data.get("result", [])
     total = data.get("total")
@@ -371,9 +358,10 @@ def _render_event_response(
 
     # Hand over the whole envelope when ``result`` is a list, so an endpoint
     # total (audit, some datasearch responses) drives --count and the
-    # "Showing N of M" banner.  A dict ``result`` (metrics endpoints) or a
-    # missing one is rendered on its own, never the envelope.
-    payload: Any = data if isinstance(data.get("result"), list) else results
+    # "Showing N of M" banner, and when counting a response that states a
+    # total.  Otherwise a dict ``result`` (metrics endpoints) or a missing one
+    # is rendered on its own, never the envelope.
+    payload: Any = data if isinstance(data.get("result"), list) or (count_only and total is not None) else results
     formatter.format_output(
         payload,
         fmt=output_fmt,

@@ -12,15 +12,7 @@ from typing import Optional
 import typer
 
 from netskope_cli.core.client import NetskopeClient, build_client
-from netskope_cli.core.datasearch import (
-    DATASEARCH_PAGE_CAP,
-    count_ceiling,
-    count_exact,
-    is_page_capped,
-    print_exact_count,
-    raise_on_error_envelope,
-    resolve_api_fields,
-)
+from netskope_cli.core.datasearch import fetch_page, resolve_api_fields
 from netskope_cli.core.exceptions import APIError, ValidationError
 from netskope_cli.core.output import (
     OutputFormatter,
@@ -136,38 +128,31 @@ def _query_incident_events(
     if selection.request is not None:
         params["fields"] = selection.request
 
-    if count and getattr(state, "exact", False):
-        where_expr = getattr(state, "where_expr", None)
-        ceiling = count_ceiling()
-        result = count_exact(
-            client,
-            _INCIDENT_EVENTS_ENDPOINT,
-            params,
-            where=where_expr,
-            ceiling=ceiling,
-            quiet=quiet,
-            no_color=no_color,
-        )
-        print_exact_count(result, where=where_expr is not None, ceiling=ceiling, quiet=quiet, no_color=no_color)
+    page = fetch_page(
+        client,
+        _INCIDENT_EVENTS_ENDPOINT,
+        params,
+        selection=selection,
+        limit=limit,
+        count=count,
+        exact=bool(getattr(state, "exact", False)),
+        where=getattr(state, "where_expr", None),
+        quiet=quiet,
+        no_color=no_color,
+        spinner_text=spinner_text,
+    )
+    if page is None:
         return
 
-    params["limit"] = DATASEARCH_PAGE_CAP if count else limit
-
-    with spinner(spinner_text, no_color=no_color, quiet=quiet):
-        data = client.request("GET", _INCIDENT_EVENTS_ENDPOINT, params=params)
-    raise_on_error_envelope(data)
-
-    capped_at = DATASEARCH_PAGE_CAP if count and is_page_capped(data, DATASEARCH_PAGE_CAP) else None
-
     formatter.format_output(
-        data,
+        page.data,
         fmt=fmt,
         fields=selection.display,
         projected=selection.projected,
         title=title,
         default_fields=default_fields,
         count_only=count,
-        capped_at=capped_at,
+        capped_at=page.capped_at,
         strip_internal=not bool(getattr(state, "raw", False)),
         add_iso_timestamps=not bool(getattr(state, "epoch", False)),
     )

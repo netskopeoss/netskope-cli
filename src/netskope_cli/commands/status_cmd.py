@@ -518,7 +518,7 @@ def status(
                 err_console.print(f"[dim red]  ✗ {err}[/dim red]")
         else:
             all_na = (
-                all(v is None for k, v in metrics.items() if k != "publishers")
+                all(v is None for k, v in metrics.items() if k != "publishers" and not k.endswith("_capped"))
                 and metrics.get("publishers", {}).get("total") is None
             )
             if all_na:

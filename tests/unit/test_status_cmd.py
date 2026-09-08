@@ -435,6 +435,26 @@ class TestStatusCapped:
         result = self._run(tmp_path, monkeypatch, False, "-o", "json", "status")
         assert json.loads(result.output)["events"]["alerts_capped"] is False
 
+    def test_q6_all_failed_hint_survives_the_capped_flags(self, tmp_path, monkeypatch):
+        """The *_capped booleans must not stop the 'All API calls failed' diagnostic."""
+        from typer.testing import CliRunner
+
+        from netskope_cli.main import app
+
+        monkeypatch.setenv("NETSKOPE_TENANT", "https://test.goskope.com")
+        monkeypatch.setenv("NETSKOPE_API_TOKEN", "testtoken")
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        failed = {k: (False if k.endswith("_capped") else None) for k in self._metrics(False)}
+        failed["publishers"] = {"total": None, "connected": None, "not_connected": None}
+
+        async def mock_gather(base_url, headers, time_params, cookies=None, extended=False):
+            return failed, ["/api/v2/events/datasearch/alert: HTTP 500"]
+
+        with patch("netskope_cli.commands.status_cmd._gather_status", side_effect=mock_gather):
+            result = CliRunner().invoke(app, ["--no-color", "status"])
+        assert "All API calls failed" in result.output
+
     def test_table_marks_lower_bound(self, tmp_path, monkeypatch):
         result = self._run(tmp_path, monkeypatch, True, "--no-color", "status")
         assert result.exit_code == 0, result.output

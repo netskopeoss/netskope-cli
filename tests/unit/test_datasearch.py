@@ -60,6 +60,11 @@ ALERTS = [
 ]
 
 
+def _without_iso(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop the ``*_iso`` companions the formatter adds to machine-readable output."""
+    return [{k: v for k, v in r.items() if not k.endswith("_iso")} for r in rows]
+
+
 def _out(capsys: pytest.CaptureFixture[str]) -> tuple[str, str]:
     captured = capsys.readouterr()
     return captured.out, captured.err
@@ -334,7 +339,9 @@ class TestFormatterStrictAndCapped:
         out, err = _out(capsys)
         assert "--api-fields: 'qdomainn' not found in any record" in err
         assert "qdomain" in err  # close match suggested
-        assert json.loads(out)[0] == {"timestamp": 1784851173, "qdomainn": None}
+        row = json.loads(out)[0]
+        assert row["timestamp_iso"].startswith("2026-")  # the companion of a projected field survives
+        assert {k: v for k, v in row.items() if k != "timestamp_iso"} == {"timestamp": 1784851173, "qdomainn": None}
 
     def test_lenient_warns_and_prints_nulls(self, capsys: pytest.CaptureFixture[str]) -> None:
         OutputFormatter(no_color=True, lenient=True, fields=["nope", "alert_name"]).format_output(ALERTS, fmt="json")
@@ -513,7 +520,9 @@ class TestApiFields:
         result = _invoke(runner, "alerts", "list", "--api-fields", "timestamp,qdomain", "-o", "json")
         assert result.exit_code == 0, result.output
         assert _request_query(route)["fields"] == ["timestamp,qdomain"]
-        assert json.loads(result.stdout) == [{"timestamp": 1784851173, "qdomain": "bad.example"}]
+        rows = json.loads(result.stdout)
+        assert list(rows[0]) == ["timestamp", "timestamp_iso", "qdomain"]  # companion follows its field
+        assert _without_iso(rows) == [{"timestamp": 1784851173, "qdomain": "bad.example"}]
 
     @respx.mock
     def test_projected_field_absent_from_response_does_not_fail(self, runner: CliRunner) -> None:
@@ -521,7 +530,7 @@ class TestApiFields:
         _alert_route([{"timestamp": 1784851173, "alert_name": "DLP thing"}])
         result = _invoke(runner, "alerts", "list", "--api-fields", "timestamp,qdomain", "-o", "json")
         assert result.exit_code == 0, result.output
-        assert json.loads(result.stdout) == [{"timestamp": 1784851173, "qdomain": None}]
+        assert _without_iso(json.loads(result.stdout)) == [{"timestamp": 1784851173, "qdomain": None}]
         assert "--api-fields: 'qdomain' not found" in result.output
         assert "--fields:" not in result.output
 
@@ -543,7 +552,7 @@ class TestApiFields:
         )
         assert result.exit_code == 0, result.output
         assert _request_query(route)["fields"] == ["timestamp,qdomain,action"]
-        assert json.loads(result.stdout) == [{"timestamp": 1784851173, "qdomain": "bad.example"}]
+        assert _without_iso(json.loads(result.stdout)) == [{"timestamp": 1784851173, "qdomain": "bad.example"}]
         assert "not present in any record" not in result.output
 
     @respx.mock
@@ -816,3 +825,118 @@ class TestReviewRegressions:
         assert result.exit_code == 0, result.output
         assert "--api-fields" not in result.output
         assert json.loads(result.stdout) == [{"user": "u"}]
+
+
+class TestSecondReview:
+    """Findings from the second review of the branch (Q1-Q15), by number."""
+
+    @respx.mock
+    def test_q1_single_object_envelope_warns_instead_of_failing(self, runner: CliRunner) -> None:
+        respx.get(f"{BASE}/api/v2/infrastructure/publishers/42").mock(
+            return_value=httpx.Response(
+                200, json={"data": {"publisher_name": "P", "status": "connected"}, "status": "success"}
+            )
+        )
+        result = _invoke(runner, "npa", "publishers", "get", "42", "--fields", "publisher_name", "-o", "json")
+        assert result.exit_code == 0, result.output
+        assert "--fields: 'publisher_name' not found" in result.output  # warned, as before the strict mode
+
+    @respx.mock
+    def test_q2_widened_name_rejected_by_api_names_the_option(self, runner: CliRunner) -> None:
+        respx.get(f"{BASE}/api/v2/events/datasearch/network").mock(
+            return_value=httpx.Response(400, json={"message": "unrecognized field usr"})
+        )
+        result = _invoke(runner, "events", "network", "--api-fields", "timestamp", "--where", 'usr eq "x"')
+        assert result.exit_code != 0
+        assert "usr was added to --api-fields" in (getattr(result.exception, "suggestion", "") or "")
+
+    @respx.mock
+    def test_q3_count_uses_envelope_total_without_a_result_list(self, runner: CliRunner) -> None:
+        respx.get(f"{BASE}/api/v2/events/data/audit").mock(return_value=httpx.Response(200, json={"ok": 1, "total": 5}))
+        result = _invoke(runner, "events", "audit", "--count")
+        assert result.stdout.strip() == "5", result.output
+
+    @respx.mock
+    def test_q4_where_over_a_full_page_is_a_lower_bound_despite_a_total(self, runner: CliRunner) -> None:
+        _alert_route(FULL_PAGE)  # no way to know what the 40,000 uninspected rows hold
+        respx.get(ALERT_URL).mock(return_value=httpx.Response(200, json={"result": FULL_PAGE, "total": 50000}))
+        result = _invoke(runner, "alerts", "list", "--count", "--where", 'action eq "block"')
+        assert result.stdout.strip() == "5000+", result.output
+
+    @respx.mock
+    def test_q5_events_error_envelope_is_markup_safe(self, runner: CliRunner) -> None:
+        from netskope_cli.core.exceptions import NetskopeError
+
+        respx.get(f"{BASE}/api/v2/events/datasearch/network").mock(
+            return_value=httpx.Response(200, json={"ok": 0, "message": "bad query near [/user]"})
+        )
+        result = _invoke(runner, "events", "network", "--query", "x")
+        assert isinstance(result.exception, NetskopeError)
+        assert "\\[/user]" in result.exception.message
+
+    def test_q7_iso_companion_name_is_not_a_typo_in_table_output(self, capsys: pytest.CaptureFixture[str]) -> None:
+        OutputFormatter(no_color=True, fields=["alert_name", "timestamp_iso"]).format_output(ALERTS, fmt="table")
+        assert "column left blank" in _out(capsys)[1]
+
+    def test_q8_glob_under_null_parent_warns_but_unknown_parent_fails(self, capsys: pytest.CaptureFixture[str]) -> None:
+        rows = [{"user": "a", "host_info": None}, {"user": "b"}]
+        OutputFormatter(no_color=True, fields=["user", "host_info.*"]).format_output(rows, fmt="json")
+        assert "matched no fields here (its parent is null or empty)" in " ".join(_out(capsys)[1].split())
+        with pytest.raises(UnknownFieldError):
+            OutputFormatter(no_color=True, fields=["user", "nope.*"]).format_output(rows, fmt="json")
+
+    def test_q9_grouped_rows_warn_for_a_non_group_column(self, capsys: pytest.CaptureFixture[str]) -> None:
+        grouped = [{"_id": {"app": "Box"}, "count": 3}, {"_id": {"app": "Slack"}, "count": 1}]
+        OutputFormatter(no_color=True, fields=["alert_name", "app"]).format_output(grouped, fmt="json")
+        out, err = _out(capsys)
+        assert "'alert_name' not found" in err
+        assert json.loads(out) == [{"alert_name": None, "app": "Box"}, {"alert_name": None, "app": "Slack"}]
+
+    @respx.mock
+    def test_q10_non_datasearch_count_keeps_limit_and_never_advises_exact(self, runner: CliRunner) -> None:
+        route = respx.get(f"{BASE}/api/v2/events/data/audit").mock(
+            return_value=httpx.Response(200, json={"result": FULL_PAGE})
+        )
+        result = _invoke(runner, "events", "audit", "--count")
+        assert _request_query(route)["limit"] == ["25"]
+        assert result.stdout.strip() == "10000" and "--exact" not in result.output
+
+    def test_q11_a_stated_total_is_exact_and_status_count_is_consulted_last(self) -> None:
+        from netskope_cli.core.output import envelope_total
+
+        five = [{"a": 1}] * 5
+        assert is_page_capped({"result": five, "status": {"count": 5, "total": 250}}, 5) is False
+        assert is_page_capped({"result": five, "total": 5}, 5) is False
+        assert is_page_capped({"result": five, "status": {"count": 5}}, 5) is True
+        assert is_page_capped({"result": five, "total": 250}, 5, where_active=True) is True
+        assert envelope_total({"status.count": 5, "status.total": 250}) == 250
+        assert envelope_total({"total": 0}) == 0
+        assert envelope_total({}) is None
+
+    @respx.mock
+    def test_q12_projected_timestamp_keeps_its_iso_companion(self, runner: CliRunner) -> None:
+        _alert_route()
+        result = _invoke(runner, "alerts", "list", "--api-fields", "timestamp,alert_name", "-o", "json")
+        assert result.exit_code == 0, result.output
+        assert list(json.loads(result.stdout)[0]) == ["timestamp", "timestamp_iso", "alert_name"]
+
+    @respx.mock
+    def test_q13_exact_pins_the_window_and_does_not_page_group_by(self, runner: CliRunner) -> None:
+        route = _alert_route()
+        result = _invoke(runner, "alerts", "list", "--count", "--exact")
+        assert result.exit_code == 0, result.output
+        assert "endtime" in _request_query(route)  # pinned even though no --since/--end was given
+        calls_before = route.call_count
+        respx.get(ALERT_URL).mock(
+            return_value=httpx.Response(200, json={"result": [{"_id": {"app": "Box"}, "count": 3}]})
+        )
+        result = _invoke(runner, "alerts", "list", "--group-by", "app", "--count", "--exact")
+        assert result.stdout.strip() == "1" and route.call_count == calls_before + 1  # one page, no paging
+        assert "does not page group-by results" in result.output
+
+    @respx.mock
+    def test_q15_alerts_summary_raises_on_error_envelope(self, runner: CliRunner) -> None:
+        respx.get(ALERT_URL).mock(return_value=httpx.Response(200, json={"ok": 0, "message": "Invalid query"}))
+        result = _invoke(runner, "alerts", "summary", "--by", "severity")
+        assert result.exit_code != 0
+        assert "Invalid query" in (result.output + str(result.exception))

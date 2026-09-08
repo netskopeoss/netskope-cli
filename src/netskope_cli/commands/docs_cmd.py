@@ -369,9 +369,10 @@ They run client-side on the rows the API returned (so --limit still applies).
 
    A name no returned record has stops the command (exit 2) and suggests
    close matches; add --lenient to warn instead and render that column
-   blank (table/csv) or null (json/yaml). A path whose parent is null or
-   empty in every record only warns, as does any unknown name when
-   --api-fields trimmed the response. Quote globs in zsh:  --fields 'epdlp.*'
+   blank (table/csv) or null (json/yaml). Only lists of records are strict:
+   a path or glob whose parent is null or empty in every record, any name
+   when --api-fields trimmed the response, single-object responses (get,
+   create, update) and group-by rows all warn. Quote globs in zsh:  --fields 'epdlp.*'
 
      ntsk devices list --fields hostname,host_info.os,last_event_timestamp
      ntsk npa apps list --fields app_name,protocols[].port -o csv

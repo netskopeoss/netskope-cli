@@ -198,6 +198,28 @@ def unwrap_api_response(
     return data, metadata
 
 
+#: Envelope keys that state how many rows exist in total.  ``status.count`` on the
+#: datasearch endpoints is the number of rows returned, so it is not one of them.
+TOTAL_KEYS = ("total", "totalResults", "status.total")
+
+
+def envelope_total(metadata: dict[str, Any]) -> int | None:
+    """The total an unwrapped envelope states, preferring a real total over ``status.count``.
+
+    A stated ``0`` is an answer, not a missing value, so keys are tested with
+    ``is not None`` rather than truthiness.
+    """
+    for key in (*TOTAL_KEYS, "status.count"):
+        value = metadata.get(key)
+        if value is None:
+            continue
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
 def flatten_grouped_results(data: list) -> list:
     """Flatten group-by API responses.
 
@@ -425,23 +447,12 @@ class OutputFormatter:
             elif capped_at is not None:
                 self.err_console.print(f"[dim]{len(data):,}+ results (capped)[/dim]")
             elif unwrap:
-                total = None
-                if metadata:
-                    total = (
-                        metadata.get("total")
-                        or metadata.get("totalResults")
-                        or metadata.get("status.count")
-                        or metadata.get("status.total")
-                    )
-                if total is not None:
-                    try:
-                        total_int = int(total)
-                        if total_int != len(data):
-                            self.err_console.print(f"[dim]Showing {len(data)} of {total_int} results[/dim]")
-                        else:
-                            self.err_console.print(f"[dim]{total_int} results[/dim]")
-                    except (ValueError, TypeError):
-                        self.err_console.print(f"[dim]{len(data)} results returned[/dim]")
+                total_int = envelope_total(metadata) if metadata else None
+                if total_int is not None:
+                    if total_int != len(data):
+                        self.err_console.print(f"[dim]Showing {len(data)} of {total_int} results[/dim]")
+                    else:
+                        self.err_console.print(f"[dim]{total_int} results[/dim]")
                 else:
                     self.err_console.print(f"[dim]{len(data)} results returned[/dim]")
 
@@ -454,16 +465,9 @@ class OutputFormatter:
         # filtered record count is reported instead.
         count_only = count_only or self._default_count_only
         if count_only:
-            total = None
-            if self._where is None and capped_at is None:
-                total = (
-                    metadata.get("total")
-                    or metadata.get("totalResults")
-                    or metadata.get("status.count")
-                    or metadata.get("status.total")
-                )
+            total = envelope_total(metadata) if self._where is None and capped_at is None else None
             if total is not None:
-                n = int(total)
+                n = total
             elif isinstance(data, list):
                 n = len(data)
             else:
@@ -519,6 +523,15 @@ class OutputFormatter:
         # grouped rows keep their group keys and ``count`` column.
         if is_grouped and fields is not None:
             fields = None
+        # The companions synthesised above belong to the fields the projection
+        # asked for; keep them so ``--api-fields timestamp`` still yields ``timestamp_iso``.
+        if fields is not None and add_iso_timestamps and fmt in ("json", "jsonl", "csv", "yaml"):
+            recs = self._records_of(data)
+            fields = [
+                f
+                for name in fields
+                for f in ((name, f"{name}_iso") if any(f"{name}_iso" in r for r in recs) else (name,))
+            ]
 
         # Field precedence: explicit per-command fields -> global --fields ->
         # default_fields (table/human/csv only, not grouped, not wide).
@@ -538,7 +551,11 @@ class OutputFormatter:
         # A per-command ``fields`` is a server-side projection the API may
         # legitimately not fill (sparse event schemas), so it only warns; the
         # global --fields is the user's own list and is strict unless --lenient.
+        # Strictness is about lists of records: a single-object response is
+        # usually an envelope around the object, and group-by rows only carry
+        # the group keys and count, so both warn instead.
         server_side = fields is not None
+        strict = not server_side and not self._lenient and not projected and isinstance(data, list) and not is_grouped
 
         # Apply field selection AFTER unwrapping so that --fields applies to
         # individual records, not envelope keys.
@@ -548,7 +565,7 @@ class OutputFormatter:
             effective_fields,
             fmt=fmt,
             warn=explicit_requested,
-            strict=not server_side and not self._lenient and not projected,
+            strict=strict,
             label="--api-fields" if server_side else "--fields",
             hidden_internal=strip_internal,
         )
@@ -648,7 +665,19 @@ class OutputFormatter:
             ]
             if strict:
                 wrong = set(find_unknown(records, unmatched))
-                errors = problems[: len(unmatched_globs)]
+                # ``<field>_iso`` companions exist only in machine-readable formats;
+                # when the base field resolves the name is legitimate, not a typo.
+                wrong = {p for p in wrong if not (p.endswith("_iso") and not find_unmatched(records, [p[:-4]]))}
+                # A glob under a parent that exists but is null or empty everywhere
+                # (``host_info.*`` when no device reported host_info) is not wrong either.
+                soft_globs = set()
+                for spec in unmatched_globs:
+                    parent = spec.rsplit(".", 1)[0] if "." in spec else ""
+                    if parent and not is_glob(parent) and not find_unknown(records, [parent]):
+                        soft_globs.add(spec)
+                errors = [
+                    t for spec, t in zip(unmatched_globs, problems[: len(unmatched_globs)]) if spec not in soft_globs
+                ]
                 errors += [text for path, text in zip(unmatched, problems[len(unmatched_globs) :]) if path in wrong]
                 if errors:
                     hint = None
@@ -657,6 +686,9 @@ class OutputFormatter:
                         hint = "Fields starting with '_' are internal and hidden unless you pass --raw."
                     raise UnknownFieldError(errors, extra_hint=hint)
                 problems = [
+                    f"pattern '{rich_escape(spec)}' matched no fields here (its parent is null or empty)."
+                    for spec in soft_globs
+                ] + [
                     f"'{rich_escape(path)}' has no value in any record here (its parent is null or empty); "
                     "column left blank."
                     for path in unmatched

@@ -19,16 +19,18 @@ Two API quirks need handling the generic formatter cannot do on its own:
 from __future__ import annotations
 
 import os
+import re
+import time
 from dataclasses import dataclass
 from typing import Any
 
 from rich.console import Console
 from rich.markup import escape as rich_escape
 
-from netskope_cli.core.exceptions import NetskopeError, ValidationError
+from netskope_cli.core.exceptions import APIError, NetskopeError, ValidationError
 from netskope_cli.core.fieldpaths import find_unmatched, top_level_name
 from netskope_cli.core.filtering import Expr, apply_filter
-from netskope_cli.core.output import flatten_grouped_results, spinner, unwrap_api_response
+from netskope_cli.core.output import TOTAL_KEYS, flatten_grouped_results, spinner, unwrap_api_response
 
 #: Most rows a single datasearch request returns, whatever ``limit`` asks for.
 DATASEARCH_PAGE_CAP = 10_000
@@ -81,6 +83,8 @@ class ApiFieldSelection:
 
     request: str | None
     display: list[str] | None
+    #: Names widening added for --fields/--where/--sort; the user never typed them.
+    widened: tuple[str, ...] = ()
 
     @property
     def projected(self) -> bool:
@@ -139,7 +143,8 @@ def resolve_api_fields(ctx: Any, api_fields: str | None) -> ApiFieldSelection:
             union.append(name)
 
     display = None if global_fields else list(dict.fromkeys(requested))
-    return ApiFieldSelection(request=",".join(union), display=display)
+    widened = tuple(name for name in union if name not in requested)
+    return ApiFieldSelection(request=",".join(union), display=display, widened=widened)
 
 
 # ---------------------------------------------------------------------------
@@ -147,23 +152,26 @@ def resolve_api_fields(ctx: Any, api_fields: str | None) -> ApiFieldSelection:
 # ---------------------------------------------------------------------------
 
 
-def is_page_capped(data: Any, limit: int) -> bool:
-    """True when a response filled the ``limit``-row page and carries no larger total.
+def is_datasearch_endpoint(endpoint: str) -> bool:
+    """The ``/datasearch/`` endpoints page by ``offset`` and cap a request at :data:`DATASEARCH_PAGE_CAP`."""
+    return "/datasearch/" in endpoint
 
-    Datasearch responses have no total, or a ``status.count`` equal to the
-    rows returned, so a full page means "at least this many".  A response
-    whose envelope total exceeds the page is exact and not capped.
+
+def is_page_capped(data: Any, limit: int, *, where_active: bool = False) -> bool:
+    """True when a response filled the ``limit``-row page and the count is therefore a lower bound.
+
+    Datasearch responses carry no total, or a ``status.count`` equal to the
+    rows returned, so a full page means "at least this many".  A response that
+    states a real total (``total``, ``totalResults``, ``status.total``) is
+    exact whatever the total is.  With a client-side ``--where`` a full page is
+    always a lower bound: the rows beyond it were never filtered.
     """
     records, meta = unwrap_api_response(data)
     if not isinstance(records, list) or len(records) < limit:
         return False
-    total = meta.get("total") or meta.get("totalResults") or meta.get("status.count") or meta.get("status.total")
-    if total is None:
+    if where_active:
         return True
-    try:
-        return int(total) <= len(records)
-    except (TypeError, ValueError):
-        return True
+    return not any(meta.get(key) is not None for key in TOTAL_KEYS)
 
 
 def raise_on_error_envelope(page: Any) -> None:
@@ -173,6 +181,78 @@ def raise_on_error_envelope(page: Any) -> None:
         if ok is not None and not ok:
             msg = page.get("message") or page.get("error") or "Unknown API error"
             raise NetskopeError(f"API returned an error: {rich_escape(str(msg))}", details=page)
+
+
+def request_with_projection(client: Any, endpoint: str, params: dict[str, Any], selection: ApiFieldSelection) -> Any:
+    """``client.request`` that explains an HTTP 400 caused by a name widening added to ``fields``."""
+    try:
+        return client.request("GET", endpoint, params=params)
+    except APIError as exc:
+        status = getattr(exc, "status_code", None)
+        if (status == 400 or "HTTP 400" in exc.message) and selection.widened:
+            culprits = [n for n in selection.widened if re.search(rf"\b{re.escape(n)}\b", exc.message)]
+            if culprits:
+                exc.suggestion = (
+                    f"{', '.join(culprits)} was added to --api-fields because --fields, --where or --sort reference "
+                    "it, and the API does not accept it as a projection. Drop --api-fields, or remove the reference "
+                    "and filter client-side."
+                )
+        raise
+
+
+@dataclass(frozen=True)
+class Page:
+    """One fetched page: the raw response and the page size it was capped at, if any."""
+
+    data: Any
+    capped_at: int | None
+
+
+def fetch_page(
+    client: Any,
+    endpoint: str,
+    params: dict[str, Any],
+    *,
+    selection: ApiFieldSelection,
+    limit: int,
+    count: bool,
+    exact: bool,
+    where: Expr | None,
+    quiet: bool,
+    no_color: bool,
+    spinner_text: str,
+) -> Page | None:
+    """Run the request for a list/count command, or the whole ``--exact`` count.
+
+    The page-cap rules apply to datasearch endpoints only: a ``--count`` there
+    asks for a full page and a full page is a lower bound; elsewhere the
+    request uses *limit* and the envelope total speaks for itself.  With
+    ``--exact`` on a datasearch endpoint the count is paged and printed here
+    and ``None`` is returned.  An HTTP 200 ``ok: 0`` body raises, and an HTTP
+    400 for a name widening added to the projection says which option did it.
+    """
+    console = Console(stderr=True, no_color=no_color)
+    datasearch = is_datasearch_endpoint(endpoint)
+    if count and exact:
+        if not datasearch:
+            console.print("[dim]--exact applies to the datasearch endpoints only; counting a single page.[/dim]")
+        elif "groupbys" in params:
+            console.print("[dim]--exact does not page group-by results; counting the groups on one page.[/dim]")
+        else:
+            # Pin the window so rows arriving mid-count cannot shift later pages.
+            params.setdefault("endtime", int(time.time()))
+            ceiling = count_ceiling()
+            result = count_exact(client, endpoint, params, where=where, ceiling=ceiling, quiet=quiet, no_color=no_color)
+            print_exact_count(result, where=where is not None, ceiling=ceiling, quiet=quiet, no_color=no_color)
+            return None
+
+    paged = count and datasearch
+    params["limit"] = DATASEARCH_PAGE_CAP if paged else limit
+    with spinner(spinner_text, no_color=no_color, quiet=quiet):
+        data = request_with_projection(client, endpoint, params, selection)
+    raise_on_error_envelope(data)
+    capped = paged and is_page_capped(data, DATASEARCH_PAGE_CAP, where_active=where is not None)
+    return Page(data, DATASEARCH_PAGE_CAP if capped else None)
 
 
 @dataclass(frozen=True)

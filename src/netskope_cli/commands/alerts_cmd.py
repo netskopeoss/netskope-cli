@@ -14,10 +14,8 @@ from rich.console import Console
 from netskope_cli.core.client import NetskopeClient, build_client
 from netskope_cli.core.datasearch import (
     DATASEARCH_PAGE_CAP,
-    count_ceiling,
-    count_exact,
+    fetch_page,
     is_page_capped,
-    print_exact_count,
     raise_on_error_envelope,
     resolve_api_fields,
 )
@@ -427,33 +425,31 @@ def list_alerts(
 
     endpoint = "/api/v2/events/datasearch/alert"
 
-    if count and exact:
-        ceiling = count_ceiling()
-        result = count_exact(
-            client, endpoint, params, where=where_expr, ceiling=ceiling, quiet=quiet, no_color=no_color
-        )
-        print_exact_count(result, where=where_expr is not None, ceiling=ceiling, quiet=quiet, no_color=no_color)
+    page = fetch_page(
+        client,
+        endpoint,
+        params,
+        selection=selection,
+        limit=limit,
+        count=count,
+        exact=exact,
+        where=where_expr,
+        quiet=quiet,
+        no_color=no_color,
+        spinner_text="Fetching alerts...",
+    )
+    if page is None:
         return
 
-    # A count needs every matching row, but the API returns at most one page;
-    # a full page is therefore reported as a lower bound (capped_at).
-    params["limit"] = DATASEARCH_PAGE_CAP if count else limit
-
-    with spinner("Fetching alerts...", quiet=quiet):
-        data = client.request("GET", endpoint, params=params or None)
-    raise_on_error_envelope(data)
-
-    capped_at = DATASEARCH_PAGE_CAP if count and is_page_capped(data, DATASEARCH_PAGE_CAP) else None
-
     formatter.format_output(
-        data,
+        page.data,
         fmt=fmt,
         title="Alerts",
         fields=selection.display,
         projected=selection.projected,
         default_fields=["alert_name", "alert_type", "severity", "user", "app", "timestamp"],
         count_only=count,
-        capped_at=capped_at,
+        capped_at=page.capped_at,
         strip_internal=not (state.raw if state else False),
         add_iso_timestamps=not (state.epoch if state else False),
     )
@@ -521,6 +517,7 @@ def alert_summary(
     quiet = getattr(state, "quiet", False) if state else False
     with spinner(f"Summarising alerts by {by}...", quiet=quiet):
         data = client.request("GET", "/api/v2/events/datasearch/alert", params=params)
+    raise_on_error_envelope(data)
 
     # The aggregation runs over one API page at most; say so when it filled up
     # (a data-completeness warning, so it is not silenced by --quiet).
