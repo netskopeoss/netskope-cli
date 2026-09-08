@@ -155,7 +155,14 @@ def _fetch_events(
     quiet = state.quiet if state is not None else False
     client = _build_client(ctx)
 
-    if count_only and getattr(state, "exact", False):
+    exact = count_only and bool(getattr(state, "exact", False))
+    if exact and "/datasearch/" not in endpoint:
+        # Only the datasearch endpoints are known to page by offset and cap at
+        # 10,000 rows; elsewhere --exact would loop to the ceiling on a server
+        # that ignores offset, so it degrades to the single-page count.
+        typer.echo("--exact applies to the datasearch endpoints only; counting a single page.", err=True)
+        exact = False
+    if exact:
         where_expr = getattr(state, "where_expr", None)
         ceiling = count_ceiling()
         result = count_exact(
@@ -187,6 +194,7 @@ def _run_event_query(
     title: str = "Events",
     default_fields: list[str] | None = None,
     count_only: bool = False,
+    api_fields_supported: bool = True,
 ) -> None:
     """Execute a GET request against a Netskope events endpoint.
 
@@ -219,7 +227,8 @@ def _run_event_query(
     params.update(_parse_time_params(start, end))
 
     # Server-side projection (--api-fields), widened for --fields/--where/--sort.
-    selection: ApiFieldSelection = resolve_api_fields(ctx, api_fields)
+    # ``events get`` has no --api-fields option, so it must not print the note.
+    selection = resolve_api_fields(ctx, api_fields) if api_fields_supported else ApiFieldSelection(None, None)
     if selection.request is not None:
         params["fields"] = selection.request
 
@@ -240,6 +249,7 @@ def _run_event_query(
         output_fmt=output_fmt,
         no_color=no_color,
         selected_fields=selection.display,
+        projected=selection.projected,
         default_fields=default_fields,
         count_only=count_only,
         capped_at=capped_at,
@@ -307,6 +317,7 @@ def _run_audit_query(
         output_fmt=output_fmt,
         no_color=no_color,
         selected_fields=selection.display,
+        projected=selection.projected,
         default_fields=["audit_log_event", "timestamp", "severity_level", "user", "count"],
         count_only=count_only,
         capped_at=capped_at,
@@ -322,6 +333,7 @@ def _render_event_response(
     output_fmt: str,
     no_color: bool,
     selected_fields: list[str] | None,
+    projected: bool = False,
     default_fields: list[str] | None = None,
     count_only: bool = False,
     capped_at: int | None = None,
@@ -357,13 +369,16 @@ def _render_event_response(
     if total is not None:
         display_title = f"{title} ({total} total, showing {len(results)})"
 
-    # Hand over the whole envelope, not just ``result``: endpoints that do
-    # return a ``total`` (audit, some datasearch responses) need it to drive
-    # --count and the "Showing N of M" banner.
+    # Hand over the whole envelope when ``result`` is a list, so an endpoint
+    # total (audit, some datasearch responses) drives --count and the
+    # "Showing N of M" banner.  A dict ``result`` (metrics endpoints) or a
+    # missing one is rendered on its own, never the envelope.
+    payload: Any = data if isinstance(data.get("result"), list) else results
     formatter.format_output(
-        data,
+        payload,
         fmt=output_fmt,
         fields=selected_fields,
+        projected=projected,
         default_fields=default_fields,
         title=display_title,
         count_only=count_only,
@@ -581,6 +596,7 @@ def events_get(
         limit=1 if id is not None else limit,
         title="Event" if id is not None else title,
         default_fields=default_fields,
+        api_fields_supported=False,
     )
 
 

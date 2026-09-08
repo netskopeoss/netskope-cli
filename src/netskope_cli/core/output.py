@@ -29,6 +29,7 @@ from netskope_cli.core.fieldpaths import (
     FieldInfo,
     discover_schema,
     expand_field_specs,
+    find_unknown,
     find_unmatched,
     is_glob,
     project_records,
@@ -41,14 +42,14 @@ from netskope_cli.core.filtering import Expr, apply_filter, parse_filter, parse_
 class UnknownFieldError(ValidationError):
     """``--fields`` named something no returned record has (exit code 2 unless ``--lenient``)."""
 
-    def __init__(self, problems: list[str]) -> None:
-        super().__init__(
-            "--fields: " + " ".join(problems),
-            suggestion=(
-                "Run with --list-fields to see every field, or add --lenient to print blank/null "
-                "columns for unknown names instead of stopping."
-            ),
+    def __init__(self, problems: list[str], *, extra_hint: str | None = None) -> None:
+        suggestion = (
+            "Run with --list-fields to see every field, or add --lenient to print blank/null "
+            "columns for unknown names instead of stopping."
         )
+        if extra_hint:
+            suggestion += " " + extra_hint
+        super().__init__("--fields: " + " ".join(problems), suggestion=suggestion)
 
 
 # ---------------------------------------------------------------------------
@@ -197,6 +198,27 @@ def unwrap_api_response(
     return data, metadata
 
 
+def flatten_grouped_results(data: list) -> list:
+    """Flatten group-by API responses.
+
+    Detects responses shaped like ``[{"_id": {"field": "val"}, "count": N}, ...]``
+    or ``[{"_id": {"field": "val"}}, ...]`` (no count from API) and flattens them
+    to ``[{"field": "val", "count": N}, ...]``.
+    """
+    if not data or not isinstance(data, list):
+        return data
+    if all(isinstance(row, dict) and "_id" in row and isinstance(row["_id"], dict) for row in data):
+        flattened = []
+        for row in data:
+            new_row = dict(row["_id"])
+            for k, v in row.items():
+                if k != "_id":
+                    new_row[k] = v
+            flattened.append(new_row)
+        return flattened
+    return data
+
+
 # ---------------------------------------------------------------------------
 # Colour / Console helpers
 # ---------------------------------------------------------------------------
@@ -300,6 +322,7 @@ class OutputFormatter:
         strip_internal: bool = True,
         add_iso_timestamps: bool = True,
         capped_at: int | None = None,
+        projected: bool = False,
     ) -> None:
         """Format and print *data* to stdout.
 
@@ -343,6 +366,10 @@ class OutputFormatter:
             ``core.datasearch.is_page_capped``).  Counts are then lower
             bounds: the result banner says so, ``--count`` prints ``N+`` and
             a notice on stderr points at ``--exact``.
+        projected:
+            *True* when the command sent a server-side ``--api-fields``
+            projection.  The API then legitimately omits fields, so unknown
+            global ``--fields`` names warn instead of raising.
         """
         if fmt is None:
             fmt = self._auto_detect_format()
@@ -488,6 +515,11 @@ class OutputFormatter:
         if self._sort:
             data = self._apply_sort(data)
 
+        # A server-side projection shaped the request, not the aggregation:
+        # grouped rows keep their group keys and ``count`` column.
+        if is_grouped and fields is not None:
+            fields = None
+
         # Field precedence: explicit per-command fields -> global --fields ->
         # default_fields (table/human/csv only, not grouped, not wide).
         explicit = fields if fields is not None else self._global_fields
@@ -516,8 +548,9 @@ class OutputFormatter:
             effective_fields,
             fmt=fmt,
             warn=explicit_requested,
-            strict=not server_side and not self._lenient,
+            strict=not server_side and not self._lenient and not projected,
             label="--api-fields" if server_side else "--fields",
+            hidden_internal=strip_internal,
         )
 
         # Fallback: if default_fields removed every column (e.g. grouped
@@ -585,11 +618,15 @@ class OutputFormatter:
         warn: bool,
         strict: bool = True,
         label: str = "--fields",
+        hidden_internal: bool = False,
     ) -> Any:
         """Project *data* onto *fields* (dotted paths, globs).
 
         Unknown names raise :class:`UnknownFieldError` when *strict*, else
-        print a warning prefixed with *label*.
+        print a warning prefixed with *label*.  Under *strict* only provably
+        wrong names raise (see :func:`find_unknown`); a path whose parents are
+        null or empty in every record warns and renders blank.  *hidden_internal*
+        says ``_``-prefixed keys were stripped, so the error can point at ``--raw``.
         """
         if fields is None:
             return data
@@ -603,13 +640,27 @@ class OutputFormatter:
         else:
             paths = list(dict.fromkeys(specs))
         if warn and records:
+            unmatched = find_unmatched(records, paths)
             problems = [f"pattern '{rich_escape(spec)}' matched no fields." for spec in unmatched_globs]
             problems += [
                 f"'{rich_escape(path)}' not found in any record.{self._suggestion_text(path, records)}"
-                for path in find_unmatched(records, paths)
+                for path in unmatched
             ]
-            if problems and strict:
-                raise UnknownFieldError(problems)
+            if strict:
+                wrong = set(find_unknown(records, unmatched))
+                errors = problems[: len(unmatched_globs)]
+                errors += [text for path, text in zip(unmatched, problems[len(unmatched_globs) :]) if path in wrong]
+                if errors:
+                    hint = None
+                    internal = [p for p in wrong if p.startswith("_") and p.split(".")[0].split("[")[0] != "_id"]
+                    if hidden_internal and internal:
+                        hint = "Fields starting with '_' are internal and hidden unless you pass --raw."
+                    raise UnknownFieldError(errors, extra_hint=hint)
+                problems = [
+                    f"'{rich_escape(path)}' has no value in any record here (its parent is null or empty); "
+                    "column left blank."
+                    for path in unmatched
+                ]
             for problem in problems:
                 self.err_console.print(
                     f"[yellow]{label}:[/yellow] {problem} [dim]Run with --list-fields to see every field.[/dim]"
@@ -873,25 +924,7 @@ class OutputFormatter:
 
     @staticmethod
     def _flatten_grouped_results(data: list) -> list:
-        """Flatten group-by API responses.
-
-        Detects responses shaped like ``[{"_id": {"field": "val"}, "count": N}, ...]``
-        or ``[{"_id": {"field": "val"}}, ...]`` (no count from API) and flattens them
-        to ``[{"field": "val", "count": N}, ...]``.
-        """
-        if not data or not isinstance(data, list):
-            return data
-        # Check if this looks like a group-by response (with or without count)
-        if all(isinstance(row, dict) and "_id" in row and isinstance(row["_id"], dict) for row in data):
-            flattened = []
-            for row in data:
-                new_row = dict(row["_id"])
-                for k, v in row.items():
-                    if k != "_id":
-                        new_row[k] = v
-                flattened.append(new_row)
-            return flattened
-        return data
+        return flatten_grouped_results(data)
 
     @staticmethod
     def _select_priority_columns(all_keys: list[str]) -> list[str]:

@@ -18,6 +18,7 @@ from netskope_cli.core.datasearch import (
     count_exact,
     is_page_capped,
     print_exact_count,
+    raise_on_error_envelope,
     resolve_api_fields,
 )
 from netskope_cli.core.output import OutputFormatter, spinner
@@ -440,6 +441,7 @@ def list_alerts(
 
     with spinner("Fetching alerts...", quiet=quiet):
         data = client.request("GET", endpoint, params=params or None)
+    raise_on_error_envelope(data)
 
     capped_at = DATASEARCH_PAGE_CAP if count and is_page_capped(data, DATASEARCH_PAGE_CAP) else None
 
@@ -448,6 +450,7 @@ def list_alerts(
         fmt=fmt,
         title="Alerts",
         fields=selection.display,
+        projected=selection.projected,
         default_fields=["alert_name", "alert_type", "severity", "user", "app", "timestamp"],
         count_only=count,
         capped_at=capped_at,

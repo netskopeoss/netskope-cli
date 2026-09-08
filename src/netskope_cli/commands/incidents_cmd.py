@@ -18,6 +18,7 @@ from netskope_cli.core.datasearch import (
     count_exact,
     is_page_capped,
     print_exact_count,
+    raise_on_error_envelope,
     resolve_api_fields,
 )
 from netskope_cli.core.exceptions import APIError, ValidationError
@@ -154,6 +155,7 @@ def _query_incident_events(
 
     with spinner(spinner_text, no_color=no_color, quiet=quiet):
         data = client.request("GET", _INCIDENT_EVENTS_ENDPOINT, params=params)
+    raise_on_error_envelope(data)
 
     capped_at = DATASEARCH_PAGE_CAP if count and is_page_capped(data, DATASEARCH_PAGE_CAP) else None
 
@@ -161,6 +163,7 @@ def _query_incident_events(
         data,
         fmt=fmt,
         fields=selection.display,
+        projected=selection.projected,
         title=title,
         default_fields=default_fields,
         count_only=count,

@@ -30,7 +30,7 @@ from netskope_cli.core.datasearch import (
     split_names,
 )
 from netskope_cli.core.exceptions import ValidationError
-from netskope_cli.core.fieldpaths import top_level_name
+from netskope_cli.core.fieldpaths import find_unknown, top_level_name
 from netskope_cli.core.output import OutputFormatter, UnknownFieldError
 from netskope_cli.main import State, _hoist_global_options, app, cli
 
@@ -97,6 +97,12 @@ class TestTopLevelName:
         assert split_names("") == []
         assert split_names(" a, b ,,c ") == ["a", "b", "c"]
 
+    def test_find_unknown_separates_wrong_names_from_empty_parents(self) -> None:
+        rows = [{"a": {"b": 1}, "t": [], "n": None}, {"a": {"b": 2}}]
+        # a.c: dicts at a lack c.  zz: absent from every record.  a.b.c: b is a scalar.
+        # t[].x and n.x: the parents are empty or null everywhere, so undecidable.
+        assert find_unknown(rows, ["a.c", "zz", "t[].x", "n.x", "a.b.c"]) == ["a.c", "zz", "a.b.c"]
+
 
 # ---------------------------------------------------------------------------
 # resolve_api_fields
@@ -153,6 +159,11 @@ class TestResolveApiFields:
     def test_display_is_requested_list_without_global_fields(self) -> None:
         sel = resolve_api_fields(_Ctx(), "timestamp, qdomain,timestamp")
         assert sel == ApiFieldSelection("timestamp,qdomain", ["timestamp", "qdomain"])
+        assert sel.projected and not ApiFieldSelection(None, None).projected
+
+    def test_iso_companions_widen_to_the_base_field(self) -> None:
+        sel = resolve_api_fields(_Ctx(fields=["alert_name", "timestamp_iso"]), "alert_name")
+        assert sel.request == "alert_name,timestamp"
 
 
 # ---------------------------------------------------------------------------
@@ -230,6 +241,31 @@ class TestCountExact:
 
         with pytest.raises(NetskopeError, match="bad query"):
             count_exact(Broken(), "/x", {}, page_size=3, ceiling=10, quiet=True)
+
+    def test_where_sees_flattened_groups_and_warns_on_unknown_paths(self, capsys: pytest.CaptureFixture[str]) -> None:
+        from netskope_cli.core.filtering import parse_filter
+
+        grouped = _FakeClient([{"_id": {"app": "DNS"}, "count": 5}, {"_id": {"app": "SSH"}, "count": 2}])
+        result = count_exact(
+            grouped, "/x", {}, where=parse_filter('app eq "DNS"'), page_size=10, ceiling=100, quiet=True
+        )
+        assert result.count == 1
+        assert _out(capsys)[1] == ""
+        count_exact(
+            _FakeClient([{"n": 1}]), "/x", {}, where=parse_filter("nope eq 1"), page_size=10, ceiling=100, quiet=True
+        )
+        assert "--where: 'nope' is not present in any record" in _out(capsys)[1]
+
+    def test_error_envelope_message_is_markup_safe(self) -> None:
+        from netskope_cli.core.exceptions import NetskopeError
+
+        class Broken:
+            def request(self, method: str, endpoint: str, *, params: dict[str, Any] | None = None) -> Any:
+                return {"ok": 0, "message": "Invalid field [timestamp] in query"}
+
+        with pytest.raises(NetskopeError) as exc:
+            count_exact(Broken(), "/x", {}, page_size=3, ceiling=10, quiet=True)
+        assert "\\[timestamp]" in exc.value.message
 
     def test_where_filters_each_page(self) -> None:
         from netskope_cli.core.filtering import parse_filter
@@ -322,6 +358,24 @@ class TestFormatterStrictAndCapped:
         out, err = _out(capsys)
         assert out.strip() == "5+"
         assert "5 of 10 results matched --where" in err
+
+    def test_null_or_empty_parents_warn_instead_of_failing(self, capsys: pytest.CaptureFixture[str]) -> None:
+        rows = [{"user": "a", "tags": [], "host_info": None}, {"user": "b", "tags": []}]
+        OutputFormatter(no_color=True, fields=["user", "tags[].name", "host_info.os"]).format_output(rows, fmt="json")
+        out, err = _out(capsys)
+        assert json.loads(out)[0] == {"user": "a", "tags[].name": None, "host_info.os": None}
+        assert "has no value in any record" in err
+        with pytest.raises(UnknownFieldError):
+            OutputFormatter(no_color=True, fields=["user", "host_info.oss"]).format_output(
+                [{"user": "a", "host_info": {"os": "mac"}}], fmt="json"
+            )
+
+    def test_hidden_internal_field_points_at_raw(self) -> None:
+        with pytest.raises(UnknownFieldError) as exc:
+            OutputFormatter(no_color=True, fields=["_insertion_epoch_timestamp"]).format_output(
+                {"result": [{"_insertion_epoch_timestamp": 1, "alert_name": "x"}]}, fmt="json"
+            )
+        assert "--raw" in (exc.value.suggestion or "")
 
     def test_uncapped_count_unchanged(self, capsys: pytest.CaptureFixture[str]) -> None:
         OutputFormatter(no_color=True, quiet=True).format_output({"result": ALERTS}, fmt="table", count_only=True)
@@ -669,9 +723,96 @@ class TestCountCap:
         assert "ceiling of 20,000 rows" in result.output
 
     @respx.mock
+    def test_plain_count_raises_on_error_envelope(self, runner: CliRunner) -> None:
+        respx.get(ALERT_URL).mock(return_value=httpx.Response(200, json={"ok": 0, "message": "bad query"}))
+        result = _invoke(runner, "alerts", "list", "--count")
+        assert result.exit_code != 0
+        assert "bad query" in (result.output + str(result.exception))
+        respx.get(f"{BASE}/api/v2/events/datasearch/incident").mock(
+            return_value=httpx.Response(200, json={"ok": 0, "message": "bad query"})
+        )
+        result = _invoke(runner, "incidents", "list", "--count")
+        assert result.exit_code != 0
+
+    @respx.mock
+    def test_exact_counts_one_page_off_datasearch(self, runner: CliRunner) -> None:
+        route = respx.get(f"{BASE}/api/v2/events/data/audit").mock(
+            return_value=httpx.Response(200, json={"result": ALERTS, "total": 5000})
+        )
+        result = _invoke(runner, "events", "audit", "--count", "--exact")
+        assert result.exit_code == 0, result.output
+        assert result.stdout.strip() == "5000"
+        assert route.call_count == 1
+        assert "datasearch endpoints only" in result.output
+
+    @respx.mock
     def test_alerts_summary_notes_the_cap(self, runner: CliRunner, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr("netskope_cli.main._stdout_is_tty", lambda: True)
         _alert_route(FULL_PAGE)
         result = _invoke(runner, "alerts", "summary", "--by", "action")
         assert result.exit_code == 0, result.output
         assert "Summary covers only the first 10,000 alerts" in result.output
+
+
+class TestReviewRegressions:
+    """Envelope shapes, grouping and strictness cases found in review."""
+
+    @respx.mock
+    def test_rules_get_projects_the_rule_not_the_envelope(self, runner: CliRunner) -> None:
+        respx.get(f"{BASE}/api/v2/policy/npa/rules/42").mock(
+            return_value=httpx.Response(
+                200, json={"data": {"rule_id": 42, "rule_name": "Allow Web", "enabled": "1"}, "status": "success"}
+            )
+        )
+        result = _invoke(runner, "npa", "policy", "rules", "get", "42", "--api-fields", "rule_name", "-o", "json")
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.stdout) == {"rule_name": "Allow Web"}
+        result = _invoke(runner, "npa", "policy", "rules", "get", "42", "--fields", "rule_id", "-o", "json")
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.stdout) == {"rule_id": 42}
+
+    @respx.mock
+    def test_events_dict_result_and_empty_envelope_are_not_records(self, runner: CliRunner) -> None:
+        respx.get(f"{BASE}/api/v2/events/metrics/transactionevents").mock(
+            return_value=httpx.Response(200, json={"ok": 1, "result": {"total_bytes": 5, "count": 3}})
+        )
+        result = _invoke(runner, "events", "transaction", "-o", "json")
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.stdout) == {"total_bytes": 5, "count": 3}
+        respx.get(f"{BASE}/api/v2/events/datasearch/network").mock(
+            return_value=httpx.Response(200, json={"ok": 1, "msg": "nothing"})
+        )
+        result = _invoke(runner, "events", "network", "-o", "json")
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.stdout) == []
+
+    @respx.mock
+    def test_grouped_rows_keep_count_under_api_fields(self, runner: CliRunner) -> None:
+        _alert_route([{"_id": {"app": "Slack"}, "count": 5}, {"_id": {"app": "Box"}, "count": 2}])
+        result = _invoke(runner, "alerts", "list", "--group-by", "app", "--api-fields", "app", "-o", "json")
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.stdout) == [{"app": "Slack", "count": 5}, {"app": "Box", "count": 2}]
+
+    @respx.mock
+    def test_global_fields_warn_not_fail_while_projected(self, runner: CliRunner) -> None:
+        respx.get(f"{BASE}/api/v2/events/datasearch/epdlp").mock(
+            return_value=httpx.Response(200, json={"result": [{"user": "u"}]})
+        )
+        result = _invoke(
+            runner, "events", "epdlp", "--api-fields", "user,dlp_rule", "--fields", "user,dlp_rule", "-o", "json"
+        )
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.stdout) == [{"user": "u", "dlp_rule": None}]
+        assert "--fields: 'dlp_rule' not found" in result.output
+
+    @respx.mock
+    def test_events_get_prints_no_transition_note(self, runner: CliRunner) -> None:
+        respx.get(f"{BASE}/api/v2/events/datasearch/application").mock(
+            return_value=httpx.Response(200, json={"result": [{"user": "u", "app": "a"}]})
+        )
+        result = _invoke(
+            runner, "events", "get", "--type", "application", "--user", "u", "--fields", "user", "-o", "json"
+        )
+        assert result.exit_code == 0, result.output
+        assert "--api-fields" not in result.output
+        assert json.loads(result.stdout) == [{"user": "u"}]

@@ -137,6 +137,7 @@ def list_rules(
         fmt=fmt,
         title="NPA Policy Rules",
         fields=selection.display,
+        projected=selection.projected,
         default_fields=["rule_id", "rule_name", "enabled", "group_name", "action"],
         count_only=count,
     )
@@ -177,7 +178,16 @@ def get_rule(
     with spinner(f"Fetching NPA policy rule {rule_id}..."):
         data = client.request("GET", f"/api/v2/policy/npa/rules/{rule_id}", params=params or None)
 
-    formatter.format_output(data, fmt=fmt, title=f"NPA Policy Rule {rule_id}", fields=selection.display)
+    # The rule arrives as {"data": {...}, "status": ...}; render the rule itself so
+    # --api-fields and the global --fields apply to its keys, not the envelope's.
+    payload = data["data"] if isinstance(data, dict) and isinstance(data.get("data"), dict) else data
+    formatter.format_output(
+        payload,
+        fmt=fmt,
+        title=f"NPA Policy Rule {rule_id}",
+        fields=selection.display,
+        projected=selection.projected,
+    )
 
 
 @rules_app.command("create")
@@ -385,6 +395,7 @@ def list_groups(
         fmt=fmt,
         title="NPA Policy Groups",
         fields=selection.display,
+        projected=selection.projected,
         default_fields=["group_id", "group_name"],
         count_only=count,
     )

@@ -259,7 +259,8 @@ def main(
             "With --count on events, alerts and incidents commands: page through the API in 10,000-row "
             "steps until the result set ends instead of stopping at the first page. Prints N+ if the "
             "NETSKOPE_COUNT_CEILING (default 200,000 rows) is reached first. Can issue many requests. "
-            "No effect on other commands."
+            "Datasearch endpoints only (events audit, infrastructure and transaction count one page); no effect "
+            "on other commands."
         ),
     ),
     wide: bool = typer.Option(

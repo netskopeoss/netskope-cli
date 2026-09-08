@@ -115,6 +115,7 @@ def list_publishers(
         fmt=fmt,
         title="Publishers",
         fields=selection.display,
+        projected=selection.projected,
         default_fields=["publisher_name", "publisher_id", "status", "version", "apps_count"],
         count_only=count,
     )

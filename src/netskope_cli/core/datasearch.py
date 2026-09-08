@@ -23,11 +23,12 @@ from dataclasses import dataclass
 from typing import Any
 
 from rich.console import Console
+from rich.markup import escape as rich_escape
 
 from netskope_cli.core.exceptions import NetskopeError, ValidationError
-from netskope_cli.core.fieldpaths import top_level_name
+from netskope_cli.core.fieldpaths import find_unmatched, top_level_name
 from netskope_cli.core.filtering import Expr, apply_filter
-from netskope_cli.core.output import spinner, unwrap_api_response
+from netskope_cli.core.output import flatten_grouped_results, spinner, unwrap_api_response
 
 #: Most rows a single datasearch request returns, whatever ``limit`` asks for.
 DATASEARCH_PAGE_CAP = 10_000
@@ -48,7 +49,7 @@ def count_ceiling() -> int:
         value = 0
     if value <= 0:
         raise ValidationError(
-            f"{COUNT_CEILING_ENV} must be a positive integer, got {raw!r}.",
+            f"{COUNT_CEILING_ENV} must be a positive integer, got {rich_escape(repr(raw))}.",
             suggestion=f"Unset it to use the default of {DEFAULT_COUNT_CEILING:,} rows.",
         )
     return value
@@ -80,6 +81,11 @@ class ApiFieldSelection:
 
     request: str | None
     display: list[str] | None
+
+    @property
+    def projected(self) -> bool:
+        """True when a projection is sent, so the API may legitimately omit fields."""
+        return self.request is not None
 
 
 _TRANSITION_NOTE = (
@@ -124,6 +130,11 @@ def resolve_api_fields(ctx: Any, api_fields: str | None) -> ApiFieldSelection:
     union = list(dict.fromkeys(requested))
     for spec in referenced:
         name = top_level_name(spec)
+        if name is None:
+            continue
+        # ``<field>_iso`` companions are synthesised client-side from ``<field>``.
+        if name.endswith("_iso"):
+            name = name[:-4]
         if name and name not in union:
             union.append(name)
 
@@ -155,13 +166,13 @@ def is_page_capped(data: Any, limit: int) -> bool:
         return True
 
 
-def _raise_on_error_envelope(page: Any) -> None:
-    """Datasearch reports query errors as HTTP 200 with ``ok: 0``; do not count that as an empty page."""
+def raise_on_error_envelope(page: Any) -> None:
+    """Datasearch reports query errors as HTTP 200 with ``ok: 0``; never render or count that as data."""
     if isinstance(page, dict):
         ok = page.get("ok")
         if ok is not None and not ok:
             msg = page.get("message") or page.get("error") or "Unknown API error"
-            raise NetskopeError(f"API returned an error: {msg}", details=page)
+            raise NetskopeError(f"API returned an error: {rich_escape(str(msg))}", details=page)
 
 
 @dataclass(frozen=True)
@@ -205,12 +216,22 @@ def count_exact(
                 break
             page = client.request("GET", endpoint, params={**base, "limit": size, "offset": offset})
             requests += 1
-            _raise_on_error_envelope(page)
+            raise_on_error_envelope(page)
             records, _meta = unwrap_api_response(page)
             rows = records if isinstance(records, list) else []
             fetched += len(rows)
             if where is not None:
-                kept, _removed = apply_filter(rows, where)
+                # Same view of the rows as the formatter: group-by responses are
+                # flattened first, and a filter path no row has is called out once.
+                rows_for_filter = flatten_grouped_results(rows)
+                if requests == 1 and rows_for_filter:
+                    for path in dict.fromkeys(where.paths()):
+                        if find_unmatched(rows_for_filter, [path]):
+                            Console(stderr=True, no_color=no_color).print(
+                                f"[yellow]--where:[/yellow] '{rich_escape(path)}' is not present in any record. "
+                                "[dim]Nothing will match; see --list-fields.[/dim]"
+                            )
+                kept, _removed = apply_filter(rows_for_filter, where)
                 count += len(kept)
             else:
                 count += len(rows)
