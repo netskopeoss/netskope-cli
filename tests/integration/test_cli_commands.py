@@ -767,22 +767,24 @@ class TestUsersCommands:
 
 
 # ---------------------------------------------------------------------------
-# Regression: typer >=0.26 vendors its own copy of click, which makes the
-# ``isinstance(obj, click.Group)`` checks in tree_cmd/main silently fail and
-# renders ``netskope commands`` empty.  These tests drive the *real* app (not a
-# synthetic click group) so the breakage cannot pass unnoticed again.
+# Regression: typer 0.26 bundled its own copy of click and reshaped its command
+# classes, which made the ``isinstance(obj, click.Group)`` checks in tree_cmd/main
+# silently fail and rendered ``netskope commands`` empty (v1.4.6).  The walkers
+# now import typer's own classes via core/clickshim; these tests drive the *real*
+# app so a typer bump that moves those classes cannot pass unnoticed.
 # ---------------------------------------------------------------------------
 
 
 class TestCommandTreeRegression:
-    def test_typer_context_subclasses_real_click_context(self) -> None:
-        """typer must build on the same click we import, not a vendored copy."""
-        import click
+    def test_typer_context_is_the_shim_context(self) -> None:
+        """The classes tree_cmd/main introspect must be the ones typer instantiates."""
         import typer
 
-        assert issubclass(typer.Context, click.Context), (
-            "typer is using a vendored click; isinstance(..., click.Group) checks "
-            "in tree_cmd.py/main.py will silently fail. Keep typer <0.26."
+        from netskope_cli.core import clickshim
+
+        assert issubclass(typer.Context, clickshim.Context), (
+            "typer moved its command classes; update netskope_cli.core.clickshim or the "
+            "isinstance(..., clickshim.Group) checks in tree_cmd.py/main.py will silently fail."
         )
 
     def test_commands_flat_lists_many_commands(self) -> None:
@@ -805,13 +807,13 @@ class TestCommandTreeRegression:
         Rendering of the rich tree is TTY-gated, so assert against the walk
         itself rather than stdout.
         """
-        import click
         import typer.main
 
         from netskope_cli.commands.tree_cmd import _walk_flat
+        from netskope_cli.core import clickshim as click
 
         root = typer.main.get_command(app)
-        assert isinstance(root, click.Group), "real app root is not a click.Group"
+        assert isinstance(root, click.Group), "real app root is not a command group"
 
         leaves = _walk_flat(root, click.Context(root, info_name="netskope"), prefix="ntsk ")
         assert len(leaves) > 100, f"expected the full command list, got {len(leaves)} leaves"

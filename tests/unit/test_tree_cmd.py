@@ -4,58 +4,59 @@ from __future__ import annotations
 
 import json
 
-import click
+import typer
+import typer.main
+from typer.core import TyperCommand
 
 from netskope_cli.commands.tree_cmd import _WRITE_COMMAND_NAMES, _arg_signature, _walk_flat, _walk_json
+from netskope_cli.core import clickshim as click
 
 
 def _make_group() -> click.Group:
-    """Build a small synthetic Click group for testing."""
-    grp = click.Group("root")
+    """Build a small synthetic command tree the way the real CLI does: from Typer apps."""
+    root = typer.Typer(add_completion=False)
 
-    @grp.command("simple")
-    def simple_cmd():
+    @root.command("simple")
+    def simple_cmd() -> None:
         """A simple command."""
 
-    @grp.command("with-arg")
-    @click.argument("resource_type")
-    def arg_cmd(resource_type):
+    @root.command("with-arg")
+    def arg_cmd(resource_type: str) -> None:
         """Takes a positional arg."""
 
-    @grp.command("hidden", hidden=True)
-    def hidden_cmd():
+    @root.command("hidden", hidden=True)
+    def hidden_cmd() -> None:
         """Should be skipped."""
 
-    @grp.command("delete")
-    @click.argument("resource_id")
-    @click.option("--yes", "-y", is_flag=True, help="Skip confirmation.")
-    def delete_cmd(resource_id, yes):
+    @root.command("delete")
+    def delete_cmd(resource_id: str, yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation.")) -> None:
         """Delete a resource."""
 
-    sub = click.Group("sub", help="A subgroup.")
+    sub = typer.Typer(help="A subgroup.")
 
     @sub.command("nested")
-    @click.option("--limit", type=int, help="Max results.")
-    def nested_cmd(limit):
+    def nested_cmd(limit: int = typer.Option(None, "--limit", help="Max results.")) -> None:
         """Nested command with option."""
 
-    grp.add_command(sub)
-    return grp
+    root.add_typer(sub, name="sub")
+    group = typer.main.get_command(root)
+    assert isinstance(group, click.Group)
+    return group
 
 
 class TestArgSignature:
     def test_no_args(self) -> None:
-        cmd = click.Command("test", callback=lambda: None)
+        cmd = TyperCommand("test", callback=lambda: None)
         assert _arg_signature(cmd) == ""
 
     def test_single_arg(self) -> None:
-        cmd = click.Command("test", params=[click.Argument(["resource_type"])], callback=lambda x: None)
+        cmd = TyperCommand("test", params=[click.Argument(param_decls=["resource_type"])], callback=lambda x: None)
         assert _arg_signature(cmd) == "<RESOURCE_TYPE>"
 
     def test_multiple_args(self) -> None:
-        cmd = click.Command(
+        cmd = TyperCommand(
             "test",
-            params=[click.Argument(["src"]), click.Argument(["dst"])],
+            params=[click.Argument(param_decls=["src"]), click.Argument(param_decls=["dst"])],
             callback=lambda x, y: None,
         )
         assert _arg_signature(cmd) == "<SRC> <DST>"

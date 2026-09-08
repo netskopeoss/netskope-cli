@@ -1,56 +1,69 @@
-[tool.poetry]
+[project]
 name = "netskope"
 version = "1.4.8"
 description = "The official Netskope CLI — manage your Netskope tenant from the command line"
-authors = ["Netskope"]
-license = "MIT"
 readme = "README.md"
-repository = "https://github.com/netskopeoss/netskope-cli"
-homepage = "https://netskopeoss.github.io/netskope-cli/"
-documentation = "https://netskopeoss.github.io/netskope-cli/"
-packages = [{include = "netskope_cli", from = "src"}]
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Netskope" }]
+requires-python = ">=3.11"
+# Poetry derived these from the python constraint; PEP 621 needs them spelled out.
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
+# Runtime dependencies are pinned exactly. typer 0.26 bundled its own copy of
+# click and reshaped its command classes (see v1.4.6 and core/clickshim.py), and
+# open ranges let fresh installs drift away from the versions the test suite runs
+# against. Bump deliberately: change the pin, `uv lock`, run the full suite, then
+# re-verify `netskope commands` on a fresh install of the built wheel.
+dependencies = [
+    "typer==0.27.2",
+    "rich==14.3.4",
+    "shellingham==1.5.4",
+    "httpx==0.28.1",
+    "toml==0.10.2",
+    "keyring==25.7.0",
+    "pydantic==2.13.5",
+    "pydantic-settings==2.15.0",
+    "pyyaml==6.0.3",
+]
 
-[tool.poetry.scripts]
+[project.optional-dependencies]
+browser = ["playwright==1.58.0"]
+
+[project.urls]
+Homepage = "https://netskopeoss.github.io/netskope-cli/"
+Repository = "https://github.com/netskopeoss/netskope-cli"
+Documentation = "https://netskopeoss.github.io/netskope-cli/"
+
+[project.scripts]
 netskope = "netskope_cli.main:cli"
 ntsk = "netskope_cli.main:cli"
 
-[tool.poetry.dependencies]
-# Runtime dependencies are pinned exactly. typer 0.26 shipped a vendored copy of
-# click that silently broke isinstance(obj, click.Group) checks (see v1.4.6), and
-# open ranges let fresh installs drift away from the versions the test suite runs
-# against. Bump deliberately: change the pin, `poetry lock`, run the full suite,
-# then re-verify `netskope commands` on a fresh install of the built wheel.
-python = "^3.11"
-typer = {extras = ["all"], version = "==0.25.1"}
-click = "==8.5.0"
-rich = "==14.3.4"
-shellingham = "==1.5.4"
-httpx = "==0.28.1"
-toml = "==0.10.2"
-keyring = "==25.7.0"
-pydantic = "==2.13.5"
-pydantic-settings = "==2.15.0"
-pyyaml = "==6.0.3"
-playwright = {version = "==1.58.0", optional = true}
-
-[tool.poetry.extras]
-browser = ["playwright"]
-
-[tool.poetry.group.dev.dependencies]
-pytest = "==9.1.1"
-pytest-asyncio = "==1.4.0"
-pytest-cov = "==7.1.0"
-pytest-mock = "==3.15.1"
-respx = "==0.22.0"
-ruff = "==0.15.5"
-black = "==26.1.0"
-mypy = "==1.19.1"
-types-toml = "==0.10.8.20260518"
-types-pyyaml = "==6.0.12.20260518"
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    "pytest-cov==7.1.0",
+    "pytest-mock==3.15.1",
+    "respx==0.22.0",
+    "ruff==0.15.5",
+    "black==26.1.0",
+    "mypy==1.19.1",
+    "types-toml==0.10.8.20260518",
+    "types-pyyaml==6.0.12.20260518",
+]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["uv_build>=0.12.10,<0.13"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "netskope_cli"
 
 [tool.ruff]
 line-length = 120

@@ -16,12 +16,11 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Optional
 
-import click
-import click.exceptions
 import typer
 from rich.console import Console
 from typer._completion_classes import completion_init
 
+from netskope_cli.core import clickshim as click
 from netskope_cli.core.exceptions import NetskopeError
 from netskope_cli.core.filtering import parse_filter, parse_sort_spec
 
@@ -1183,9 +1182,9 @@ def cli() -> None:
 
     try:
         app(standalone_mode=False)
-    except click.exceptions.Exit as e:
+    except click.Exit as e:
         raise SystemExit(e.exit_code)
-    except click.exceptions.Abort:
+    except click.Abort:
         raise SystemExit(130)
     except click.exceptions.UsageError as exc:
         # Must be caught BEFORE NetskopeError / generic Exception so that

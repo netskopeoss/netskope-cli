@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-import click
 import pytest
+import typer
+import typer.main
 
+from netskope_cli.core import clickshim as click
 from netskope_cli.main import _hoist_global_options, _local_option_names, _resolve_leaf_command
 
 
@@ -119,22 +121,25 @@ class TestQueryOptions:
 
 
 def _make_group() -> click.Group:
-    root = click.Group("root")
-    sub = click.Group("sub")
-    root.add_command(sub)
+    root = typer.Typer(add_completion=False)
+    sub = typer.Typer()
 
     @sub.command("leaf")
-    @click.option("--fields")
-    @click.option("--flag", is_flag=True)
-    @click.option("--limit", type=int)
-    def leaf(fields: str, flag: bool, limit: int) -> None:  # pragma: no cover - never invoked
+    def leaf(  # pragma: no cover - never invoked
+        fields: str = typer.Option(None, "--fields"),
+        flag: bool = typer.Option(False, "--flag"),
+        limit: int = typer.Option(None, "--limit"),
+    ) -> None:
         pass
 
     @root.command("plain")
     def plain() -> None:  # pragma: no cover - never invoked
         pass
 
-    return root
+    root.add_typer(sub, name="sub")
+    group = typer.main.get_command(root)
+    assert isinstance(group, click.Group)
+    return group
 
 
 class TestResolveLeaf:
