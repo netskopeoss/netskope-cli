@@ -5,22 +5,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build & Development Commands
 
 ```bash
-poetry install                          # Install dependencies
-poetry run netskope --help              # Run the CLI
-poetry run ntsk --help                   # Short alias
+uv sync                                 # Create .venv and install runtime + dev dependencies
+uv run netskope --help              # Run the CLI
+uv run ntsk --help                   # Short alias
 
 # Testing
-poetry run pytest                       # All tests
-poetry run pytest tests/unit/           # Unit tests only
-poetry run pytest tests/integration/    # Integration tests only
-poetry run pytest tests/unit/test_client.py::TestClassName  # Single test class
-poetry run pytest --cov=src/netskope_cli tests/             # With coverage
+uv run pytest                       # All tests
+uv run pytest tests/unit/           # Unit tests only
+uv run pytest tests/integration/    # Integration tests only
+uv run pytest tests/unit/test_client.py::TestClassName  # Single test class
+uv run pytest --cov=src/netskope_cli tests/             # With coverage
 
 # Linting & Formatting (run before commits/PRs)
-poetry run ruff check .                 # Lint
-poetry run ruff check . --fix           # Auto-fix lint issues
-poetry run black .                      # Format
-poetry run mypy src/                    # Type check
+uv run ruff check .                 # Lint
+uv run ruff check . --fix           # Auto-fix lint issues
+uv run black .                      # Format
+uv run mypy src/                    # Type check
 ```
 
 ## Architecture
@@ -98,14 +98,19 @@ git add pyproject.toml src/netskope_cli/main.py
 git commit -m "Bump version to X.Y.Z"
 git push origin master
 
-# 3. Build and publish (PyPI token must be pre-configured in Poetry)
-poetry build
-poetry publish
+# 3. Build and publish. uv has no credential store and does not read ~/.pypirc;
+#    its documented methods are a PyPI Trusted Publisher (CI) or the
+#    UV_PUBLISH_TOKEN environment variable. Locally the token lives in the
+#    macOS keychain and is exposed to the one publish command only.
+uv build
+UV_PUBLISH_TOKEN="$(security find-generic-password -s pypi-netskope -w)" uv publish
 ```
 
 **PyPI token setup** (one-time, done by the user — never by AI):
 ```bash
-poetry config pypi-token.pypi pypi-YOUR_TOKEN
+security add-generic-password -s pypi-netskope -a __token__ -w   # prompts for the pypi-... token
 ```
 
-The token is stored locally by Poetry. Never pass it as a CLI argument in shared sessions or commit it to any file.
+Astral's recommendation is a Trusted Publisher from GitHub Actions, which needs no long-lived token; this
+repo has no CI yet, so the keychain-backed variable is the local equivalent. Never echo the token, pass it on
+the command line in shared sessions, or commit it to any file.

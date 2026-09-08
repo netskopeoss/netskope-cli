@@ -32,10 +32,10 @@ Do not Ask the user for:
 
 ### 4. Lint, format, type-check, test
 ```bash
-poetry run ruff check . --fix
-poetry run black .
-poetry run mypy src/
-poetry run pytest
+uv run ruff check . --fix
+uv run black .
+uv run mypy src/
+uv run pytest
 ```
 - If there are lint errors that can't be auto-fixed, stop and report them.
 - mypy must report 0 errors and ALL tests must pass before continuing. If not, stop and report the issue — fix before continuing.
@@ -57,9 +57,10 @@ gh release create vX.Y.Z --repo netskopeoss/netskope-cli --title "vX.Y.Z" --note
 
 ### 6. Build and publish to PyPI
 ```bash
-poetry build
-poetry publish
+uv build
+UV_PUBLISH_TOKEN="$(security find-generic-password -s pypi-netskope -w)" uv publish
 ```
+- The token comes from the macOS keychain entry set up once per CLAUDE.md; never echo it.
 - Wait for publish to succeed before continuing.
 
 ### 7. Update the Homebrew tap
@@ -68,7 +69,7 @@ poetry publish
 - Edit `Formula/netskope.rb` in the local tap repo at `../homebrew-tap/` (relative to the CLI repo)
   - Update the top-level `url` line with the new sdist URL
   - Update the top-level `sha256` line with the new hash
-- **Check every resource block, not just the top-level url**: compare each `resource "<name>"` version in the formula against `poetry run pip list --format=freeze`. For any runtime dependency whose version changed, fetch its new sdist URL + SHA256 from `https://pypi.org/pypi/<name>/<version>/json` and update that resource block.
+- **Check every resource block, not just the top-level url**: compare each `resource "<name>"` version in the formula against `uv pip list --format=freeze` (run from the repo so it reads `.venv`). For any runtime dependency whose version changed, fetch its new sdist URL + SHA256 from `https://pypi.org/pypi/<name>/<version>/json` and update that resource block.
   - Note: pip freeze shows jaraco packages with dots (`jaraco.context`) while the formula uses dashes (`jaraco-context`) — normalize names before comparing or you'll get false mismatches.
   - Note: Linux-only deps (e.g. `cryptography` via secretstorage) won't appear in a local macOS pip freeze and are not formula resources — skip them.
 - Commit and push the tap:
@@ -89,4 +90,4 @@ git push origin main
 - Never hardcode or echo API tokens, PyPI tokens, or secrets
 - If any step fails, stop and report the error — do not continue blindly
 - Always run linting, formatting, mypy, and the test suite before committing
-- Remember `poetry.lock` is gitignored in this repo — Dependabot scans `pyproject.toml` constraints, and lockfile changes never appear in commits
+- `uv.lock` is committed. A dependency bump edits the pin in `pyproject.toml` and then runs `uv lock`; commit both files together

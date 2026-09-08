@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import json as json_mod
 
-import click
 import typer
 from rich.console import Console
 from rich.tree import Tree
+
+from netskope_cli.core import clickshim as click
 
 # Command leaf names that indicate a mutating (write) operation.
 # Used to tag commands in --flat output so AI agents can distinguish
@@ -55,7 +56,7 @@ def _arg_signature(cmd: click.Command) -> str:
 
 
 def _walk(group: click.Group, tree: Tree, ctx: click.Context) -> None:
-    """Recursively add Click group children to a Rich tree."""
+    """Recursively add a command group's children to a Rich tree."""
     for name in sorted(group.list_commands(ctx)):
         cmd = group.get_command(ctx, name)
         if cmd is None:
@@ -175,7 +176,7 @@ def tree_command(
     state = ctx.obj
     no_color = state.no_color if state is not None else False
 
-    # Walk up to the root Click group
+    # Walk up to the root command group
     root_ctx: click.Context = ctx
     while root_ctx.parent is not None:
         root_ctx = root_ctx.parent
