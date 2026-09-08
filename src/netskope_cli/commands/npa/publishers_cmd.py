@@ -20,7 +20,7 @@ from netskope_cli.commands.npa._helpers import (
 )
 from netskope_cli.commands.npa.local_brokers_cmd import local_brokers_app
 from netskope_cli.commands.npa.upgrade_profiles_cmd import upgrade_profiles_app
-from netskope_cli.core.datasearch import resolve_api_fields
+from netskope_cli.core.datasearch import request_with_projection, resolve_api_fields
 from netskope_cli.core.output import echo_success, spinner
 
 # ---------------------------------------------------------------------------
@@ -108,7 +108,7 @@ def list_publishers(
         params["fields"] = selection.request
 
     with spinner("Fetching publishers..."):
-        data = client.request("GET", "/api/v2/infrastructure/publishers", params=params or None)
+        data = request_with_projection(client, "/api/v2/infrastructure/publishers", params, selection)
 
     formatter.format_output(
         data,

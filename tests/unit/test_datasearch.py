@@ -70,6 +70,11 @@ def _out(capsys: pytest.CaptureFixture[str]) -> tuple[str, str]:
     return captured.out, captured.err
 
 
+def _flat(text: str) -> str:
+    """Collapse the line wrapping Rich applies to stderr notices in the 80-column test runner."""
+    return " ".join(text.split())
+
+
 def _request_query(route: respx.Route, index: int = 0) -> dict[str, list[str]]:
     return parse_qs(urlparse(str(route.calls[index].request.url)).query)
 
@@ -355,8 +360,11 @@ class TestFormatterStrictAndCapped:
         )
         out, err = _out(capsys)
         assert out.strip() == "10+"
-        assert "10+ results (capped)" in err
-        assert "Count capped at the API maximum of 10 rows" in err and "--exact" in err
+        assert "results (capped)" not in err  # --count prints its own notice; no second banner
+        assert "Count capped at the API maximum of 10 rows" in err and "narrow the time range" in err
+        OutputFormatter(no_color=True).format_output({"result": ALERTS * 5}, fmt="table", capped_at=10)
+        _out_, err = _out(capsys)
+        assert "10+ results (capped)" in err  # the banner belongs to the listing, not the count
 
     def test_capped_with_where_counts_filtered_rows(self, capsys: pytest.CaptureFixture[str]) -> None:
         OutputFormatter(no_color=True, where='action eq "block"').format_output(
@@ -419,6 +427,13 @@ def _alert_route(rows: list[dict[str, Any]] | None = None) -> respx.Route:
     )
 
 
+def _urllist_route() -> respx.Route:
+    """A fixed-schema (non-events) endpoint, where an unknown --fields name is provably wrong."""
+    return respx.get(f"{BASE}/api/v2/policy/urllist").mock(
+        return_value=httpx.Response(200, json={"result": [{"id": 1, "name": "Blocked"}], "total": 1})
+    )
+
+
 class TestGlobalFieldsOnDatasearchCommands:
     """Bug 1: the global --fields must reach the formatter on every command."""
 
@@ -473,11 +488,9 @@ class TestGlobalFieldsOnDatasearchCommands:
     def test_unknown_field_exits_2_naming_it(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        monkeypatch.setattr(
-            sys, "argv", ["ntsk", "alerts", "list", "--limit", "2", "--fields", "nope,alert_name", "-o", "csv"]
-        )
+        monkeypatch.setattr(sys, "argv", ["ntsk", "policy", "url-list", "list", "--fields", "nope,name", "-o", "csv"])
         with respx.mock:
-            _alert_route()
+            _urllist_route()
             with pytest.raises(SystemExit) as exc:
                 cli()
         assert exc.value.code == 2
@@ -489,14 +502,14 @@ class TestGlobalFieldsOnDatasearchCommands:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         monkeypatch.setattr(
-            sys, "argv", ["ntsk", "alerts", "list", "--fields", "nope,alert_name", "-o", "csv", "--lenient"]
+            sys, "argv", ["ntsk", "policy", "url-list", "list", "--fields", "nope,name", "-o", "csv", "--lenient"]
         )
         with respx.mock:
-            _alert_route()
+            _urllist_route()
             cli()  # exit code 0: standalone_mode=False returns instead of raising SystemExit
         out, err = _out(capsys)
-        assert out.splitlines()[0] == "nope,alert_name"
-        assert out.splitlines()[1] == ",Block-Malicious-Domains"
+        assert out.splitlines()[0] == "nope,name"
+        assert out.splitlines()[1] == ",Blocked"
         assert "'nope' not found" in err
 
     @respx.mock
@@ -634,8 +647,8 @@ class TestCountCap:
         result = _invoke(runner, "alerts", "list", "--since", "24h", "--count")
         assert result.exit_code == 0, result.output
         assert result.stdout.strip() == "10000+"
-        assert "10,000+ results (capped)" in result.output
-        assert "Count capped at the API maximum of 10,000 rows" in result.output
+        assert "results (capped)" not in result.output
+        assert "Count capped at the API maximum of 10,000 rows" in result.output and "--exact" in result.output
         assert _request_query(route)["limit"] == ["10000"]
 
     @respx.mock
@@ -893,13 +906,14 @@ class TestSecondReview:
         assert json.loads(out) == [{"alert_name": None, "app": "Box"}, {"alert_name": None, "app": "Slack"}]
 
     @respx.mock
-    def test_q10_non_datasearch_count_keeps_limit_and_never_advises_exact(self, runner: CliRunner) -> None:
+    def test_q10_non_datasearch_count_fetches_a_full_page_and_never_advises_exact(self, runner: CliRunner) -> None:
         route = respx.get(f"{BASE}/api/v2/events/data/audit").mock(
             return_value=httpx.Response(200, json={"result": FULL_PAGE})
         )
         result = _invoke(runner, "events", "audit", "--count")
-        assert _request_query(route)["limit"] == ["25"]
-        assert result.stdout.strip() == "10000" and "--exact" not in result.output
+        assert _request_query(route)["limit"] == ["10000"]
+        assert result.stdout.strip() == "10000+"
+        assert "--exact cannot page this endpoint" in _flat(result.output) and "or use --exact" not in result.output
 
     def test_q11_a_stated_total_is_exact_and_status_count_is_consulted_last(self) -> None:
         from netskope_cli.core.output import envelope_total
@@ -921,11 +935,12 @@ class TestSecondReview:
         assert list(json.loads(result.stdout)[0]) == ["timestamp", "timestamp_iso", "alert_name"]
 
     @respx.mock
-    def test_q13_exact_pins_the_window_and_does_not_page_group_by(self, runner: CliRunner) -> None:
+    def test_q13_exact_keeps_the_given_window_and_does_not_page_group_by(self, runner: CliRunner) -> None:
         route = _alert_route()
         result = _invoke(runner, "alerts", "list", "--count", "--exact")
         assert result.exit_code == 0, result.output
-        assert "endtime" in _request_query(route)  # pinned even though no --since/--end was given
+        # No --since/--end: nothing is invented (a lone endtime is a one-sided window the API may reject).
+        assert "endtime" not in _request_query(route) and "starttime" not in _request_query(route)
         calls_before = route.call_count
         respx.get(ALERT_URL).mock(
             return_value=httpx.Response(200, json={"result": [{"_id": {"app": "Box"}, "count": 3}]})
@@ -940,3 +955,141 @@ class TestSecondReview:
         result = _invoke(runner, "alerts", "summary", "--by", "severity")
         assert result.exit_code != 0
         assert "Invalid query" in (result.output + str(result.exception))
+
+
+class TestThirdReview:
+    """Findings from the third review of #19."""
+
+    @respx.mock
+    def test_f1_every_events_endpoint_counts_a_full_page(self, runner: CliRunner) -> None:
+        infra = respx.get(f"{BASE}/api/v2/events/data/infrastructure").mock(
+            return_value=httpx.Response(200, json={"result": FULL_PAGE})
+        )
+        for argv in (
+            ("events", "infrastructure", "--count"),
+            ("events", "list", "--type", "infrastructure", "--count"),
+        ):
+            result = _invoke(runner, *argv)
+            assert result.exit_code == 0, result.output
+            assert result.stdout.strip() == "10000+"
+            assert "--exact cannot page this endpoint" in _flat(result.output)
+            assert "or use --exact" not in result.output
+        assert all(_request_query(infra, i)["limit"] == ["10000"] for i in range(infra.call_count))
+
+    @respx.mock
+    def test_f2_unknown_fields_warn_on_sparse_event_schemas(self, runner: CliRunner) -> None:
+        # Whether dlp_rule is in the window depends on which alert subtypes landed in it,
+        # so a script must not exit 0 one night and 2 the next.
+        _alert_route()
+        result = _invoke(runner, "alerts", "list", "--fields", "alert_name,dlp_rule", "-o", "csv")
+        assert result.exit_code == 0, result.output
+        assert result.stdout.splitlines()[0] == "alert_name,dlp_rule"
+        assert "--fields: 'dlp_rule' not found" in result.output
+        respx.get(f"{BASE}/api/v2/events/datasearch/incident").mock(
+            return_value=httpx.Response(200, json={"result": ALERTS})
+        )
+        result = _invoke(runner, "incidents", "list", "--fields", "dlp_rule", "-o", "json")
+        assert result.exit_code == 0, result.output
+
+    def test_f3_larger_status_count_on_a_full_page_is_the_lower_bound(self, capsys: pytest.CaptureFixture[str]) -> None:
+        OutputFormatter(no_color=True).format_output(
+            {"result": ALERTS * 5, "status": {"count": 25}}, fmt="table", count_only=True, capped_at=10
+        )
+        out, err = _out(capsys)
+        assert out.strip() == "25+" and "capped" in err
+
+    @respx.mock
+    def test_f4_exact_sends_the_same_window_on_every_page_and_no_lone_endtime(self, runner: CliRunner) -> None:
+        def pages(request: httpx.Request) -> httpx.Response:
+            offset = int(parse_qs(urlparse(str(request.url)).query)["offset"][0])
+            return httpx.Response(200, json={"result": FULL_PAGE if offset == 0 else FULL_PAGE[:5]})
+
+        route = respx.get(f"{BASE}/api/v2/events/datasearch/network").mock(side_effect=pages)
+        result = _invoke(runner, "events", "network", "--start", "24h", "--count", "--exact")
+        assert result.exit_code == 0 and result.stdout.strip() == "10005", result.output
+        windows = {(q["starttime"][0], q["endtime"][0]) for q in (_request_query(route, i) for i in range(2))}
+        assert len(windows) == 1
+        result = _invoke(runner, "events", "network", "--count", "--exact")
+        query = _request_query(route, 2)
+        assert "endtime" not in query and "starttime" not in query
+
+    def test_f5_ignored_offset_is_an_error_not_an_exact_count(self) -> None:
+        from netskope_cli.core.exceptions import NetskopeError
+
+        class IgnoresOffset(_FakeClient):
+            def request(self, method: str, endpoint: str, *, params: dict[str, Any] | None = None) -> Any:
+                params = dict(params or {})
+                self.calls.append(params)
+                return {"result": self.rows[: params["limit"]]}  # offset never applied
+
+        rows = [{"_id": f"r{i}", "n": i} for i in range(6)]
+        with pytest.raises(NetskopeError) as exc:
+            count_exact(IgnoresOffset(rows), "/x", {}, page_size=3, ceiling=1000, quiet=True)
+        assert "not honouring offset" in exc.value.message and "r0" in exc.value.message
+        # Rows without _id (a narrow --api-fields projection) are legitimately repetitive: no check.
+        client = _FakeClient([{"action": "allow"}] * 7)
+        assert count_exact(client, "/x", {}, page_size=3, ceiling=1000, quiet=True).count == 7
+
+    @respx.mock
+    def test_f6_widened_name_400_is_explained_on_exact_and_npa(self, runner: CliRunner) -> None:
+        respx.get(f"{BASE}/api/v2/events/datasearch/network").mock(
+            return_value=httpx.Response(400, json={"message": "unrecognized field usr"})
+        )
+        result = _invoke(
+            runner, "events", "network", "--api-fields", "timestamp", "--where", 'usr eq "x"', "--count", "--exact"
+        )
+        assert result.exit_code != 0
+        assert "usr was added to --api-fields" in (getattr(result.exception, "suggestion", "") or "")
+        respx.get(f"{BASE}/api/v2/policy/npa/rules").mock(
+            return_value=httpx.Response(400, json={"message": "unknown field enabledd"})
+        )
+        result = _invoke(
+            runner, "npa", "policy", "rules", "list", "--api-fields", "rule_name", "--where", "enabledd eq 1"
+        )
+        assert result.exit_code != 0
+        assert "enabledd was added to --api-fields" in (getattr(result.exception, "suggestion", "") or "")
+
+    @respx.mock
+    def test_f7_machine_formats_print_a_bare_integer_for_capped_counts(
+        self, runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        route = _alert_route(FULL_PAGE)
+        for fmt in ("json", "jsonl", "yaml", "csv"):
+            result = _invoke(runner, "alerts", "list", "--count", "-o", fmt)
+            assert result.exit_code == 0, result.output
+            assert json.loads(result.stdout) == 10000
+            assert "Count capped at the API maximum" in result.output
+        result = _invoke(runner, "alerts", "list", "--count", "-o", "table")
+        assert result.stdout.strip() == "10000+"
+        monkeypatch.setenv("NETSKOPE_COUNT_CEILING", "20000")
+        result = _invoke(runner, "alerts", "list", "--count", "--exact", "-o", "json")
+        assert json.loads(result.stdout) == 20000 and "ceiling of 20,000 rows" in result.output
+        assert route.call_count == 7
+
+    def test_f8_iso_companion_in_table_output_says_why_it_is_blank(self, capsys: pytest.CaptureFixture[str]) -> None:
+        OutputFormatter(no_color=True, fields=["alert_name", "timestamp_iso"]).format_output(ALERTS, fmt="table")
+        _out_, err = _out(capsys)
+        assert "'timestamp_iso' is only added in json, jsonl, csv and yaml output" in _flat(err)
+        assert "use 'timestamp' here" in _flat(err) and "parent is null" not in err
+
+    def test_f9_quiet_capped_count_prints_one_notice(self, capsys: pytest.CaptureFixture[str]) -> None:
+        OutputFormatter(no_color=True, quiet=True).format_output(
+            {"result": ALERTS * 5}, fmt="table", count_only=True, capped_at=10
+        )
+        out, err = _out(capsys)
+        assert out.strip() == "10+"
+        assert err.count("Count capped") == 1 and "results (capped)" not in err
+
+    @respx.mock
+    def test_f10_raw_epoch_and_limit_validation_apply_to_audit(self, runner: CliRunner) -> None:
+        respx.get(f"{BASE}/api/v2/events/data/audit").mock(
+            return_value=httpx.Response(200, json={"result": [{"_internal": 1, "user": "u", "timestamp": 1784851173}]})
+        )
+        plain = json.loads(_invoke(runner, "events", "audit", "-o", "json").stdout)[0]
+        assert "_internal" not in plain and plain["timestamp_iso"].startswith("2026-")
+        raw = json.loads(_invoke(runner, "--raw", "events", "audit", "-o", "json").stdout)[0]
+        assert raw["_internal"] == 1
+        epoch = json.loads(_invoke(runner, "--epoch", "events", "list", "--type", "audit", "-o", "json").stdout)[0]
+        assert "timestamp_iso" not in epoch
+        result = _invoke(runner, "events", "audit", "--limit", "0")
+        assert result.exit_code != 0 and "Invalid --limit" in (str(result.exception) + result.output)

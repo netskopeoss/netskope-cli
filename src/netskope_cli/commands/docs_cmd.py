@@ -369,10 +369,12 @@ They run client-side on the rows the API returned (so --limit still applies).
 
    A name no returned record has stops the command (exit 2) and suggests
    close matches; add --lenient to warn instead and render that column
-   blank (table/csv) or null (json/yaml). Only lists of records are strict:
-   a path or glob whose parent is null or empty in every record, any name
-   when --api-fields trimmed the response, single-object responses (get,
-   create, update) and group-by rows all warn. Quote globs in zsh:  --fields 'epdlp.*'
+   blank (table/csv) or null (json/yaml). Only lists of records with a fixed
+   schema are strict: a path or glob whose parent is null or empty in every
+   record, any name when --api-fields trimmed the response, single-object
+   responses (get, create, update), group-by rows and the events/alerts/
+   incidents commands (keys vary per event subtype, so the exit code must not
+   depend on the window) all warn. Quote globs in zsh:  --fields 'epdlp.*'
 
      ntsk devices list --fields hostname,host_info.os,last_event_timestamp
      ntsk npa apps list --fields app_name,protocols[].port -o csv
@@ -433,9 +435,11 @@ Client-side vs server-side
 Counting
 --------
    --count on events/alerts/incidents fetches one API page (10,000 rows) and
-   prints N+ when it filled up, with a notice on stderr. Add --exact to page
-   through the endpoint for the true total (bounded by NETSKOPE_COUNT_CEILING,
-   default 200,000 rows; N+ again if reached). --where is applied per page.
+   prints N+ when it filled up, with a notice on stderr; -o json/jsonl/csv/yaml
+   print the bare integer (a lower bound) so scripts keep parsing a number.
+   Add --exact to page through the endpoint for the true total (bounded by
+   NETSKOPE_COUNT_CEILING, default 200,000 rows; N+ again if reached). --where
+   is applied per page. events audit/infrastructure/transaction cannot be paged.
 """
 
 

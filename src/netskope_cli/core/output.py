@@ -202,6 +202,9 @@ def unwrap_api_response(
 #: datasearch endpoints is the number of rows returned, so it is not one of them.
 TOTAL_KEYS = ("total", "totalResults", "status.total")
 
+#: Formats a program parses: a count prints as a bare integer there (``N+`` would not parse).
+MACHINE_FORMATS = ("json", "jsonl", "csv", "yaml")
+
 
 def envelope_total(metadata: dict[str, Any]) -> int | None:
     """The total an unwrapped envelope states, preferring a real total over ``status.count``.
@@ -344,7 +347,9 @@ class OutputFormatter:
         strip_internal: bool = True,
         add_iso_timestamps: bool = True,
         capped_at: int | None = None,
+        capped_hint: str | None = None,
         projected: bool = False,
+        sparse: bool = False,
     ) -> None:
         """Format and print *data* to stdout.
 
@@ -386,12 +391,23 @@ class OutputFormatter:
         capped_at:
             The page size the API stopped at when *data* filled it (see
             ``core.datasearch.is_page_capped``).  Counts are then lower
-            bounds: the result banner says so, ``--count`` prints ``N+`` and
-            a notice on stderr points at ``--exact``.
+            bounds: the result banner says so, ``--count`` prints ``N+`` in
+            table/human output (the bare integer in ``MACHINE_FORMATS``) and
+            a notice on stderr gives *capped_hint*.
+        capped_hint:
+            What the capped-count notice tells the user to do; defaults to
+            narrowing the time range.  ``core.datasearch.fetch_page`` adds
+            ``--exact`` when the endpoint can be paged.
         projected:
             *True* when the command sent a server-side ``--api-fields``
             projection.  The API then legitimately omits fields, so unknown
             global ``--fields`` names warn instead of raising.
+        sparse:
+            *True* when the endpoint's records do not share one schema
+            (datasearch event types carry different keys per subtype).  A
+            ``--fields`` name absent from every record fetched here may exist
+            in the next window, so it warns instead of exiting 2; the exit code
+            must not depend on which subtypes happened to land in the page.
         """
         if fmt is None:
             fmt = self._auto_detect_format()
@@ -439,13 +455,17 @@ class OutputFormatter:
                 parts.append(f"{mk}={mv}")
             self.err_console.print(f"[dim]API metadata: {', '.join(parts)}[/dim]")
 
+        count_only = count_only or self._default_count_only
+
         # Show record count for table/human/csv formats when there are results.
         if fmt in ("table", "human", "csv") and isinstance(data, list) and len(data) > 0:
             if removed > 0:
                 if not self._quiet:
                     self.err_console.print(f"[dim]{len(data)} of {len(data) + removed} results matched --where[/dim]")
             elif capped_at is not None:
-                self.err_console.print(f"[dim]{len(data):,}+ results (capped)[/dim]")
+                # --count prints its own capped notice below, so no banner then.
+                if not count_only and not self._quiet:
+                    self.err_console.print(f"[dim]{len(data):,}+ results (capped)[/dim]")
             elif unwrap:
                 total_int = envelope_total(metadata) if metadata else None
                 if total_int is not None:
@@ -462,21 +482,23 @@ class OutputFormatter:
 
         # --count mode: print the count and return immediately.  When a
         # --where filter is active the envelope total is meaningless, so the
-        # filtered record count is reported instead.
-        count_only = count_only or self._default_count_only
+        # filtered record count is reported instead.  A capped page has no
+        # real total either (``is_page_capped`` ruled one out), but a stated
+        # ``status.count`` above the rows returned is the better lower bound.
         if count_only:
-            total = envelope_total(metadata) if self._where is None and capped_at is None else None
-            if total is not None:
-                n = total
-            elif isinstance(data, list):
-                n = len(data)
+            total = envelope_total(metadata) if self._where is None else None
+            rows = len(data) if isinstance(data, list) else (1 if data else 0)
+            if total is None:
+                n = rows
+            elif capped_at is not None:
+                n = max(total, rows)
             else:
-                n = 1 if data else 0
-            print(f"{n}+" if capped_at is not None else n)
+                n = total
+            print(f"{n}+" if capped_at is not None and fmt not in MACHINE_FORMATS else n)
             if capped_at is not None:
                 self.err_console.print(
                     f"[yellow]Count capped at the API maximum of {capped_at:,} rows; "
-                    "narrow the time range or use --exact.[/yellow]"
+                    f"{capped_hint or 'narrow the time range'}.[/yellow]"
                 )
             return
 
@@ -555,7 +577,14 @@ class OutputFormatter:
         # usually an envelope around the object, and group-by rows only carry
         # the group keys and count, so both warn instead.
         server_side = fields is not None
-        strict = not server_side and not self._lenient and not projected and isinstance(data, list) and not is_grouped
+        strict = (
+            not server_side
+            and not self._lenient
+            and not projected
+            and not sparse
+            and isinstance(data, list)
+            and not is_grouped
+        )
 
         # Apply field selection AFTER unwrapping so that --fields applies to
         # individual records, not envelope keys.
@@ -667,7 +696,8 @@ class OutputFormatter:
                 wrong = set(find_unknown(records, unmatched))
                 # ``<field>_iso`` companions exist only in machine-readable formats;
                 # when the base field resolves the name is legitimate, not a typo.
-                wrong = {p for p in wrong if not (p.endswith("_iso") and not find_unmatched(records, [p[:-4]]))}
+                iso_only = {p for p in unmatched if p.endswith("_iso") and not find_unmatched(records, [p[:-4]])}
+                wrong -= iso_only
                 # A glob under a parent that exists but is null or empty everywhere
                 # (``host_info.*`` when no device reported host_info) is not wrong either.
                 soft_globs = set()
@@ -688,11 +718,18 @@ class OutputFormatter:
                 problems = [
                     f"pattern '{rich_escape(spec)}' matched no fields here (its parent is null or empty)."
                     for spec in soft_globs
-                ] + [
-                    f"'{rich_escape(path)}' has no value in any record here (its parent is null or empty); "
-                    "column left blank."
-                    for path in unmatched
                 ]
+                for path in unmatched:
+                    if path in iso_only:
+                        problems.append(
+                            f"'{rich_escape(path)}' is only added in json, jsonl, csv and yaml output "
+                            f"(use '{rich_escape(path[:-4])}' here); column left blank."
+                        )
+                    else:
+                        problems.append(
+                            f"'{rich_escape(path)}' has no value in any record here (its parent is null or empty); "
+                            "column left blank."
+                        )
             for problem in problems:
                 self.err_console.print(
                     f"[yellow]{label}:[/yellow] {problem} [dim]Run with --list-fields to see every field.[/dim]"

@@ -13,7 +13,13 @@ from typing import Any, Optional
 import typer
 
 from netskope_cli.core.client import NetskopeClient, build_client
-from netskope_cli.core.datasearch import ApiFieldSelection, fetch_page, raise_on_error_envelope, resolve_api_fields
+from netskope_cli.core.datasearch import (
+    ApiFieldSelection,
+    Page,
+    fetch_page,
+    raise_on_error_envelope,
+    resolve_api_fields,
+)
 from netskope_cli.core.exceptions import NetskopeError
 from netskope_cli.core.output import OutputFormatter
 from netskope_cli.core.output import build_formatter as _core_build_formatter
@@ -135,14 +141,14 @@ def _fetch_events(
     limit: int,
     count_only: bool,
     spinner_text: str,
-) -> tuple[Any, int | None] | None:
-    """Run the request for an events command and return ``(data, capped_at)``.
+) -> Page | None:
+    """Run the request for an events command and return the fetched :class:`Page`.
 
     The page-cap and ``--exact`` rules live in :func:`fetch_page`; ``None``
     means the exact count was printed and the caller is done.
     """
     state = ctx.obj
-    page = fetch_page(
+    return fetch_page(
         _build_client(ctx),
         endpoint,
         params,
@@ -154,8 +160,8 @@ def _fetch_events(
         quiet=bool(getattr(state, "quiet", False)),
         no_color=bool(getattr(state, "no_color", False)),
         spinner_text=spinner_text,
+        output_fmt=getattr(getattr(state, "output", None), "value", None),
     )
-    return None if page is None else (page.data, page.capped_at)
 
 
 def _run_event_query(
@@ -173,10 +179,13 @@ def _run_event_query(
     default_fields: list[str] | None = None,
     count_only: bool = False,
     api_fields_supported: bool = True,
+    extra_params: dict[str, Any] | None = None,
+    spinner_text: str = "Querying events...",
 ) -> None:
     """Execute a GET request against a Netskope events endpoint.
 
-    Builds query parameters from the caller-supplied options, fires the
+    Builds query parameters from the caller-supplied options (plus any
+    *extra_params* an endpoint needs, such as audit's ``type``), fires the
     request through :class:`NetskopeClient`, and renders the response
     using :class:`OutputFormatter`.
     """
@@ -193,7 +202,7 @@ def _run_event_query(
         )
 
     # -- Build query params ------------------------------------------------
-    params: dict[str, Any] = {}
+    params: dict[str, Any] = dict(extra_params or {})
 
     if query:
         params["query"] = query
@@ -211,23 +220,22 @@ def _run_event_query(
         params["fields"] = selection.request
 
     # -- Execute request ---------------------------------------------------
-    fetched = _fetch_events(
+    page = _fetch_events(
         ctx,
         endpoint,
         params,
         selection=selection,
         limit=limit,
         count_only=count_only,
-        spinner_text="Querying events...",
+        spinner_text=spinner_text,
     )
-    if fetched is None:
+    if page is None:
         return
-    data, capped_at = fetched
 
     # -- Process and render ------------------------------------------------
     wide = getattr(state, "wide", False) if state is not None else False
     _render_event_response(
-        data,
+        page.data,
         ctx=ctx,
         title=title,
         output_fmt=output_fmt,
@@ -236,7 +244,8 @@ def _run_event_query(
         projected=selection.projected,
         default_fields=default_fields,
         count_only=count_only,
-        capped_at=capped_at,
+        capped_at=page.capped_at,
+        capped_hint=page.capped_hint,
         strip_internal=not (state.raw if state else False),
         add_iso_timestamps=not (state.epoch if state else False),
         wide=wide,
@@ -259,59 +268,23 @@ def _run_audit_query(
 
     The audit endpoint (``/api/v2/events/data/audit``) differs from the
     datasearch endpoints in that it uses a ``type`` parameter instead of
-    ``query``.
+    ``query``; everything else (limit validation, ``--raw``/``--epoch``,
+    counting) is :func:`_run_event_query`.
     """
-    state = ctx.obj
-    no_color = state.no_color if state is not None else False
-    output_fmt = state.output.value if state is not None else "table"
-    count_only = count_only or (getattr(state, "count", False) if state is not None else False)
-
-    # -- Build query params ------------------------------------------------
-    params: dict[str, Any] = {}
-
-    if audit_type:
-        params["type"] = audit_type
-    if group_by:
-        params["groupbys"] = group_by
-    if order_by:
-        params["sortby"] = order_by
-
-    params.update(_parse_time_params(start, end))
-
-    selection: ApiFieldSelection = resolve_api_fields(ctx, api_fields)
-    if selection.request is not None:
-        params["fields"] = selection.request
-
-    # -- Execute request ---------------------------------------------------
-    endpoint = "/api/v2/events/data/audit"
-
-    fetched = _fetch_events(
+    _run_event_query(
         ctx,
-        endpoint,
-        params,
-        selection=selection,
+        "/api/v2/events/data/audit",
+        api_fields=api_fields,
+        start=start,
+        end=end,
         limit=limit,
-        count_only=count_only,
-        spinner_text="Querying audit events...",
-    )
-    if fetched is None:
-        return
-    data, capped_at = fetched
-
-    # -- Process and render ------------------------------------------------
-    wide = getattr(state, "wide", False) if state is not None else False
-    _render_event_response(
-        data,
-        ctx=ctx,
+        group_by=group_by,
+        order_by=order_by,
         title="Audit Events",
-        output_fmt=output_fmt,
-        no_color=no_color,
-        selected_fields=selection.display,
-        projected=selection.projected,
         default_fields=["audit_log_event", "timestamp", "severity_level", "user", "count"],
         count_only=count_only,
-        capped_at=capped_at,
-        wide=wide,
+        extra_params={"type": audit_type} if audit_type else None,
+        spinner_text="Querying audit events...",
     )
 
 
@@ -327,6 +300,7 @@ def _render_event_response(
     default_fields: list[str] | None = None,
     count_only: bool = False,
     capped_at: int | None = None,
+    capped_hint: str | None = None,
     strip_internal: bool = True,
     add_iso_timestamps: bool = True,
     wide: bool = False,
@@ -335,6 +309,9 @@ def _render_event_response(
 
     Counting is left to the formatter so a client-side ``--where`` is applied
     first; *capped_at* marks a count that filled the API page (lower bound).
+    Event records carry different keys per subtype, so the formatter is told
+    the schema is sparse and an unknown ``--fields`` name warns instead of
+    failing.
     """
     if not isinstance(data, dict):
         raise NetskopeError(
@@ -371,8 +348,10 @@ def _render_event_response(
         title=display_title,
         count_only=count_only,
         capped_at=capped_at,
+        capped_hint=capped_hint,
         strip_internal=strip_internal,
         add_iso_timestamps=add_iso_timestamps,
+        sparse=True,
     )
 
 

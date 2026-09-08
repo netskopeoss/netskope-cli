@@ -65,10 +65,21 @@ class TestFetchEventCount:
         assert count == EventCount(100, True)
 
     @pytest.mark.asyncio
-    async def test_full_page_with_larger_status_count_is_exact(self, respx_mock):
+    async def test_full_page_with_larger_status_count_is_a_lower_bound(self, respx_mock):
+        """Same rule as ``--count``: only total/totalResults/status.total are exact."""
         respx_mock.get(f"{BASE_URL}/api/v2/events/datasearch/alert").mock(
             return_value=httpx.Response(
                 200, json={"result": [{"id": i} for i in range(100)], "status": {"count": 5000}}
+            )
+        )
+        count = await _fetch_event_count(BASE_URL, HEADERS, "/api/v2/events/datasearch/alert", {"limit": 100})
+        assert count == EventCount(5000, True)
+
+    @pytest.mark.asyncio
+    async def test_full_page_with_a_stated_total_is_exact(self, respx_mock):
+        respx_mock.get(f"{BASE_URL}/api/v2/events/datasearch/alert").mock(
+            return_value=httpx.Response(
+                200, json={"result": [{"id": i} for i in range(100)], "status": {"count": 100, "total": 5000}}
             )
         )
         count = await _fetch_event_count(BASE_URL, HEADERS, "/api/v2/events/datasearch/alert", {"limit": 100})

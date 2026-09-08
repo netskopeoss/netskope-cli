@@ -13,7 +13,7 @@ from netskope_cli.commands.npa._helpers import (
     _get_output_format,
     _load_json_file,
 )
-from netskope_cli.core.datasearch import resolve_api_fields
+from netskope_cli.core.datasearch import request_with_projection, resolve_api_fields
 from netskope_cli.core.output import echo_error, echo_success, spinner
 
 # ---------------------------------------------------------------------------
@@ -130,7 +130,7 @@ def list_rules(
         params["sortorder"] = sort_order
 
     with spinner("Fetching NPA policy rules..."):
-        data = client.request("GET", "/api/v2/policy/npa/rules", params=params or None)
+        data = request_with_projection(client, "/api/v2/policy/npa/rules", params, selection)
 
     formatter.format_output(
         data,
@@ -176,7 +176,7 @@ def get_rule(
         params["fields"] = selection.request
 
     with spinner(f"Fetching NPA policy rule {rule_id}..."):
-        data = client.request("GET", f"/api/v2/policy/npa/rules/{rule_id}", params=params or None)
+        data = request_with_projection(client, f"/api/v2/policy/npa/rules/{rule_id}", params, selection)
 
     # The rule arrives as {"data": {...}, "status": ...}; render the rule itself so
     # --api-fields and the global --fields apply to its keys, not the envelope's.
@@ -388,7 +388,7 @@ def list_groups(
         params["fields"] = selection.request
 
     with spinner("Fetching NPA policy groups..."):
-        data = client.request("GET", "/api/v2/policy/npa/policygroups", params=params or None)
+        data = request_with_projection(client, "/api/v2/policy/npa/policygroups", params, selection)
 
     formatter.format_output(
         data,

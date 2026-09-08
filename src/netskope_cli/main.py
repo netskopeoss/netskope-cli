@@ -248,8 +248,8 @@ def main(
         help=(
             "Print only the record count instead of full results. Endpoints that return a total "
             "report that total. Events, alerts and incidents commands fetch up to 10,000 rows (the API "
-            "page cap) and print N+ when that cap is hit; add --exact to page for the true total. "
-            "Elsewhere the count is of the rows --limit fetched."
+            "page cap) and print N+ when that cap is hit (json/jsonl/csv/yaml print the bare integer, a lower "
+            "bound); add --exact to page for the true total. Elsewhere the count is of the rows --limit fetched."
         ),
     ),
     exact: bool = typer.Option(

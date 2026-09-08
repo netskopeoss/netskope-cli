@@ -140,6 +140,7 @@ def _query_incident_events(
         quiet=quiet,
         no_color=no_color,
         spinner_text=spinner_text,
+        output_fmt=fmt,
     )
     if page is None:
         return
@@ -153,6 +154,8 @@ def _query_incident_events(
         default_fields=default_fields,
         count_only=count,
         capped_at=page.capped_at,
+        capped_hint=page.capped_hint,
+        sparse=True,
         strip_internal=not bool(getattr(state, "raw", False)),
         add_iso_timestamps=not bool(getattr(state, "epoch", False)),
     )

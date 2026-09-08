@@ -437,6 +437,7 @@ def list_alerts(
         quiet=quiet,
         no_color=no_color,
         spinner_text="Fetching alerts...",
+        output_fmt=fmt,
     )
     if page is None:
         return
@@ -450,6 +451,8 @@ def list_alerts(
         default_fields=["alert_name", "alert_type", "severity", "user", "app", "timestamp"],
         count_only=count,
         capped_at=page.capped_at,
+        capped_hint=page.capped_hint,
+        sparse=True,
         strip_internal=not (state.raw if state else False),
         add_iso_timestamps=not (state.epoch if state else False),
     )

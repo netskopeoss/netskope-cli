@@ -164,7 +164,7 @@ ntsk users list -o csv > users.csv
 |----------------|----------------------------------------------------|
 | `-W` / `--wide`| Show all table columns without truncation           |
 | `--raw`        | Include internal `_`-prefixed fields in output      |
-| `--count`      | Print the record count. Events/alerts/incidents fetch one 10,000-row API page and print `N+` when it fills up |
+| `--count`      | Print the record count. Events/alerts/incidents fetch one 10,000-row API page and print `N+` when it fills up (the bare integer in json/jsonl/csv/yaml, with a stderr notice) |
 | `--exact`      | With `--count` on events/alerts/incidents: page through the API for the true total (ceiling `NETSKOPE_COUNT_CEILING`, default 200,000) |
 | `--epoch`      | Keep timestamps as raw Unix epoch integers          |
 | `-q` / `--quiet` | Suppress spinners and informational messages     |
@@ -207,8 +207,9 @@ ntsk devices list --where 'host_info.os like "mac*"' --sort last_event_timestamp
 ```
 
 A `--fields` name that no returned record has stops the command with exit code 2 and suggests close matches
-(`--lenient` downgrades that to a warning and blank/null columns), and a `--where` syntax error is reported (exit
-code 2) before any API call. Run `ntsk docs fields` for the full reference.
+(`--lenient` downgrades that to a warning and blank/null columns). Event, alert and incident records carry different
+keys per subtype, so on those commands an unknown name only warns: the exit code never depends on which subtypes landed
+in the window. A `--where` syntax error is reported (exit code 2) before any API call. Run `ntsk docs fields` for the full reference.
 
 Some commands also have **server-side** options, with distinct names, that change what the API returns:
 `events`/`alerts`/`incidents --api-fields` (server-side projection of top-level fields, widened automatically with
@@ -221,9 +222,11 @@ ntsk alerts list --since 7d --api-fields timestamp,alert_name,qdomain --where 'a
 ```
 
 `--count` on `events`, `alerts` and `incidents` fetches one API page (10,000 rows, the datasearch maximum) and prints
-`N+` with a notice when the page filled up, so a busy tenant is never reported as having exactly 10,000 alerts. Add
-`--exact` to page through the endpoint for the true total (bounded by `NETSKOPE_COUNT_CEILING`, default 200,000).
-`ntsk status` marks capped counts with `≥` and, in JSON, `alerts_capped: true`.
+`N+` with a notice when the page filled up, so a busy tenant is never reported as having exactly 10,000 alerts. Machine
+formats (`-o json`, `jsonl`, `csv`, `yaml`) print the bare integer, a lower bound, and keep the notice on stderr. Add
+`--exact` to page through the endpoint for the true total (bounded by `NETSKOPE_COUNT_CEILING`, default 200,000);
+`events audit`, `infrastructure` and `transaction` cannot be paged. `ntsk status` marks capped counts with `≥` and, in
+JSON, `alerts_capped: true`.
 
 ---
 
