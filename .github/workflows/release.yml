@@ -1,0 +1,63 @@
+# Publish to PyPI when a vX.Y.Z tag is pushed (release runbook step 5).
+#
+# Authentication is PyPI's Trusted Publisher for this repository, so no token
+# is stored anywhere. One-time setup on pypi.org for the `netskope` project:
+# Publishing -> Add a new publisher -> GitHub, owner `netskopeoss`, repository
+# `netskope-cli`, workflow `release.yml`, environment `pypi`.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+env:
+  UV_VERSION: "0.12.10"
+
+jobs:
+  build:
+    name: check, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.11"
+          enable-cache: true
+      - name: tag must match the project version
+        run: |
+          version="$(uv version --short)"
+          echo "pyproject version: $version, tag: $GITHUB_REF_NAME"
+          test "v$version" = "$GITHUB_REF_NAME"
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run ty check
+      - run: uv run pytest -q
+      - run: uv build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+      - uses: astral-sh/setup-uv@v10
+        with:
+          version: ${{ env.UV_VERSION }}
+      - run: uv publish --trusted-publishing always

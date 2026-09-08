@@ -55,7 +55,14 @@ git push origin vX.Y.Z
 gh release create vX.Y.Z --repo netskopeoss/netskope-cli --title "vX.Y.Z" --notes "<changelog bullets>"
 ```
 
-### 6. Build and publish to PyPI
+### 6. Publish to PyPI (CI, triggered by the tag)
+Pushing the `vX.Y.Z` tag in step 5 starts `.github/workflows/release.yml`: it checks that the tag matches the project version, runs the same checks as CI, builds, and publishes with `uv publish --trusted-publishing always`. Authentication is PyPI's Trusted Publisher for this repository (workflow `release.yml`, environment `pypi`), so no token is involved.
+```bash
+gh run watch --repo netskopeoss/netskope-cli --exit-status \
+  "$(gh run list --repo netskopeoss/netskope-cli --workflow release.yml --limit 1 --json databaseId -q '.[0].databaseId')"
+```
+- Wait for the run to succeed before continuing. If the publish step fails, fix the cause and `gh run rerun` it; PyPI rejects duplicate files rather than corrupting anything.
+- Fallback only, when Actions cannot run (outage, publisher not registered yet): publish locally with the keychain token.
 ```bash
 rm -rf dist   # uv publish uploads everything in dist/, so the previous release's files must go first
 uv build
@@ -65,7 +72,6 @@ UV_PUBLISH_TOKEN="$token" uv publish --check-url https://pypi.org/simple/
 ```
 - The token comes from the macOS keychain entry set up once per CLAUDE.md; never echo it. A missing or empty token must stop here: uv would otherwise upload with blank credentials and PyPI's 403 would arrive after the tag and GitHub Release are already public.
 - `--check-url` lets a retry skip files PyPI already has instead of failing on the first duplicate.
-- Wait for publish to succeed before continuing.
 
 ### 7. Update the Homebrew tap
 - Sync the local tap first: `cd ../homebrew-tap && git pull --ff-only origin main`
