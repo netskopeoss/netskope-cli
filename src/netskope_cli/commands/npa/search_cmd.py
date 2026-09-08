@@ -70,7 +70,7 @@ def validate_name(
     """
     if resource_type not in _VALID_RESOURCE_TYPES:
         raise typer.BadParameter(
-            f"Invalid resource type '{resource_type}'. " f"Valid choices: {', '.join(_VALID_RESOURCE_TYPES)}."
+            f"Invalid resource type '{resource_type}'. Valid choices: {', '.join(_VALID_RESOURCE_TYPES)}."
         )
 
     client = _build_client(ctx)
@@ -114,7 +114,7 @@ def search_resources(
     """
     if resource_type not in _VALID_SEARCH_TYPES:
         raise typer.BadParameter(
-            f"Invalid resource type '{resource_type}'. " f"Valid choices: {', '.join(_VALID_SEARCH_TYPES)}."
+            f"Invalid resource type '{resource_type}'. Valid choices: {', '.join(_VALID_SEARCH_TYPES)}."
         )
 
     client = _build_client(ctx)

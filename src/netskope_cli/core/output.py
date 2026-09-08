@@ -794,7 +794,7 @@ class OutputFormatter:
         if str_info is not None and str_info.sample is not None and not isinstance(str_info.sample, (list, dict)):
             where_example = f'{str_info.path} eq "{str_info.sample}"'
         else:
-            where_example = f"{leaves[0] if leaves else 'a'} eq \"x\""
+            where_example = f'{leaves[0] if leaves else "a"} eq "x"'
         sort_example = f"{leaves[0] if leaves else 'a'}:desc"
         self.err_console.print(
             rich_escape(

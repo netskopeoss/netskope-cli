@@ -500,9 +500,7 @@ def _maybe_show_setup_hint(ctx: typer.Context, cli_profile: str | None) -> None:
             )
         else:
             console.print()
-            console.print(
-                "[bold yellow]No credentials configured[/bold yellow] " f"for profile [bold]'{active}'[/bold]."
-            )
+            console.print(f"[bold yellow]No credentials configured[/bold yellow] for profile [bold]'{active}'[/bold].")
             console.print()
             console.print("  Set up authentication (choose one):")
             console.print("    [cyan]netskope config set-token[/cyan]          # interactive prompt")
@@ -511,7 +509,7 @@ def _maybe_show_setup_hint(ctx: typer.Context, cli_profile: str | None) -> None:
             console.print('    [cyan]export NETSKOPE_API_TOKEN="..."[/cyan]    # env variable')
             console.print()
             console.print(
-                "  [dim]Get a token from: Settings > Tools > REST API v2 in your" " Netskope admin console.[/dim]"
+                "  [dim]Get a token from: Settings > Tools > REST API v2 in your Netskope admin console.[/dim]"
             )
             console.print()
             raise ConfigError(
@@ -538,7 +536,7 @@ def _print_welcome_banner() -> None:
     console.print("  [bold]Then try:[/bold]")
     console.print("    [cyan]netskope alerts list --limit 5[/cyan]")
     console.print()
-    console.print("  [dim]Get a token from: Settings > Tools > REST API v2 in your" " Netskope admin console.[/dim]")
+    console.print("  [dim]Get a token from: Settings > Tools > REST API v2 in your Netskope admin console.[/dim]")
     console.print()
 
 

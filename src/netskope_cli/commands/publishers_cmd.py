@@ -100,14 +100,13 @@ def list_publishers(
         "--limit",
         "-l",
         help=(
-            "Maximum number of publishers to return. Use with --offset for pagination. "
-            "Omit to return all publishers."
+            "Maximum number of publishers to return. Use with --offset for pagination. Omit to return all publishers."
         ),
     ),
     offset: Optional[int] = typer.Option(
         None,
         "--offset",
-        help=("Number of records to skip before returning results. Use with --limit for " "pagination. Defaults to 0."),
+        help=("Number of records to skip before returning results. Use with --limit for pagination. Defaults to 0."),
     ),
     filter_query: Optional[str] = typer.Option(
         None,
@@ -243,7 +242,7 @@ def update_publisher(
         None,
         "--name",
         "-n",
-        help=("New display name for the publisher. Must be unique. " "At least one update field is required."),
+        help=("New display name for the publisher. Must be unique. At least one update field is required."),
     ),
 ) -> None:
     """Update an existing publisher's configuration.
