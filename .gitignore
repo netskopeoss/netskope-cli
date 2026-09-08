@@ -33,7 +33,7 @@ ENV/
 .coverage
 htmlcov/
 .pytest_cache/
-.mypy_cache/
+.ruff_cache/
 
 # OS
 .DS_Store

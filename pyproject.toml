@@ -53,10 +53,7 @@ dev = [
     "pytest-mock==3.15.1",
     "respx==0.22.0",
     "ruff==0.15.5",
-    "black==26.3.1",
-    "mypy==1.19.1",
-    "types-toml==0.10.8.20260518",
-    "types-pyyaml==6.0.12.20260518",
+    "ty==0.0.79",
 ]
 
 # hatchling rather than uv_build: Homebrew installs the sdist with pip's
@@ -81,21 +78,21 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
 
-[tool.black]
-line-length = 120
-target-version = ["py311"]
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 
-[tool.mypy]
-python_version = "3.11"
-warn_return_any = true
-warn_unused_configs = true
+[tool.ty.environment]
+python-version = "3.11"
 
-# playwright is an optional extra ([browser]); browser_auth.py imports it
-# lazily behind try/except ImportError, so stubs are absent in a base install.
-[[tool.mypy.overrides]]
-module = "playwright.*"
-ignore_missing_imports = true
+# Type-check the package; tests are exercised by pytest.
+[tool.ty.src]
+include = ["src"]
+
+# playwright is an optional extra ([browser]); browser_auth.py imports it lazily
+# behind try/except ImportError, so it is absent from a base install.
+[[tool.ty.overrides]]
+include = ["src/netskope_cli/core/browser_auth.py"]
+
+[tool.ty.overrides.rules]
+unresolved-import = "ignore"

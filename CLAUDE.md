@@ -16,11 +16,11 @@ uv run pytest tests/integration/    # Integration tests only
 uv run pytest tests/unit/test_client.py::TestClassName  # Single test class
 uv run pytest --cov=src/netskope_cli tests/             # With coverage
 
-# Linting & Formatting (run before commits/PRs)
+# Lint, format, type-check (run before commits/PRs)
 uv run ruff check .                 # Lint
 uv run ruff check . --fix           # Auto-fix lint issues
-uv run black .                      # Format
-uv run mypy src/                    # Type check
+uv run ruff format .                # Format (ruff format --check . to verify only)
+uv run ty check                     # Type check src/ (scope and rules in [tool.ty])
 ```
 
 ## Architecture
@@ -60,9 +60,10 @@ Each module defines helper functions: `_build_client()`, `_get_formatter()`, `_g
 
 ### Key Conventions
 
-- **Line length:** 120 (ruff and black)
+- **Line length:** 120 (ruff lint and ruff format)
 - **Python target:** 3.11+
-- **Config format:** Ruff rules E, F, W, I; mypy strict mode
+- **Toolchain:** uv for packaging, ruff for lint (rules E, F, W, I) and formatting, ty for type checking of `src/`;
+  all configured in `pyproject.toml`. Suppress a ty diagnostic with `# ty: ignore[rule]`; bare `# type: ignore` also works.
 - **Test tools:** pytest + respx (httpx mocking) + pytest-mock
 - **Secrets:** Never hardcode; use env vars or keyring. Config files in `.gitignore`.
 - **Formatters:** always obtain one via `netskope_cli.core.output.build_formatter(ctx)` (each module's
