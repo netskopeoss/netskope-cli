@@ -89,12 +89,13 @@ Each module defines helper functions: `_build_client()`, `_get_formatter()`, `_g
 ## Releasing to PyPI
 
 ```bash
-# 1. Bump version in BOTH places (keep them in sync)
+# 1. Bump version in BOTH places (keep them in sync), then refresh the lockfile
 #    - pyproject.toml  →  version = "X.Y.Z"
 #    - src/netskope_cli/main.py  →  __version__ = "X.Y.Z"
+uv lock                     # uv.lock records the project version; uv sync --locked fails until this runs
 
 # 2. Commit and push the version bump
-git add pyproject.toml src/netskope_cli/main.py
+git add pyproject.toml uv.lock src/netskope_cli/main.py
 git commit -m "Bump version to X.Y.Z"
 git push origin master
 
@@ -102,13 +103,15 @@ git push origin master
 #    its documented methods are a PyPI Trusted Publisher (CI) or the
 #    UV_PUBLISH_TOKEN environment variable. Locally the token lives in the
 #    macOS keychain and is exposed to the one publish command only.
+rm -rf dist                 # uv publish uploads everything in dist/
 uv build
-UV_PUBLISH_TOKEN="$(security find-generic-password -s pypi-netskope -w)" uv publish
+token="$(security find-generic-password -s pypi-netskope -w)" && [ -n "$token" ] || exit 1
+UV_PUBLISH_TOKEN="$token" uv publish --check-url https://pypi.org/simple/
 ```
 
 **PyPI token setup** (one-time, done by the user — never by AI):
 ```bash
-security add-generic-password -s pypi-netskope -a __token__ -w   # prompts for the pypi-... token
+security add-generic-password -U -s pypi-netskope -a __token__ -w   # prompts for the token; -U lets a rotated one overwrite
 ```
 
 Astral's recommendation is a Trusted Publisher from GitHub Actions, which needs no long-lived token; this

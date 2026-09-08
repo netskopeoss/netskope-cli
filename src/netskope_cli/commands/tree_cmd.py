@@ -41,7 +41,12 @@ _WRITE_COMMAND_NAMES: frozenset[str] = frozenset(
 )
 
 
-def _has_yes_flag(cmd: TyperCommand) -> bool:
+# typer 0.27 renamed the vendored click parameter types; ``--json`` keeps the
+# names its consumers have always seen.
+_TYPE_NAMES = {"str": "text", "int": "integer", "int range": "integer range"}
+
+
+def _has_yes_flag(cmd: TyperGroup | TyperCommand) -> bool:
     """Return True if the command has a --yes / -y option."""
     return any(isinstance(p, TyperOption) and "--yes" in (p.opts or []) for p in cmd.params)
 
@@ -91,7 +96,14 @@ def _walk_json(group: TyperGroup, ctx: typer.Context) -> list[dict]:
         # Positional arguments
         args = [p for p in cmd.params if isinstance(p, TyperArgument)]
         if args:
-            entry["args"] = [{"name": a.human_readable_name, "required": a.required, "type": a.type.name} for a in args]
+            entry["args"] = [
+                {
+                    "name": a.human_readable_name.upper(),
+                    "required": a.required,
+                    "type": _TYPE_NAMES.get(a.type.name, a.type.name),
+                }
+                for a in args
+            ]
 
         # Options (excluding --help)
         opts = [p for p in cmd.params if isinstance(p, TyperOption) and p.name != "help"]
@@ -128,13 +140,18 @@ def _walk_flat(group: TyperGroup, ctx: typer.Context, prefix: str = "") -> list[
         full_name = f"{prefix}{name}"
         if isinstance(cmd, TyperGroup):
             child_ctx = typer.Context(cmd, parent=ctx, info_name=name)
-            result.extend(_walk_flat(cmd, child_ctx, prefix=f"{full_name} "))
+            leaves = _walk_flat(cmd, child_ctx, prefix=f"{full_name} ")
+            # A group with no subcommands that runs its own callback (``ntsk
+            # status``) is executable in its own right, so list it as a leaf.
+            if leaves or not cmd.invoke_without_command:
+                result.extend(leaves)
+                continue
+            arg_sig = ""
         else:
             arg_sig = _arg_signature(cmd)
-            first_line = (cmd.help or "").strip().split("\n")[0]
-            mode = "write" if name in _WRITE_COMMAND_NAMES else "read"
-            has_yes = _has_yes_flag(cmd)
-            result.append((full_name, arg_sig, first_line, mode, has_yes))
+        first_line = (cmd.help or "").strip().split("\n")[0]
+        mode = "write" if name in _WRITE_COMMAND_NAMES else "read"
+        result.append((full_name, arg_sig, first_line, mode, _has_yes_flag(cmd)))
     return result
 
 

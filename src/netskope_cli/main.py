@@ -1182,9 +1182,9 @@ def cli() -> None:
         sys.argv[idx] = "--help"
 
     try:
-        app(standalone_mode=False)
-    except typer.Exit as e:
-        raise SystemExit(e.exit_code)
+        # With standalone_mode=False typer returns an Exit's code instead of
+        # raising it; it is turned back into the process status below.
+        rc = app(standalone_mode=False)
     except typer.Abort:
         raise SystemExit(130)
     except UsageError as exc:
@@ -1223,8 +1223,8 @@ def cli() -> None:
                     redirected = True
                 break
 
-        # Unknown option: replace Click's guess with the closest global or
-        # subcommand option (Click only knows the options of one command).
+        # Unknown option: replace typer's guess with the closest global or
+        # subcommand option (typer only knows the options of one command).
         option_hint: str | None = None
         if "No such option" in msg:
             bad = re.search(r"No such option:? '?(-{1,2}[\w-]+)", msg)
@@ -1233,7 +1233,7 @@ def cli() -> None:
                 candidates.update(_local_option_names(_resolve_leaf_command(sys.argv)))
                 close = difflib.get_close_matches(bad.group(1), sorted(candidates), n=1, cutoff=0.6)
                 if close:
-                    msg = re.sub(r"\s*Did you mean '[^']*'\?", "", msg)
+                    msg = re.sub(r"\s*Did you mean '[^']*'\?|\s*\(Possible options: [^)]*\)", "", msg)
                     option_hint = f"Did you mean [cyan]{close[0]}[/cyan]?"
                     if close[0] in ("--fields", "--where", "--sort", "--list-fields", "--api-fields"):
                         option_hint += " See 'ntsk docs fields' for the query options."
@@ -1311,6 +1311,8 @@ def cli() -> None:
         console = Console(stderr=True)
         console.print(f"[bold red]Error:[/bold red] {exc}")
         raise SystemExit(1)
+    if isinstance(rc, int) and rc:
+        raise SystemExit(rc)
 
 
 # Allow `python -m netskope_cli.main`

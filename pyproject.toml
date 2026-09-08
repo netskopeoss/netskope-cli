@@ -59,12 +59,20 @@ dev = [
     "types-pyyaml==6.0.12.20260518",
 ]
 
+# hatchling rather than uv_build: Homebrew installs the sdist with pip's
+# --no-binary=:all:, which pip also applies to build dependencies, so a compiled
+# backend would be built from its Rust sources on every `brew install`. hatchling
+# is pure Python and, like poetry-core before it, leaves VCS-ignored files (.env,
+# editor swap files) out of the wheel and the sdist.
 [build-system]
-requires = ["uv_build>=0.12.10,<0.13"]
-build-backend = "uv_build"
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
 
-[tool.uv.build-backend]
-module-name = "netskope_cli"
+[tool.hatch.build.targets.wheel]
+packages = ["src/netskope_cli"]
+
+[tool.hatch.build.targets.sdist]
+only-include = ["src/netskope_cli", "README.md", "LICENSE", "CHANGELOG.md", "pyproject.toml"]
 
 [tool.ruff]
 line-length = 120

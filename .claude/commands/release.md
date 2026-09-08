@@ -15,8 +15,8 @@ Do not Ask the user for:
 - Compute the new version based on the bump type
 - Find the previous release tag (`git tag --list | sort -V | tail`) and review `git log <last-tag>..HEAD` to build the changelog bullets
 
-### 2. Update version in ALL FOUR places
-- `pyproject.toml` → `version = "X.Y.Z"`
+### 2. Update version in ALL FOUR places, then refresh the lockfile
+- `pyproject.toml` → `version = "X.Y.Z"`, then run `uv lock`: `uv.lock` records the project's own version, and `uv lock --check` / `uv sync --locked` fail until it is refreshed
 - `src/netskope_cli/main.py` → `__version__ = "X.Y.Z"`
 - `docs/index.html` → TWO spots: the header badge (`<span class="badge badge-blue ml-1">vX.Y.Z</span>`) and the "Verify installation" example output (`netskope-cli X.Y.Z`). After editing, `grep -n "<old-version>" docs/index.html` to confirm nothing was missed.
 - Also validate that the rest of docs/index.html and the README don't need updates for this release's changes (new commands, changed flags, etc.). If they do, update them.
@@ -42,7 +42,7 @@ uv run pytest
 
 ### 5. Commit, push, tag, and create the GitHub Release
 ```bash
-git add pyproject.toml src/netskope_cli/main.py CHANGELOG.md docs/index.html
+git add pyproject.toml uv.lock src/netskope_cli/main.py CHANGELOG.md docs/index.html
 # Also add any other files modified in this session
 git commit -m "Release vX.Y.Z - <short summary>"
 git push origin master
@@ -57,10 +57,14 @@ gh release create vX.Y.Z --repo netskopeoss/netskope-cli --title "vX.Y.Z" --note
 
 ### 6. Build and publish to PyPI
 ```bash
+rm -rf dist   # uv publish uploads everything in dist/, so the previous release's files must go first
 uv build
-UV_PUBLISH_TOKEN="$(security find-generic-password -s pypi-netskope -w)" uv publish
+token="$(security find-generic-password -s pypi-netskope -w)" || { echo "keychain item pypi-netskope not found" >&2; exit 1; }
+[ -n "$token" ] || { echo "empty PyPI token" >&2; exit 1; }
+UV_PUBLISH_TOKEN="$token" uv publish --check-url https://pypi.org/simple/
 ```
-- The token comes from the macOS keychain entry set up once per CLAUDE.md; never echo it.
+- The token comes from the macOS keychain entry set up once per CLAUDE.md; never echo it. A missing or empty token must stop here: uv would otherwise upload with blank credentials and PyPI's 403 would arrive after the tag and GitHub Release are already public.
+- `--check-url` lets a retry skip files PyPI already has instead of failing on the first duplicate.
 - Wait for publish to succeed before continuing.
 
 ### 7. Update the Homebrew tap
@@ -69,7 +73,8 @@ UV_PUBLISH_TOKEN="$(security find-generic-password -s pypi-netskope -w)" uv publ
 - Edit `Formula/netskope.rb` in the local tap repo at `../homebrew-tap/` (relative to the CLI repo)
   - Update the top-level `url` line with the new sdist URL
   - Update the top-level `sha256` line with the new hash
-- **Check every resource block, not just the top-level url**: compare each `resource "<name>"` version in the formula against `uv pip list --format=freeze` (run from the repo so it reads `.venv`). For any runtime dependency whose version changed, fetch its new sdist URL + SHA256 from `https://pypi.org/pypi/<name>/<version>/json` and update that resource block.
+- **Check every resource block, not just the top-level url**: from the CLI repo, run `uv export --no-dev --no-hashes --no-emit-project --format requirements-txt` for the runtime dependency set (outside the repo `uv pip list` silently describes some other interpreter, and the dev venv holds packages such as `click`, pulled in by black, that are not runtime resources). Compare it with the formula's `resource` blocks in both directions: add a block for every new package, delete the block for every package that is gone, and refresh URL + SHA256 from `https://pypi.org/pypi/<name>/<version>/json` for every version change.
+- Homebrew installs the sdist with pip's `--no-binary=:all:`, which also builds the build backend from source. hatchling is pure Python so that is quick; do not move to a compiled backend (uv_build, maturin) without re-testing the formula. After the sdist is on PyPI and the formula is pushed, run `brew install --build-from-source netskopeoss/tap/netskope` before announcing.
   - Note: pip freeze shows jaraco packages with dots (`jaraco.context`) while the formula uses dashes (`jaraco-context`) — normalize names before comparing or you'll get false mismatches.
   - Note: Linux-only deps (e.g. `cryptography` via secretstorage) won't appear in a local macOS pip freeze and are not formula resources — skip them.
 - Commit and push the tap:

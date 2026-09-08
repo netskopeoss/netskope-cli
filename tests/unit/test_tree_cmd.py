@@ -13,7 +13,7 @@ from netskope_cli.commands.tree_cmd import _WRITE_COMMAND_NAMES, _arg_signature,
 
 def _make_group() -> TyperGroup:
     """Build a small synthetic command tree the way the real CLI does: from Typer apps."""
-    root = typer.Typer(add_completion=False)
+    root = typer.Typer()
 
     @root.command("simple")
     def simple_cmd() -> None:
@@ -37,10 +37,15 @@ def _make_group() -> TyperGroup:
     def nested_cmd(limit: int = typer.Option(None, "--limit", help="Max results.")) -> None:
         """Nested command with option."""
 
+    bare = typer.Typer(invoke_without_command=True)
+
+    @bare.callback(invoke_without_command=True)
+    def bare_cb() -> None:
+        """Runs with no subcommand."""
+
     root.add_typer(sub, name="sub")
-    group = typer.main.get_command(root)
-    assert isinstance(group, TyperGroup)
-    return group
+    root.add_typer(bare, name="status")
+    return typer.main.get_group(root)
 
 
 class TestArgSignature:
@@ -79,8 +84,8 @@ class TestWalkJson:
         result = _walk_json(grp, ctx)
 
         arg_cmd = next(e for e in result if e["name"] == "with-arg")
-        assert "args" in arg_cmd
-        assert arg_cmd["args"][0]["name"].lower() == "resource_type"
+        # Schema is stable across typer versions: upper-case names, click's type names.
+        assert arg_cmd["args"] == [{"name": "RESOURCE_TYPE", "required": True, "type": "text"}]
 
     def test_options_included(self) -> None:
         grp = _make_group()
@@ -129,6 +134,16 @@ class TestWalkFlat:
         by_name = {r[0].split()[-1]: r for r in result}
         assert by_name["delete"][4] is True
         assert by_name["simple"][4] is False
+
+    def test_bare_runnable_group_is_a_leaf(self) -> None:
+        grp = _make_group()
+        ctx = typer.Context(grp, info_name="root")
+        flat = {r[0]: r for r in _walk_flat(grp, ctx, prefix="ntsk ")}
+        assert flat["ntsk status"][2] == "Runs with no subcommand."
+        assert flat["ntsk status"][1] == "" and flat["ntsk status"][3] == "read"
+        # The tree form still shows it as a group entry without children.
+        status = next(e for e in _walk_json(grp, ctx) if e["name"] == "status")
+        assert "subcommands" not in status
 
     def test_hidden_excluded(self) -> None:
         grp = _make_group()
