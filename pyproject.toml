@@ -16,7 +16,8 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
 ]
 # Runtime dependencies are pinned exactly. typer 0.26 bundled its own copy of
-# click and reshaped its command classes (see v1.4.6 and core/clickshim.py), and
+# click and reshaped its command classes (see v1.4.6; the tree walkers use
+# typer.core's public classes), and
 # open ranges let fresh installs drift away from the versions the test suite runs
 # against. Bump deliberately: change the pin, `uv lock`, run the full suite, then
 # re-verify `netskope commands` on a fresh install of the built wheel.

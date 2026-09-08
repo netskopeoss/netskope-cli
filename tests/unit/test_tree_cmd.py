@@ -6,13 +6,12 @@ import json
 
 import typer
 import typer.main
-from typer.core import TyperCommand
+from typer.core import TyperArgument, TyperCommand, TyperGroup
 
 from netskope_cli.commands.tree_cmd import _WRITE_COMMAND_NAMES, _arg_signature, _walk_flat, _walk_json
-from netskope_cli.core import clickshim as click
 
 
-def _make_group() -> click.Group:
+def _make_group() -> TyperGroup:
     """Build a small synthetic command tree the way the real CLI does: from Typer apps."""
     root = typer.Typer(add_completion=False)
 
@@ -40,7 +39,7 @@ def _make_group() -> click.Group:
 
     root.add_typer(sub, name="sub")
     group = typer.main.get_command(root)
-    assert isinstance(group, click.Group)
+    assert isinstance(group, TyperGroup)
     return group
 
 
@@ -50,13 +49,13 @@ class TestArgSignature:
         assert _arg_signature(cmd) == ""
 
     def test_single_arg(self) -> None:
-        cmd = TyperCommand("test", params=[click.Argument(param_decls=["resource_type"])], callback=lambda x: None)
+        cmd = TyperCommand("test", params=[TyperArgument(param_decls=["resource_type"])], callback=lambda x: None)
         assert _arg_signature(cmd) == "<RESOURCE_TYPE>"
 
     def test_multiple_args(self) -> None:
         cmd = TyperCommand(
             "test",
-            params=[click.Argument(param_decls=["src"]), click.Argument(param_decls=["dst"])],
+            params=[TyperArgument(param_decls=["src"]), TyperArgument(param_decls=["dst"])],
             callback=lambda x, y: None,
         )
         assert _arg_signature(cmd) == "<SRC> <DST>"
@@ -65,7 +64,7 @@ class TestArgSignature:
 class TestWalkJson:
     def test_structure(self) -> None:
         grp = _make_group()
-        ctx = click.Context(grp, info_name="root")
+        ctx = typer.Context(grp, info_name="root")
         result = _walk_json(grp, ctx)
 
         names = [e["name"] for e in result]
@@ -76,7 +75,7 @@ class TestWalkJson:
 
     def test_args_included(self) -> None:
         grp = _make_group()
-        ctx = click.Context(grp, info_name="root")
+        ctx = typer.Context(grp, info_name="root")
         result = _walk_json(grp, ctx)
 
         arg_cmd = next(e for e in result if e["name"] == "with-arg")
@@ -85,7 +84,7 @@ class TestWalkJson:
 
     def test_options_included(self) -> None:
         grp = _make_group()
-        ctx = click.Context(grp, info_name="root")
+        ctx = typer.Context(grp, info_name="root")
         result = _walk_json(grp, ctx)
 
         sub = next(e for e in result if e["name"] == "sub")
@@ -96,7 +95,7 @@ class TestWalkJson:
 
     def test_json_serialisable(self) -> None:
         grp = _make_group()
-        ctx = click.Context(grp, info_name="root")
+        ctx = typer.Context(grp, info_name="root")
         result = _walk_json(grp, ctx)
         # Must not raise
         output = json.dumps(result, indent=2)
@@ -107,7 +106,7 @@ class TestWalkJson:
 class TestWalkFlat:
     def test_leaf_commands_only(self) -> None:
         grp = _make_group()
-        ctx = click.Context(grp, info_name="root")
+        ctx = typer.Context(grp, info_name="root")
         result = _walk_flat(grp, ctx, prefix="ntsk ")
         commands = [r[0] for r in result]
         # "sub" is a group — should not appear as a leaf
@@ -117,7 +116,7 @@ class TestWalkFlat:
 
     def test_write_classification(self) -> None:
         grp = _make_group()
-        ctx = click.Context(grp, info_name="root")
+        ctx = typer.Context(grp, info_name="root")
         result = _walk_flat(grp, ctx, prefix="ntsk ")
         by_name = {r[0].split()[-1]: r for r in result}
         assert by_name["delete"][3] == "write"
@@ -125,7 +124,7 @@ class TestWalkFlat:
 
     def test_has_yes_flag(self) -> None:
         grp = _make_group()
-        ctx = click.Context(grp, info_name="root")
+        ctx = typer.Context(grp, info_name="root")
         result = _walk_flat(grp, ctx, prefix="ntsk ")
         by_name = {r[0].split()[-1]: r for r in result}
         assert by_name["delete"][4] is True
@@ -133,7 +132,7 @@ class TestWalkFlat:
 
     def test_hidden_excluded(self) -> None:
         grp = _make_group()
-        ctx = click.Context(grp, info_name="root")
+        ctx = typer.Context(grp, info_name="root")
         result = _walk_flat(grp, ctx, prefix="ntsk ")
         commands = [r[0] for r in result]
         assert not any("hidden" in c for c in commands)

@@ -770,22 +770,29 @@ class TestUsersCommands:
 # Regression: typer 0.26 bundled its own copy of click and reshaped its command
 # classes, which made the ``isinstance(obj, click.Group)`` checks in tree_cmd/main
 # silently fail and rendered ``netskope commands`` empty (v1.4.6).  The walkers
-# now import typer's own classes via core/clickshim; these tests drive the *real*
-# app so a typer bump that moves those classes cannot pass unnoticed.
+# now key on typer's public classes (typer.core.TyperGroup and friends) and the
+# error handler keeps one private import; these tests drive the *real* app so a
+# typer bump that moves either cannot pass unnoticed.
 # ---------------------------------------------------------------------------
 
 
 class TestCommandTreeRegression:
-    def test_typer_context_is_the_shim_context(self) -> None:
-        """The classes tree_cmd/main introspect must be the ones typer instantiates."""
-        import typer
+    def test_built_app_is_a_typer_group(self) -> None:
+        """The walkers key on typer.core.TyperGroup; the app typer builds must be one."""
+        import typer.main
+        from typer.core import TyperGroup
 
-        from netskope_cli.core import clickshim
-
-        assert issubclass(typer.Context, clickshim.Context), (
-            "typer moved its command classes; update netskope_cli.core.clickshim or the "
-            "isinstance(..., clickshim.Group) checks in tree_cmd.py/main.py will silently fail."
+        assert isinstance(typer.main.get_command(app), TyperGroup), (
+            "typer no longer builds apps as typer.core.TyperGroup; the isinstance checks in "
+            "tree_cmd.py/main.py will silently fail."
         )
+
+    def test_usage_error_is_still_what_typer_raises(self) -> None:
+        """main.py's one private import must remain the base of typer's bad-usage errors."""
+        import typer
+        from typer._click.exceptions import UsageError
+
+        assert issubclass(typer.BadParameter, UsageError)
 
     def test_commands_flat_lists_many_commands(self) -> None:
         result = runner.invoke(app, ["commands", "--flat"])
@@ -807,14 +814,15 @@ class TestCommandTreeRegression:
         Rendering of the rich tree is TTY-gated, so assert against the walk
         itself rather than stdout.
         """
+        import typer
         import typer.main
+        from typer.core import TyperGroup
 
         from netskope_cli.commands.tree_cmd import _walk_flat
-        from netskope_cli.core import clickshim as click
 
         root = typer.main.get_command(app)
-        assert isinstance(root, click.Group), "real app root is not a command group"
+        assert isinstance(root, TyperGroup), "real app root is not a command group"
 
-        leaves = _walk_flat(root, click.Context(root, info_name="netskope"), prefix="ntsk ")
+        leaves = _walk_flat(root, typer.Context(root, info_name="netskope"), prefix="ntsk ")
         assert len(leaves) > 100, f"expected the full command list, got {len(leaves)} leaves"
         assert any("aicc" in path for path, *_ in leaves)
