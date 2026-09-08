@@ -787,6 +787,31 @@ class TestCommandTreeRegression:
             "tree_cmd.py/main.py will silently fail."
         )
 
+    def test_every_parameter_is_a_typer_option_or_argument(self) -> None:
+        """_local_option_names/_option_takes_value key on TyperOption; nothing else may appear."""
+        import typer
+        import typer.main
+        from typer.core import TyperArgument, TyperCommand, TyperGroup, TyperOption
+
+        from netskope_cli.commands.tree_cmd import _children
+
+        seen = 0
+
+        def walk(group: TyperGroup, ctx: typer.Context) -> None:
+            nonlocal seen
+            for name, cmd in _children(group, ctx):
+                for p in cmd.params:
+                    assert isinstance(p, (TyperOption, TyperArgument)), (name, p)
+                    seen += 1
+                if isinstance(cmd, TyperGroup):
+                    walk(cmd, typer.Context(cmd, parent=ctx, info_name=name))
+                else:
+                    assert isinstance(cmd, TyperCommand)
+
+        root = typer.main.get_group(app)
+        walk(root, typer.Context(root, info_name="ntsk"))
+        assert seen > 500
+
     def test_usage_error_is_still_what_typer_raises(self) -> None:
         """main.py's one private import must remain the base of typer's bad-usage errors."""
         import typer
@@ -826,3 +851,39 @@ class TestCommandTreeRegression:
         leaves = _walk_flat(root, typer.Context(root, info_name="netskope"), prefix="ntsk ")
         assert len(leaves) > 100, f"expected the full command list, got {len(leaves)} leaves"
         assert any("aicc" in path for path, *_ in leaves)
+
+
+class TestCliEntryPoint:
+    """cli() wraps typer with standalone_mode=False; these run the real entry point."""
+
+    @pytest.fixture(autouse=True)
+    def _env(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("NETSKOPE_TENANT", "test.goskope.com")
+        monkeypatch.setenv("NETSKOPE_API_TOKEN", "testtoken123")
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+
+    def test_exits_with_the_code_a_command_raises(self, monkeypatch, capsys):
+        """typer returns Exit's code under standalone_mode=False; it must become the process status."""
+        import sys
+
+        from netskope_cli.main import cli
+
+        monkeypatch.setattr(sys, "argv", ["ntsk", "alerts", "get"])  # no id, no filter -> typer.Exit(1)
+        with pytest.raises(SystemExit) as exc:
+            cli()
+        assert exc.value.code == 1
+        assert "alert ID" in capsys.readouterr().err
+
+    def test_unknown_option_gets_one_suggestion(self, monkeypatch, capsys):
+        import sys
+
+        from netskope_cli.main import cli
+
+        monkeypatch.setattr(sys, "argv", ["ntsk", "alerts", "list", "--lim", "5"])
+        with pytest.raises(SystemExit) as exc:
+            cli()
+        assert exc.value.code == 2
+        err = capsys.readouterr().err
+        assert "Possible options" not in err
+        assert err.count("Did you mean") == 1 and "--limit" in err

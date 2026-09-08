@@ -121,7 +121,7 @@ class TestQueryOptions:
 
 
 def _make_group() -> TyperGroup:
-    root = typer.Typer(add_completion=False)
+    root = typer.Typer()
     sub = typer.Typer()
 
     @sub.command("leaf")
@@ -137,9 +137,7 @@ def _make_group() -> TyperGroup:
         pass
 
     root.add_typer(sub, name="sub")
-    group = typer.main.get_command(root)
-    assert isinstance(group, TyperGroup)
-    return group
+    return typer.main.get_group(root)
 
 
 class TestResolveLeaf:
