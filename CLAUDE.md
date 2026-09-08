@@ -21,6 +21,9 @@ uv run ruff check .                 # Lint
 uv run ruff check . --fix           # Auto-fix lint issues
 uv run ruff format .                # Format (ruff format --check . to verify only)
 uv run ty check                     # Type check src/ (scope and rules in [tool.ty])
+
+# CI (.github/workflows/ci.yml) runs the same four checks on Python 3.11 and 3.14 for every
+# pull request and push to master, then builds the wheel and smoke-tests it from a clean install.
 ```
 
 ## Architecture
@@ -100,10 +103,12 @@ git add pyproject.toml uv.lock src/netskope_cli/main.py
 git commit -m "Bump version to X.Y.Z"
 git push origin master
 
-# 3. Build and publish. uv has no credential store and does not read ~/.pypirc;
-#    its documented methods are a PyPI Trusted Publisher (CI) or the
-#    UV_PUBLISH_TOKEN environment variable. Locally the token lives in the
-#    macOS keychain and is exposed to the one publish command only.
+# 3. Publish. Pushing the vX.Y.Z tag runs .github/workflows/release.yml, which
+#    checks, builds and publishes through PyPI's Trusted Publisher for this repo;
+#    no token is stored anywhere. Watch it with `gh run watch`.
+#    The manual path below is the fallback when Actions cannot run. uv has no
+#    credential store and does not read ~/.pypirc, so the token comes from the
+#    macOS keychain for the one command.
 rm -rf dist                 # uv publish uploads everything in dist/
 uv build
 token="$(security find-generic-password -s pypi-netskope -w)" && [ -n "$token" ] || exit 1
@@ -115,6 +120,6 @@ UV_PUBLISH_TOKEN="$token" uv publish --check-url https://pypi.org/simple/
 security add-generic-password -U -s pypi-netskope -a __token__ -w   # prompts for the token; -U lets a rotated one overwrite
 ```
 
-Astral's recommendation is a Trusted Publisher from GitHub Actions, which needs no long-lived token; this
-repo has no CI yet, so the keychain-backed variable is the local equivalent. Never echo the token, pass it on
-the command line in shared sessions, or commit it to any file.
+`release.yml` uses PyPI's Trusted Publisher, Astral's recommended method, which needs no long-lived token;
+the keychain-backed variable is the fallback only. Never echo the token, pass it on the command line in
+shared sessions, or commit it to any file.
