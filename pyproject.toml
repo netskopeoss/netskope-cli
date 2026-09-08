@@ -7,20 +7,23 @@ license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Netskope" }]
 requires-python = ">=3.11"
-# Poetry derived these from the python constraint; PEP 621 needs them spelled out.
+keywords = ["netskope", "cli", "sase", "security"]
 classifiers = [
+    "Environment :: Console",
+    "Intended Audience :: System Administrators",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
+    "Topic :: Security",
 ]
-# Runtime dependencies are pinned exactly. typer 0.26 bundled its own copy of
-# click and reshaped its command classes (see v1.4.6; the tree walkers use
-# typer.core's public classes), and
-# open ranges let fresh installs drift away from the versions the test suite runs
-# against. Bump deliberately: change the pin, `uv lock`, run the full suite, then
-# re-verify `netskope commands` on a fresh install of the built wheel.
+# Runtime dependencies are pinned exactly: open ranges let fresh installs drift
+# away from the versions the test suite ran against, and typer 0.26 showed how
+# quietly that can break things (see v1.4.6). Bump deliberately: change the pin,
+# run `uv lock` and the full suite, then re-verify `netskope commands` on a fresh
+# install of the built wheel.
 dependencies = [
     "typer==0.27.2",
     "rich==14.3.4",
@@ -40,6 +43,8 @@ browser = ["playwright==1.58.0"]
 Homepage = "https://netskopeoss.github.io/netskope-cli/"
 Repository = "https://github.com/netskopeoss/netskope-cli"
 Documentation = "https://netskopeoss.github.io/netskope-cli/"
+Changelog = "https://github.com/netskopeoss/netskope-cli/blob/master/CHANGELOG.md"
+Issues = "https://github.com/netskopeoss/netskope-cli/issues"
 
 [project.scripts]
 netskope = "netskope_cli.main:cli"
@@ -69,11 +74,12 @@ build-backend = "hatchling.build"
 packages = ["src/netskope_cli"]
 
 [tool.hatch.build.targets.sdist]
-only-include = ["src/netskope_cli", "README.md", "LICENSE", "CHANGELOG.md", "pyproject.toml"]
+# hatchling always adds pyproject.toml, the readme and the license file.
+only-include = ["src/netskope_cli", "CHANGELOG.md"]
 
+# Target Python version is inferred from requires-python.
 [tool.ruff]
 line-length = 120
-target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
@@ -82,10 +88,8 @@ select = ["E", "F", "W", "I"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 
-[tool.ty.environment]
-python-version = "3.11"
-
-# Type-check the package; tests are exercised by pytest.
+# Python version is inferred from requires-python. Type-check the package;
+# tests are exercised by pytest.
 [tool.ty.src]
 include = ["src"]
 
