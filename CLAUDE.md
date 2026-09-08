@@ -67,7 +67,7 @@ Each module defines helper functions: `_build_client()`, `_get_formatter()`, `_g
 - **Python target:** 3.11+
 - **Toolchain:** uv for packaging, ruff for lint (rules E, F, W, I) and formatting, ty for type checking of `src/`;
   all configured in `pyproject.toml`. Suppress a ty diagnostic with `# ty: ignore[rule]`; bare `# type: ignore` also works.
-- **Changelog:** `CHANGELOG.md` follows Keep a Changelog 1.1.0 from `[Unreleased]` onward. Every user-visible change
+- **Changelog:** `CHANGELOG.md` follows Keep a Changelog 1.1.0 throughout. Every user-visible change
   lands in the same PR under `### Added` / `Changed` / `Deprecated` / `Removed` / `Fixed` / `Security` in the Unreleased
   section, one or two sentences per entry; the release runbook turns that section into the version entry and the
   GitHub Release notes.

@@ -22,7 +22,7 @@ Do not Ask the user for:
 - Also validate that the rest of docs/index.html and the README don't need updates for this release's changes (new commands, changed flags, etc.). If they do, update them.
 
 ### 3. Update CHANGELOG.md
-The file follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/) from the Unreleased section onward.
+The file follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/) throughout.
 - Rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` and insert a fresh, empty `## [Unreleased]` above it.
 - Entries sit under `### Added`, `### Changed`, `### Deprecated`, `### Removed`, `### Fixed` and `### Security`, in that order, one or two sentences each; drop empty subsections.
 - Update the reference links at the bottom of the file: point `[Unreleased]` at `compare/vX.Y.Z...HEAD` and add `[X.Y.Z]: https://github.com/netskopeoss/netskope-cli/compare/v<previous>...vX.Y.Z`.
