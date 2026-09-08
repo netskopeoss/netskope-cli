@@ -53,7 +53,7 @@ dev = [
     "pytest-mock==3.15.1",
     "respx==0.22.0",
     "ruff==0.15.5",
-    "black==26.1.0",
+    "black==26.3.1",
     "mypy==1.19.1",
     "types-toml==0.10.8.20260518",
     "types-pyyaml==6.0.12.20260518",
