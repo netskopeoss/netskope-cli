@@ -6,7 +6,7 @@ You are performing a full release of the netskope CLI package. This is a one-sto
 
 Do not Ask the user for:
 1. **Version bump type**: patch (0.2.7 → 0.2.8), minor (0.2.7 → 0.3.0), or major (0.2.7 → 1.0.0). Default: patch. If the user does not specify, assume a patch bump.
-2. **Changelog entry**: A short summary of what changed in this release. Derive bullet points from the commits and diff since the last release tag (`git log v<last>..HEAD`), not just the working tree.
+2. **Changelog entries**: the `[Unreleased]` section of CHANGELOG.md should already hold them, since every PR adds its own. Check `git log v<last>..HEAD` for anything missing and add it before releasing.
 
 ## Steps
 
@@ -22,13 +22,10 @@ Do not Ask the user for:
 - Also validate that the rest of docs/index.html and the README don't need updates for this release's changes (new commands, changed flags, etc.). If they do, update them.
 
 ### 3. Update CHANGELOG.md
-- Prepend a new entry at the top (below the header) with format:
-```
-## [X.Y.Z] - YYYY-MM-DD
-
-- bullet points describing the release
-```
-- If CHANGELOG.md does not exist, create it with a `# Changelog` header first.
+The file follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/) from the Unreleased section onward.
+- Rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` and insert a fresh, empty `## [Unreleased]` above it.
+- Entries sit under `### Added`, `### Changed`, `### Deprecated`, `### Removed`, `### Fixed` and `### Security`, in that order, one or two sentences each; drop empty subsections.
+- Update the reference links at the bottom of the file: point `[Unreleased]` at `compare/vX.Y.Z...HEAD` and add `[X.Y.Z]: https://github.com/netskopeoss/netskope-cli/compare/v<previous>...vX.Y.Z`.
 
 ### 4. Lint, format, type-check, test
 ```bash
@@ -51,8 +48,9 @@ git push origin master
 git tag -a vX.Y.Z -m "vX.Y.Z - <short summary>"
 git push origin vX.Y.Z
 
-# GitHub Release with the changelog bullets as notes
-gh release create vX.Y.Z --repo netskopeoss/netskope-cli --title "vX.Y.Z" --notes "<changelog bullets>"
+# GitHub Release notes are the version's CHANGELOG section, verbatim
+awk '/^## \[X.Y.Z\]/{f=1; next} /^## \[/{f=0} f' CHANGELOG.md > /tmp/release-notes.md
+gh release create vX.Y.Z --repo netskopeoss/netskope-cli --title "vX.Y.Z" --notes-file /tmp/release-notes.md
 ```
 
 ### 6. Publish to PyPI (CI, triggered by the tag)
