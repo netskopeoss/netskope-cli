@@ -233,7 +233,7 @@ def profiles_update(
     ctx: typer.Context,
     profile_id: int = typer.Argument(
         ...,
-        help=("Numeric ID of the DNS profile to update. Find IDs by running " "'netskope dns profiles list'."),
+        help=("Numeric ID of the DNS profile to update. Find IDs by running 'netskope dns profiles list'."),
     ),
     name: Optional[str] = typer.Option(
         None,
@@ -714,7 +714,7 @@ def groups_update(
     ctx: typer.Context,
     group_id: int = typer.Argument(
         ...,
-        help=("Numeric ID of the inheritance group to update. Find IDs by running " "'netskope dns groups list'."),
+        help=("Numeric ID of the inheritance group to update. Find IDs by running 'netskope dns groups list'."),
     ),
     name: Optional[str] = typer.Option(
         None,

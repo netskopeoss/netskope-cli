@@ -172,7 +172,7 @@ def get_alert(
         from netskope_cli.core.output import echo_error
 
         echo_error(
-            "Provide an alert ID or at least one filter" " (--user, --app, --name, --type, --severity, --activity)."
+            "Provide an alert ID or at least one filter (--user, --app, --name, --type, --severity, --activity)."
         )
         raise typer.Exit(code=1)
 

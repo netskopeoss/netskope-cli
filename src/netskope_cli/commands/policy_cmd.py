@@ -230,12 +230,12 @@ def url_list_update(
     ctx: typer.Context,
     url_list_id: int = typer.Argument(
         ...,
-        help=("Numeric ID of the URL list to update. Find IDs by running " "'netskope policy url-list list'."),
+        help=("Numeric ID of the URL list to update. Find IDs by running 'netskope policy url-list list'."),
     ),
     name: Optional[str] = typer.Option(
         None,
         "--name",
-        help=("New name for the URL list. Omit to keep the current name. Must be unique " "within your tenant."),
+        help=("New name for the URL list. Omit to keep the current name. Must be unique within your tenant."),
     ),
     urls: Optional[str] = typer.Option(
         None,

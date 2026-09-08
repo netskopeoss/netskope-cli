@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 ips_app = typer.Typer(
     name="ips",
-    help=("Intrusion Prevention System — view IPS status, manage IP allowlists, " "and browse signature references."),
+    help=("Intrusion Prevention System — view IPS status, manage IP allowlists, and browse signature references."),
     no_args_is_help=True,
 )
 

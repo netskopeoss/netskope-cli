@@ -130,7 +130,7 @@ def private_apps_list(
     offset: Optional[int] = typer.Option(
         None,
         "--offset",
-        help=("Number of records to skip before returning results. Use with --limit for " "pagination. Defaults to 0."),
+        help=("Number of records to skip before returning results. Use with --limit for pagination. Defaults to 0."),
     ),
     filter: Optional[str] = typer.Option(
         None,
@@ -299,7 +299,7 @@ def config_update(
     scope: str = typer.Option(
         ...,
         "--scope",
-        help=("Configuration scope to update: 'npa' (client configuration) " "or 'publishers'."),
+        help=("Configuration scope to update: 'npa' (client configuration) or 'publishers'."),
     ),
     set_values: Optional[list[str]] = typer.Option(
         None,

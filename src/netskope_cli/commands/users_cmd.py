@@ -406,9 +406,7 @@ def user_update(
     ctx: typer.Context,
     user_id: str = typer.Argument(
         ...,
-        help=(
-            "SCIM user ID (scimId) to update. Find scimId values via " "'netskope users list' or 'netskope users get'."
-        ),
+        help=("SCIM user ID (scimId) to update. Find scimId values via 'netskope users list' or 'netskope users get'."),
     ),
     set_values: Optional[list[str]] = typer.Option(
         None,
@@ -623,7 +621,7 @@ def group_members(
     ctx: typer.Context,
     group_name: str = typer.Argument(
         ...,
-        help=("Display name of the group to list members for. " "For example: 'Engineering' or 'Sales Team'."),
+        help=("Display name of the group to list members for. For example: 'Engineering' or 'Sales Team'."),
     ),
     limit: int = typer.Option(
         100,
