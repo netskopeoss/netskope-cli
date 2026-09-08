@@ -51,6 +51,10 @@ class State:
     output: OutputFormat = OutputFormat.table
     verbose: int = 0
     quiet: bool = False
+    # ``--quiet`` exactly as typed.  ``quiet`` above is also switched on when
+    # stdout is not a TTY; a stderr notice that must reach a pipeline (the
+    # --fields transition note) checks this one instead.
+    quiet_explicit: bool = False
     no_color: bool = False
     raw: bool = False
     epoch: bool = False
@@ -332,7 +336,9 @@ def main(
     ),
 ) -> None:
     """Global options applied to every subcommand."""
-    # Auto-enable quiet mode when stdout is not a TTY (piped output).
+    # Auto-enable quiet mode when stdout is not a TTY (piped output), but
+    # keep the flag as typed: some stderr notices honour only an explicit -q.
+    quiet_explicit = quiet
     if not quiet and not _stdout_is_tty():
         quiet = True
 
@@ -347,6 +353,7 @@ def main(
         output=output,
         verbose=verbose,
         quiet=quiet,
+        quiet_explicit=quiet_explicit,
         no_color=no_color,
         raw=raw,
         epoch=epoch,

@@ -101,15 +101,15 @@ def resolve_api_fields(ctx: Any, api_fields: str | None) -> ApiFieldSelection:
     When ``--api-fields`` is absent nothing is sent and, for one release, a
     one-line note on stderr tells users who pass a plain top-level ``--fields``
     list (the old server-side spelling) how to get the payload trimming back.
-    The note is informational and follows ``--quiet`` (auto-enabled when stdout
-    is piped), so it appears in interactive runs only.
+    Scripts that pipe the output are its audience, so the note ignores the
+    non-TTY auto-quiet and is suppressed only by an explicit ``--quiet``.
     """
     state = getattr(ctx, "obj", None)
     global_fields: list[str] | None = getattr(state, "fields", None) or None
     requested = split_names(api_fields)
 
     if not requested:
-        quiet = bool(getattr(state, "quiet", False))
+        quiet = bool(getattr(state, "quiet_explicit", False))
         if global_fields and not quiet and all(top_level_name(f) == f for f in global_fields):
             _err_console(state).print(f"[dim]{_TRANSITION_NOTE}[/dim]", soft_wrap=True)
         return ApiFieldSelection(request=None, display=None)

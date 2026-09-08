@@ -1,6 +1,6 @@
 """Tests for core.datasearch: --api-fields widening and the 10,000-row --count cap.
 
-Covers the two bugs from the 1.4.8 work order: a local ``--fields`` that
+Covers the two 1.4.8 bugs: a local ``--fields`` that
 shadowed the global one and was never passed to the formatter, and ``--count``
 reporting the API page cap as if it were the total.
 """
@@ -40,7 +40,7 @@ ALERT_URL = f"{BASE}/api/v2/events/datasearch/alert"
 ALERTS = [
     {
         "_id": "a1",
-        "alert_name": "NSKP-DNSaaS",
+        "alert_name": "Block-Malicious-Domains",
         "alert_type": "policy",
         "action": "block",
         "app": "DNS",
@@ -50,7 +50,7 @@ ALERTS = [
     },
     {
         "_id": "a2",
-        "alert_name": "NSKP-DNSaaS",
+        "alert_name": "Block-Malicious-Domains",
         "alert_type": "policy",
         "action": "allow",
         "app": "DNS",
@@ -123,7 +123,14 @@ class TestResolveApiFields:
     def test_nested_or_glob_global_fields_do_not_note(self, capsys: pytest.CaptureFixture[str]) -> None:
         resolve_api_fields(_Ctx(fields=["host_info.os"]), None)
         resolve_api_fields(_Ctx(fields=["epdlp.*"]), None)
+        assert _out(capsys)[1] == ""
+
+    def test_note_ignores_auto_quiet_but_not_an_explicit_quiet(self, capsys: pytest.CaptureFixture[str]) -> None:
+        # main() switches ``quiet`` on for piped stdout; scripts are the note's
+        # audience, so only the flag the user typed suppresses it.
         resolve_api_fields(_Ctx(fields=["a", "b"], quiet=True), None)
+        assert "--api-fields" in _out(capsys)[1]
+        resolve_api_fields(_Ctx(fields=["a", "b"], quiet=True, quiet_explicit=True), None)
         assert _out(capsys)[1] == ""
 
     def test_widens_with_where_sort_and_global_fields(self, capsys: pytest.CaptureFixture[str]) -> None:
@@ -297,7 +304,7 @@ class TestFormatterStrictAndCapped:
         OutputFormatter(no_color=True, lenient=True, fields=["nope", "alert_name"]).format_output(ALERTS, fmt="json")
         out, err = _out(capsys)
         assert "'nope' not found in any record" in err
-        assert json.loads(out)[0] == {"nope": None, "alert_name": "NSKP-DNSaaS"}
+        assert json.loads(out)[0] == {"nope": None, "alert_name": "Block-Malicious-Domains"}
 
     def test_capped_count_and_banner(self, capsys: pytest.CaptureFixture[str]) -> None:
         OutputFormatter(no_color=True).format_output(
@@ -352,7 +359,7 @@ def _alert_route(rows: list[dict[str, Any]] | None = None) -> respx.Route:
 
 
 class TestGlobalFieldsOnDatasearchCommands:
-    """Acceptance tests from the work order, bug 1."""
+    """Bug 1: the global --fields must reach the formatter on every command."""
 
     @respx.mock
     def test_alerts_csv_header_is_exactly_the_requested_columns(self, runner: CliRunner) -> None:
@@ -360,7 +367,7 @@ class TestGlobalFieldsOnDatasearchCommands:
         result = _invoke(runner, "alerts", "list", "--limit", "2", "-o", "csv", "--fields", "timestamp,alert_name")
         assert result.exit_code == 0, result.output
         assert result.stdout.splitlines()[0] == "timestamp,alert_name"
-        assert result.stdout.splitlines()[1] == "1784851173,NSKP-DNSaaS"
+        assert result.stdout.splitlines()[1] == "1784851173,Block-Malicious-Domains"
         assert "fields" not in _request_query(route)  # nothing sent server-side
 
     @respx.mock
@@ -428,17 +435,17 @@ class TestGlobalFieldsOnDatasearchCommands:
             cli()  # exit code 0: standalone_mode=False returns instead of raising SystemExit
         out, err = _out(capsys)
         assert out.splitlines()[0] == "nope,alert_name"
-        assert out.splitlines()[1] == ",NSKP-DNSaaS"
+        assert out.splitlines()[1] == ",Block-Malicious-Domains"
         assert "'nope' not found" in err
 
     @respx.mock
-    def test_transition_note_only_for_plain_names_without_api_fields(
-        self, runner: CliRunner, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr("netskope_cli.main._stdout_is_tty", lambda: True)
+    def test_transition_note_reaches_piped_stderr_unless_quiet(self, runner: CliRunner) -> None:
+        # CliRunner's stdout is not a TTY, so this is the piped (auto-quiet) case.
         _alert_route()
         plain = _invoke(runner, "alerts", "list", "--fields", "timestamp,alert_name")
         assert "--api-fields" in plain.output
+        quiet = _invoke(runner, "alerts", "list", "--fields", "timestamp,alert_name", "-q")
+        assert "--api-fields" not in quiet.output
         nested = _invoke(runner, "alerts", "list", "--fields", "timestamp,tags[0]")
         assert "--api-fields" not in nested.output
         both = _invoke(runner, "alerts", "list", "--api-fields", "timestamp", "--fields", "timestamp")
@@ -556,7 +563,7 @@ FULL_PAGE = [
 
 
 class TestCountCap:
-    """Acceptance tests from the work order, bug 2."""
+    """Bug 2: a full datasearch page is a lower bound, not a total."""
 
     @respx.mock
     def test_alerts_count_reports_lower_bound(self, runner: CliRunner) -> None:
