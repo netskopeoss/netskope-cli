@@ -1,22 +1,51 @@
 # Changelog
 
+All notable changes to this project are documented in this file.
+
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) from the
+Unreleased section onward (earlier releases keep their original flat lists), and the
+project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
 ## [Unreleased]
 
-- Fix `--fields` on `alerts list`, the `events` subcommands and `incidents list`/`search` being sent to the API but never applied to the output (#19). The command's local `--fields` shadowed the global one, so `ntsk alerts list -o csv --fields timestamp,alert_name` printed the default six columns with blanks, ignored the requested order, accepted unknown names silently, and `--where` on a field outside the projection reported it "not present in any record". Server-side projections are now a distinct option, `--api-fields` (no short flag), on `alerts list`, every `events` subcommand, `incidents list`/`search`, `npa publishers list` and `npa policy rules list`/`rules get`/`groups list`; `--fields`/`-f` is the global client-side option everywhere and always reaches the formatter. `--api-fields` is widened automatically with every top-level name that `--fields`, `--where` or `--sort` reference, its columns are shown in the requested order unless `--fields` picks others, and an HTTP 400 for a name the widening added says which option referenced it. For one release, passing a plain top-level `--fields` list on these commands prints a one-line stderr note pointing at `--api-fields`; it is printed even when stdout is piped, and only an explicit `--quiet` suppresses it. `npa policy rules get` renders the rule object rather than its `{"data": ..., "status": ...}` envelope so both projections apply to the rule's keys.
-- Remove the redundant client-side `--fields` copies on `steering private-apps list`, `policy url-list list`, `services publishers list`/`private-apps list`, `npa apps list` and every `aicc` command; the global option does the same thing (nested paths and globs included) and now also binds `-f` there.
-- The warning for a `--fields` name that no returned record has is more specific: a hidden `_`-prefixed name points at `--raw`, and a `<field>_iso` name in table output says the companion exists only in json/jsonl/csv/yaml. It stays a warning with close-match suggestions and a blank (table/csv) or null (json/yaml) column, never an exit code: which keys a page carries depends on the rows that landed in it (`users list --fields externalId` when no user in the page has one, `dlp_rule` when no DLP alert did), so a failure keyed on it would change from one page to the next. A server-side `--api-fields` projection keeps the `<field>_iso` companions of the fields it names.
-- Fix `--count` on `alerts list`, `events ...` and `incidents list`, and the event counts in `ntsk status`, reporting the datasearch page cap of 10,000 as if it were the total. `--count` on the datasearch commands and on `events infrastructure`/`transaction` fetches the full 10,000-row page (`events audit` states a total and counts with `--limit` rows), and a page that came back full is a lower bound whatever filled it, the 10,000-row cap or a smaller `--limit`: on a terminal, table/human output prints `10000+` with a stderr notice; `-o json`/`jsonl`/`csv`/`yaml` and any piped output print the bare integer so `$(ntsk ... --count)` keeps parsing a number, with the same notice on stderr; a listing's result banner reads `10,000+ results (capped)`; `ntsk status` renders `≥10,000` and sets `alerts_capped: true` (and friends) in JSON; `alerts summary` notes when its aggregation covered only the first 10,000 alerts. One rule decides: a stated envelope total (`total`, `totalResults`, `status.total`) is exact; a `status.count` larger than the rows of a full page is the lower bound; a `--count --where` over a full page is a lower bound whatever the total says. `--count` with `--group-by` reports the number of groups on every events command (`events list --type ... --group-by ... --count` used to ignore the grouping). An HTTP 200 `ok: 0` error envelope on `alerts list --count`, `incidents list --count` and `alerts summary` is an error rather than a count of 1 or an empty summary, and its message is markup-safe on every events subcommand. `ntsk status` still prints its "All API calls failed" hint when every metric is unavailable.
-- Add the global `--exact` flag: with `--count` on the datasearch commands (alerts, incidents, events other than audit/infrastructure/transaction, which count a single page and say so) it pages through the endpoint with `offset` in 10,000-row steps for the true total, applying `--where` per page, up to `NETSKOPE_COUNT_CEILING` rows (default 200,000; prints `N+`, or the bare integer when piped, if reached). It requires `--start`, which the commands resolve to a fixed epoch once so every page is counted against the same window; paging the API's rolling default window would count a moving target. `--group-by` results are counted on a single page. An endpoint that ignores `offset` (the same first `_id` on consecutive pages) is an error rather than a doubled or falsely exact count, and an `--api-fields` projection is widened with `_id` while counting so that check always has something to compare. The single-page notices respect `--quiet`.
-- `--raw` and `--epoch` apply to `events audit` and `events list --type audit`, and `--limit 0` is rejected there as on every other events command. The events title no longer repeats the total the result banner states, and `--verbose` metadata omits `ok`/`message`.
-- Docs: `ntsk docs fields`, README, the docs site and the per-command help describe `--api-fields`, `--exact` and the count cap.
-- Bump `typer` from 0.25.1 to 0.27.2 and drop the direct `click` dependency. typer 0.26 bundles its own copy of click and no longer has a `Group` class, so `ntsk commands`, the bare-group hint and global-option hoisting now introspect typer's own command classes through `core/clickshim.py` instead of the standalone `click` package; the v1.4.6 regression tests pin that relationship. The `typer[all]` extra, which typer 0.25 no longer defined, is gone (`rich` and `shellingham` were already pinned directly).
-- Bump `typer` from 0.25.1 to 0.27.2 and drop the direct `click` dependency. typer 0.26 bundles its own copy of click and no longer has a `Group` class, so `ntsk commands`, the bare-group hint and global-option hoisting now introspect typer's public command classes (`typer.core.TyperGroup`, `TyperCommand`, `TyperOption`, `TyperArgument`) and build `typer.Context` objects instead of importing the standalone `click` package; the v1.4.6 regression tests pin that relationship. The `typer[all]` extra, which typer 0.25 no longer defined, is gone (`rich` and `shellingham` were already pinned directly).
-- Switch the packaging toolchain from Poetry to uv: PEP 621 `[project]` metadata, `uv_build` as the build backend, dev dependencies in `[dependency-groups]`, and a committed `uv.lock`. Contributors run `uv sync` and `uv run ...`; releases use `uv build` and `uv publish` with the token supplied through `UV_PUBLISH_TOKEN`. Installed wheel metadata is unchanged apart from the typer bump above.
-- Bump `typer` from 0.25.1 to 0.27.2 and drop the direct `click` dependency. typer 0.26 bundles its own copy of click and no longer has a `Group` class, so `ntsk commands`, the bare-group hint and global-option hoisting now introspect typer's public command classes (`typer.core.TyperGroup`, `TyperCommand`, `TyperOption`, `TyperArgument`) and build `typer.Context` objects instead of importing the standalone `click` package; the v1.4.6 regression tests pin that relationship. The `typer[all]` extra, which typer 0.25 no longer defined, is gone (`rich` and `shellingham` were already pinned directly). `ntsk commands --json` keeps its schema: argument names stay upper-case and types keep click's names (`text`, `integer`) although typer 0.27 reports `str` and `int`. An unknown option shows a single suggestion again; typer's own `(Possible options: ...)` is folded into the CLI's hint.
-- Fix `netskope`/`ntsk` exiting 0 after a command failed with `typer.Exit(code=N)` (for example `ntsk alerts get` with no ID or filter). The entry point runs typer with `standalone_mode=False`, which returns the code instead of raising, and the return value was discarded; scripts checking `$?` now see the failure.
-- `ntsk commands --flat` lists `ntsk status`: a group with no subcommands that runs on its own was traversed as a container and never emitted.
-- Switch the packaging toolchain from Poetry to uv: PEP 621 `[project]` metadata, hatchling as the build backend (pure Python, so Homebrew's source-only pip install needs no Rust toolchain for it, and like poetry-core it leaves VCS-ignored files out of the wheel and sdist), dev dependencies in `[dependency-groups]`, and a committed `uv.lock`. PyPI metadata gains Changelog and Issues links, console and security classifiers, and keywords. Contributors run `uv sync` and `uv run ...`; releases use `uv build` and `uv publish` with the token supplied through `UV_PUBLISH_TOKEN`. Linting, formatting and type checking are Astral tools only: `ruff check`, `ruff format` (replacing black; the one-time reformat joins implicit string concatenations that fit on one line) and `ty` (replacing mypy and the `types-*` stub packages, checking `src/`). Two type errors mypy had been told to ignore are fixed instead of re-suppressed: the `aicc analytics breakdown` config is a `TypedDict` and the filter tokenizer's single-character token table is typed. Wheel metadata differs from 1.4.8 in three intended ways: `License-Expression: MIT` replaces the `License` field and the MIT classifier, `Requires-Python` is `>=3.11` without Poetry's `<4.0` cap, and `click` is no longer a requirement.
-- GitHub Actions: `ci.yml` runs `uv sync --locked`, `ruff check`, `ruff format --check`, `ty check` and `pytest` on Python 3.11 and 3.14 for every pull request and push to master, then builds the wheel and smoke-tests `netskope --version` and `netskope commands --flat` from a clean install. `release.yml` publishes to PyPI from a `vX.Y.Z` tag through PyPI's Trusted Publisher after checking that the tag matches the project version; the keychain-token path in the runbook becomes the fallback.
+### Added
+
+- `--api-fields` on `alerts list`, every `events` subcommand, `incidents list`/`search`, `npa publishers list` and `npa policy rules list`/`rules get`/`groups list`: the server-side field projection, now distinct from the global `--fields`. It is widened with every top-level name that `--fields`, `--where` or `--sort` reference, shows its columns in the requested order unless `--fields` picks others, keeps the `<field>_iso` companions of the fields it names, and warns rather than fails when the API omits a projected field. An HTTP 400 for a name the widening added says which option referenced it, on `--exact` and the NPA commands too.
+- Global `--exact`: with `--count` on the datasearch commands (alerts, incidents, events other than `audit`, `infrastructure` and `transaction`, which count a single page and say so), page through the endpoint with `offset` for the true total, applying `--where` per page, up to `NETSKOPE_COUNT_CEILING` rows (default 200,000; prints `N+`, or the bare integer when piped, if reached). It requires `--start`, which the commands resolve to a fixed epoch once so every page is counted against the same window; paging the API's rolling default window would count a moving target. `--group-by` results are counted on a single page. An endpoint that ignores `offset` (the same first `_id` on consecutive pages) is an error rather than a doubled or falsely exact count, and an `--api-fields` projection is widened with `_id` while counting so that check always has something to compare.
+- `ntsk status` marks a count that hit the 10,000-row page cap as `≥N` in the table and adds `alerts_capped` and friends to the JSON output.
+- GitHub Actions: `ci.yml` runs `uv sync --locked`, `ruff check`, `ruff format --check`, `ty check` and `pytest` on Python 3.11 and 3.14 for every pull request and push to master, then builds the wheel and smoke-tests it from a clean install. `release.yml` publishes to PyPI from a `vX.Y.Z` tag through PyPI's Trusted Publisher after checking that the tag matches the project version.
+- PyPI metadata: Changelog and Issues links, console and security classifiers, keywords.
+
+### Changed
+
+- `--fields`/`-f` is the global, client-side option on every command and always reaches the formatter. A name that no returned record has warns with close-match suggestions and renders a blank (table/csv) or null (json/yaml) column; it never fails the command, because which keys a page carries depends on the rows that landed in it (`users list --fields externalId` when no user in the page has one, `dlp_rule` when no DLP alert did). The warning is specific where it can be: a hidden `_`-prefixed name points at `--raw`, and a `<field>_iso` name in table output says the companion exists only in json/jsonl/csv/yaml.
+- For one release, a plain top-level `--fields` list on the commands that used to send it to the API prints a stderr note pointing at `--api-fields`. It survives piped stdout; only an explicit `--quiet` silences it.
+- `--count` on the datasearch commands and on `events infrastructure`/`transaction` fetches the full 10,000-row page (`events audit` states a total and counts with `--limit` rows), and a page that came back full is a lower bound whatever filled it, the 10,000-row cap or a smaller `--limit`: on a terminal, table/human output prints `10000+` with a stderr notice; `-o json`/`jsonl`/`csv`/`yaml` and any piped output print the bare integer so `$(ntsk ... --count)` keeps parsing a number, with the same notice on stderr; a listing's result banner reads `10,000+ results (capped)`; `alerts summary` notes when its aggregation covered only the first 10,000 alerts. One rule decides, shared with `ntsk status`: a stated envelope total (`total`, `totalResults`, `status.total`) is exact; a `status.count` larger than the rows of a full page is the lower bound; a `--count --where` over a full page is a lower bound whatever the total says. `--count` with `--group-by` reports the number of groups on every events command.
+- `npa policy rules get` prints the rule object rather than its `{"data": ..., "status": ...}` envelope.
+- `typer` 0.25.1 to 0.27.2. The command-tree walkers introspect typer's public classes (`typer.core.TyperGroup`, `TyperCommand`, `TyperOption`, `TyperArgument`) instead of the standalone `click` package; `ntsk commands --json` keeps upper-case argument names and click's type names.
+- Packaging moves from Poetry to uv: PEP 621 metadata, hatchling as the build backend, dev dependencies in `[dependency-groups]`, a committed `uv.lock`. Wheel metadata differs from 1.4.8 only in `License-Expression: MIT` replacing the `License` field and classifier, `Requires-Python` losing Poetry's `<4.0` cap, and `click` no longer being required.
+- Lint, format and type-check with `ruff check`, `ruff format` and `ty` (`src/`). The one-time reformat joins implicit string concatenations that fit on one line.
+- `CHANGELOG.md` follows Keep a Changelog throughout: every version's entries are grouped by change type and every version heading links to its GitHub comparison.
+- Release runbook: the tag-triggered workflow is the primary publish path and the keychain-token `uv publish` is the fallback; `uv lock` is part of the version bump.
+- `ntsk docs fields`, README, the docs site and the per-command help describe `--api-fields`, `--exact` and the count cap.
+
+### Removed
+
+- The redundant client-side `--fields` copies on `steering private-apps list`, `policy url-list list`, `services publishers list`/`private-apps list`, `npa apps list` and every `aicc` command; the global option covers them and binds `-f` there too.
+- The direct `click` dependency and the `typer[all]` extra (typer 0.25 no longer defined it; `rich` and `shellingham` were already pinned).
+- black, mypy, `types-toml` and `types-pyyaml` from the dev dependencies.
+
+### Fixed
+
+- `--fields` on `alerts list`, the `events` subcommands and `incidents list`/`search` was sent to the API but never applied to the output, so requested columns and their order were ignored, unknown names were accepted silently, and `--where` on a field outside the projection could never match (#19).
+- `--count` on the datasearch commands, and the event counts in `ntsk status`, reported the 10,000-row page cap as if it were the total (#19).
+- `netskope`/`ntsk` exited 0 after a command failed with `typer.Exit(code=N)`, for example `ntsk alerts get` with no ID or filter; scripts checking `$?` now see the failure.
+- An HTTP 200 `ok: 0` error envelope on `alerts list --count`, `incidents list --count` and `alerts summary` is an error rather than a count of 1 or an empty summary, and its message is markup-safe on every events subcommand.
+- `--raw` and `--epoch` apply to `events audit` and `events list --type audit`, and `--limit 0` is rejected there as on every other events command. The events title no longer repeats the total the result banner states, `--verbose` metadata omits `ok`/`message`, and the single-page notices `--exact` prints off datasearch endpoints respect `--quiet`.
+- `ntsk status` prints its "All API calls failed" hint again when every metric is unavailable; the new `*_capped` flags had defeated the check.
+- `ntsk commands --flat` omitted `ntsk status`, a group with no subcommands that runs on its own.
+- An unknown option showed two competing suggestions after the typer bump; typer's `(Possible options: ...)` is folded into the CLI's hint.
+- Two type errors mypy had been told to ignore: the `aicc analytics breakdown` config is a `TypedDict` and the filter tokenizer's token table is typed.
 
 ## [1.4.8] - 2026-09-04
 
@@ -323,3 +352,43 @@ Based on feedback from an AI agent discovery session, 10 improvements to help te
 ## [0.2.7] - 2026-03-05
 
 - Initial public release on PyPI
+
+[Unreleased]: https://github.com/netskopeoss/netskope-cli/compare/v1.4.8...HEAD
+[1.4.8]: https://github.com/netskopeoss/netskope-cli/compare/v1.4.7...v1.4.8
+[1.4.7]: https://github.com/netskopeoss/netskope-cli/compare/v1.4.6...v1.4.7
+[1.4.6]: https://github.com/netskopeoss/netskope-cli/compare/v1.4.5...v1.4.6
+[1.4.5]: https://github.com/netskopeoss/netskope-cli/compare/v1.4.4...v1.4.5
+[1.4.4]: https://github.com/netskopeoss/netskope-cli/compare/v1.4.3...v1.4.4
+[1.4.3]: https://github.com/netskopeoss/netskope-cli/compare/v1.4.2...v1.4.3
+[1.4.2]: https://github.com/netskopeoss/netskope-cli/compare/v1.4.0...v1.4.2
+[1.4.0]: https://github.com/netskopeoss/netskope-cli/compare/v1.3.1...v1.4.0
+[1.3.1]: https://github.com/netskopeoss/netskope-cli/compare/v1.3.0...v1.3.1
+[1.3.0]: https://github.com/netskopeoss/netskope-cli/compare/v1.2.1...v1.3.0
+[1.2.1]: https://github.com/netskopeoss/netskope-cli/compare/v1.2.0...v1.2.1
+[1.2.0]: https://github.com/netskopeoss/netskope-cli/compare/v1.1.0...v1.2.0
+[1.1.0]: https://github.com/netskopeoss/netskope-cli/compare/v1.0.2...v1.1.0
+[1.0.2]: https://github.com/netskopeoss/netskope-cli/compare/v1.0.1...v1.0.2
+[1.0.1]: https://github.com/netskopeoss/netskope-cli/compare/v1.0.0...v1.0.1
+[1.0.0]: https://github.com/netskopeoss/netskope-cli/compare/v0.2.28...v1.0.0
+[0.2.28]: https://github.com/netskopeoss/netskope-cli/compare/v0.2.27...v0.2.28
+[0.2.27]: https://github.com/netskopeoss/netskope-cli/compare/v0.2.26...v0.2.27
+[0.2.26]: https://github.com/netskopeoss/netskope-cli/compare/v0.2.25...v0.2.26
+[0.2.25]: https://github.com/netskopeoss/netskope-cli/compare/v0.2.24...v0.2.25
+[0.2.24]: https://github.com/netskopeoss/netskope-cli/compare/v0.2.23...v0.2.24
+[0.2.23]: https://github.com/netskopeoss/netskope-cli/compare/v0.2.22...v0.2.23
+[0.2.22]: https://github.com/netskopeoss/netskope-cli/compare/v0.2.21...v0.2.22
+[0.2.21]: https://github.com/netskopeoss/netskope-cli/compare/v0.2.20...v0.2.21
+[0.2.20]: https://github.com/netskopeoss/netskope-cli/compare/v0.2.19...v0.2.20
+[0.2.19]: https://github.com/netskopeoss/netskope-cli/compare/v0.2.18...v0.2.19
+[0.2.18]: https://github.com/netskopeoss/netskope-cli/compare/v0.2.17...v0.2.18
+[0.2.17]: https://github.com/netskopeoss/netskope-cli/compare/v0.2.16...v0.2.17
+[0.2.16]: https://github.com/netskopeoss/netskope-cli/compare/v0.2.15...v0.2.16
+[0.2.15]: https://github.com/netskopeoss/netskope-cli/compare/v0.2.14...v0.2.15
+[0.2.14]: https://github.com/netskopeoss/netskope-cli/compare/v0.2.13...v0.2.14
+[0.2.13]: https://github.com/netskopeoss/netskope-cli/compare/v0.2.12...v0.2.13
+[0.2.12]: https://github.com/netskopeoss/netskope-cli/compare/v0.2.11...v0.2.12
+[0.2.11]: https://github.com/netskopeoss/netskope-cli/compare/v0.2.10...v0.2.11
+[0.2.10]: https://github.com/netskopeoss/netskope-cli/compare/v0.2.9...v0.2.10
+[0.2.9]: https://github.com/netskopeoss/netskope-cli/releases/tag/v0.2.9
+[0.2.8]: https://pypi.org/project/netskope/0.2.8/
+[0.2.7]: https://pypi.org/project/netskope/0.2.7/
