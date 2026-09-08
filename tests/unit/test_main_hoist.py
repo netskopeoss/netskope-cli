@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 import typer
 import typer.main
+from typer.core import TyperGroup
 
-from netskope_cli.core import clickshim as click
 from netskope_cli.main import _hoist_global_options, _local_option_names, _resolve_leaf_command
 
 
@@ -120,7 +120,7 @@ class TestQueryOptions:
         ]
 
 
-def _make_group() -> click.Group:
+def _make_group() -> TyperGroup:
     root = typer.Typer(add_completion=False)
     sub = typer.Typer()
 
@@ -138,7 +138,7 @@ def _make_group() -> click.Group:
 
     root.add_typer(sub, name="sub")
     group = typer.main.get_command(root)
-    assert isinstance(group, click.Group)
+    assert isinstance(group, TyperGroup)
     return group
 
 
@@ -162,10 +162,10 @@ class TestResolveLeaf:
 
     def test_local_option_names_synthetic(self) -> None:
         root = _make_group()
-        ctx = click.Context(root, info_name="root")
+        ctx = typer.Context(root, info_name="root")
         sub = root.get_command(ctx, "sub")
-        assert isinstance(sub, click.Group)
-        leaf = sub.get_command(click.Context(sub, parent=ctx, info_name="sub"), "leaf")
+        assert isinstance(sub, TyperGroup)
+        leaf = sub.get_command(typer.Context(sub, parent=ctx, info_name="sub"), "leaf")
         assert _local_option_names(leaf) == {"--fields", "--flag", "--limit"}
         assert _local_option_names(None) == set()
 
