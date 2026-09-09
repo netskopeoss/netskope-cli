@@ -13,8 +13,8 @@ from typing import Any, Optional
 import typer
 
 from netskope_cli.core.client import NetskopeClient, build_client
+from netskope_cli.core.datasearch import API_FIELDS_HELP, COUNT_HELP, Page, fetch_page, raise_on_error_envelope
 from netskope_cli.core.exceptions import NetskopeError
-from netskope_cli.core.output import OutputFormatter, spinner
 from netskope_cli.core.output import build_formatter as _core_build_formatter
 from netskope_cli.utils.helpers import validate_time_range
 
@@ -31,9 +31,9 @@ events_app = typer.Typer(
         "/api/v2/events endpoints. Each subcommand maps to a specific event category: "
         "alerts, application, network, page, incident, audit, infrastructure, "
         "client-status, epdlp (endpoint DLP), and transaction.\n\n"
-        "All subcommands support JQL query filtering, field selection, time ranges, "
-        "pagination, grouping, and sorting. Use -o json (before the subcommand) for programmatic "
-        "consumption by scripts and AI agents."
+        "All subcommands support JQL query filtering, a server-side field projection (--api-fields), "
+        "time ranges, pagination, grouping, and sorting, plus the global --fields/--where/--sort "
+        "client-side options. Use -o json for programmatic consumption by scripts and AI agents."
     ),
     no_args_is_help=True,
 )
@@ -47,12 +47,7 @@ _HELP_QUERY = (
     '\'user eq "alice@example.com" AND action eq "block"\'. Omit to return all events. '
     "Run 'netskope docs jql' for full JQL syntax reference."
 )
-_HELP_FIELDS = (
-    "Comma-separated list of field names to include in the response. Sent to the API, so it "
-    "reduces payload size and only accepts top-level event fields, e.g. 'timestamp,user,action,app'. "
-    "Omit to return all available fields. For nested paths, globs, or the same syntax on any other "
-    "command, see the global --fields and 'ntsk docs fields'."
-)
+_HELP_API_FIELDS = API_FIELDS_HELP
 _HELP_START = (
     "Start of the time range for the query. Accepts a Unix epoch timestamp (seconds) or a "
     "relative offset such as '24h' (last 24 hours), '7d' (last 7 days), or '1h' (last hour). "
@@ -129,7 +124,7 @@ def _run_event_query(
     endpoint: str,
     *,
     query: str | None = None,
-    fields: str | None = None,
+    api_fields: str | None = None,
     start: str | None = None,
     end: str | None = None,
     limit: int = 25,
@@ -138,17 +133,18 @@ def _run_event_query(
     title: str = "Events",
     default_fields: list[str] | None = None,
     count_only: bool = False,
+    api_fields_supported: bool = True,
+    extra_params: dict[str, Any] | None = None,
+    spinner_text: str = "Querying events...",
 ) -> None:
     """Execute a GET request against a Netskope events endpoint.
 
-    Builds query parameters from the caller-supplied options, fires the
+    Builds query parameters from the caller-supplied options (plus any
+    *extra_params* an endpoint needs, such as audit's ``type``), fires the
     request through :class:`NetskopeClient`, and renders the response
     using :class:`OutputFormatter`.
     """
     state = ctx.obj
-    no_color = state.no_color if state is not None else False
-    output_fmt = state.output.value if state is not None else "table"
-    quiet = state.quiet if state is not None else False
     count_only = count_only or (getattr(state, "count", False) if state is not None else False)
 
     # Validate limit
@@ -158,15 +154,11 @@ def _run_event_query(
             suggestion="Use --limit with a value greater than 0.",
         )
 
-    client = _build_client(ctx)
-
     # -- Build query params ------------------------------------------------
-    params: dict[str, Any] = {}
+    params: dict[str, Any] = dict(extra_params or {})
 
     if query:
         params["query"] = query
-    if limit:
-        params["limit"] = limit
     if group_by:
         params["groupbys"] = group_by
     if order_by:
@@ -174,157 +166,90 @@ def _run_event_query(
 
     params.update(_parse_time_params(start, end))
 
-    # Field selection sent to the API
-    selected_fields: list[str] | None = None
-    if fields:
-        selected_fields = [f.strip() for f in fields.split(",") if f.strip()]
-        params["fields"] = ",".join(selected_fields)
-
-    # -- Execute request ---------------------------------------------------
-    with spinner("Querying events...", no_color=no_color, quiet=quiet):
-        data = client.request("GET", endpoint, params=params)
-
-    # -- Process and render ------------------------------------------------
-    wide = getattr(state, "wide", False) if state is not None else False
-    _render_event_response(
-        data,
-        ctx=ctx,
-        title=title,
-        output_fmt=output_fmt,
-        no_color=no_color,
-        selected_fields=selected_fields,
-        default_fields=default_fields,
-        count_only=count_only,
-        strip_internal=not (state.raw if state else False),
-        add_iso_timestamps=not (state.epoch if state else False),
-        wide=wide,
+    page = fetch_page(
+        ctx,
+        _build_client(ctx),
+        endpoint,
+        params,
+        api_fields=api_fields,
+        limit=limit,
+        count=count_only,
+        spinner_text=spinner_text,
+        api_fields_supported=api_fields_supported,
     )
+    if page is not None:
+        _render_event_response(ctx, page, title=title, default_fields=default_fields)
 
 
 def _run_audit_query(
     ctx: typer.Context,
     *,
     audit_type: str | None = None,
-    fields: str | None = None,
+    api_fields: str | None = None,
     start: str | None = None,
     end: str | None = None,
     limit: int = 25,
     group_by: str | None = None,
     order_by: str | None = None,
+    count_only: bool = False,
 ) -> None:
     """Execute a GET against the audit events endpoint.
 
     The audit endpoint (``/api/v2/events/data/audit``) differs from the
     datasearch endpoints in that it uses a ``type`` parameter instead of
-    ``query``.
+    ``query``; everything else (limit validation, ``--raw``/``--epoch``,
+    counting) is :func:`_run_event_query`.
     """
-    state = ctx.obj
-    no_color = state.no_color if state is not None else False
-    output_fmt = state.output.value if state is not None else "table"
-    quiet = state.quiet if state is not None else False
-
-    client = _build_client(ctx)
-
-    # -- Build query params ------------------------------------------------
-    params: dict[str, Any] = {}
-
-    if audit_type:
-        params["type"] = audit_type
-    if limit:
-        params["limit"] = limit
-    if group_by:
-        params["groupbys"] = group_by
-    if order_by:
-        params["sortby"] = order_by
-
-    params.update(_parse_time_params(start, end))
-
-    selected_fields: list[str] | None = None
-    if fields:
-        selected_fields = [f.strip() for f in fields.split(",") if f.strip()]
-        params["fields"] = ",".join(selected_fields)
-
-    # -- Execute request ---------------------------------------------------
-    endpoint = "/api/v2/events/data/audit"
-
-    with spinner("Querying audit events...", no_color=no_color, quiet=quiet):
-        data = client.request("GET", endpoint, params=params)
-
-    # -- Process and render ------------------------------------------------
-    global_count = getattr(state, "count", False) if state is not None else False
-    wide = getattr(state, "wide", False) if state is not None else False
-    _render_event_response(
-        data,
-        ctx=ctx,
+    _run_event_query(
+        ctx,
+        "/api/v2/events/data/audit",
+        api_fields=api_fields,
+        start=start,
+        end=end,
+        limit=limit,
+        group_by=group_by,
+        order_by=order_by,
         title="Audit Events",
-        output_fmt=output_fmt,
-        no_color=no_color,
-        selected_fields=selected_fields,
         default_fields=["audit_log_event", "timestamp", "severity_level", "user", "count"],
-        count_only=global_count,
-        wide=wide,
+        count_only=count_only,
+        extra_params={"type": audit_type} if audit_type else None,
+        spinner_text="Querying audit events...",
     )
 
 
-def _has_where(ctx: typer.Context | None) -> bool:
-    """True when the global client-side --where filter is active."""
-    state = getattr(ctx, "obj", None) if ctx is not None else None
-    return getattr(state, "where_expr", None) is not None
-
-
 def _render_event_response(
-    data: Any,
-    *,
-    ctx: typer.Context | None = None,
-    title: str,
-    output_fmt: str,
-    no_color: bool,
-    selected_fields: list[str] | None,
-    default_fields: list[str] | None = None,
-    count_only: bool = False,
-    strip_internal: bool = True,
-    add_iso_timestamps: bool = True,
-    wide: bool = False,
+    ctx: typer.Context, page: Page, *, title: str, default_fields: list[str] | None = None
 ) -> None:
-    """Validate and render an events API response."""
+    """Validate and render an events API response.
+
+    Counting is left to the formatter so a client-side ``--where`` is applied
+    first.  The envelope is handed over whole when ``result`` is a list, so an
+    endpoint total drives ``--count`` and the "Showing N of M" banner; a dict
+    ``result`` (metrics endpoints) or a missing one is rendered on its own.
+    ``ok``/``message`` are dropped so ``--verbose`` metadata shows only the
+    counts.
+    """
+    data = page.data
     if not isinstance(data, dict):
         raise NetskopeError(
             "Unexpected response format from the API.",
             details={"response": data},
         )
+    raise_on_error_envelope(data)
 
-    ok = data.get("ok")
-    if ok is not None and not ok:
-        msg = data.get("message") or data.get("error") or "Unknown API error"
-        raise NetskopeError(f"API returned an error: {msg}", details=data)
-
-    # With a client-side --where the envelope total is meaningless: let the
-    # formatter filter first and count what is left.
-    if count_only and not _has_where(ctx):
-        total = data.get("total", len(data.get("result", [])))
-        print(total)
-        return
-
-    results = data.get("result", [])
+    state = ctx.obj
+    output_fmt = state.output.value if state is not None else "table"
     total = data.get("total")
-
-    if ctx is not None:
-        formatter = _core_build_formatter(ctx)
+    if isinstance(data.get("result"), list) or (page.count and total is not None):
+        payload: Any = {k: v for k, v in data.items() if k not in ("ok", "message")}
     else:
-        formatter = OutputFormatter(no_color=no_color, count_only=count_only, wide=wide)
-
-    display_title = title
-    if total is not None:
-        display_title = f"{title} ({total} total, showing {len(results)})"
-
-    formatter.format_output(
-        results,
+        payload = data.get("result", [])
+    _core_build_formatter(ctx).format_output(
+        payload,
         fmt=output_fmt,
-        fields=selected_fields,
+        title=title,
         default_fields=default_fields,
-        title=display_title,
-        strip_internal=strip_internal,
-        add_iso_timestamps=add_iso_timestamps,
+        **page.format_kwargs(ctx),
     )
 
 
@@ -536,6 +461,7 @@ def events_get(
         limit=1 if id is not None else limit,
         title="Event" if id is not None else title,
         default_fields=default_fields,
+        api_fields_supported=False,
     )
 
 
@@ -553,7 +479,7 @@ def events_list(
         ),
     ),
     query: Optional[str] = typer.Option(None, "--query", help=_HELP_QUERY),
-    fields: Optional[str] = typer.Option(None, "--fields", "-f", help=_HELP_FIELDS),
+    api_fields: Optional[str] = typer.Option(None, "--api-fields", help=_HELP_API_FIELDS),
     start: Optional[str] = typer.Option(None, "--start", "-s", help=_HELP_START),
     end: Optional[str] = typer.Option(None, "--end", "-e", help=_HELP_END),
     limit: int = typer.Option(25, "--limit", "-l", help=_HELP_LIMIT),
@@ -561,7 +487,7 @@ def events_list(
     order_by: Optional[str] = typer.Option(None, "--order-by", help=_HELP_ORDER_BY),
     descending: bool = typer.Option(False, "--desc", help=_HELP_DESC),
     ascending: bool = typer.Option(False, "--asc", help=_HELP_ASC),
-    count: bool = typer.Option(False, "--count", help="Print only the total count of matching records."),
+    count: bool = typer.Option(False, "--count", help=COUNT_HELP),
 ) -> None:
     """Query events by type using a unified interface.
 
@@ -573,6 +499,7 @@ def events_list(
         netskope events list --type application --start 24h
         netskope events list --type alert --query 'severity eq "high"' --limit 50
         netskope events list --type network --count
+        netskope events list --type network --start 7d --count --exact
     """
     normalized = event_type.lower().strip()
 
@@ -580,12 +507,13 @@ def events_list(
         _run_audit_query(
             ctx,
             audit_type=None,
-            fields=fields,
+            api_fields=api_fields,
             start=start or "24h",
             end=end,
             limit=limit,
             group_by=group_by,
             order_by=_apply_sort_direction(order_by, descending, ascending),
+            count_only=count,
         )
         return
 
@@ -597,16 +525,11 @@ def events_list(
 
     endpoint, title, default_fields = _EVENT_TYPE_MAP[normalized]
 
-    if count and not _has_where(ctx):
-        # Fetch minimal data just to get the total count.
-        _run_event_query_with_count(ctx, endpoint, query=query, start=start, end=end)
-        return
-
     _run_event_query(
         ctx,
         endpoint,
         query=query,
-        fields=fields,
+        api_fields=api_fields,
         start=start,
         end=end,
         limit=limit,
@@ -614,42 +537,8 @@ def events_list(
         order_by=_apply_sort_direction(order_by, descending, ascending),
         title=title,
         default_fields=default_fields,
+        count_only=count,
     )
-
-
-def _run_event_query_with_count(
-    ctx: typer.Context,
-    endpoint: str,
-    *,
-    query: str | None = None,
-    start: str | None = None,
-    end: str | None = None,
-) -> None:
-    """Fetch and count events for an endpoint."""
-    state = ctx.obj
-    no_color = state.no_color if state is not None else False
-    quiet = state.quiet if state is not None else False
-    client = _build_client(ctx)
-
-    # Use a high limit to get an accurate count, since the events API
-    # doesn't return a separate 'total' field.
-    params: dict[str, Any] = {"limit": 10000}
-    if query:
-        params["query"] = query
-    params.update(_parse_time_params(start, end))
-
-    with spinner("Counting events...", no_color=no_color, quiet=quiet):
-        data = client.request("GET", endpoint, params=params)
-
-    if isinstance(data, dict):
-        total = data.get("total")
-        if total is not None:
-            print(total)
-            return
-        result = data.get("result", [])
-        print(len(result))
-    else:
-        print(0)
 
 
 # ---------------------------------------------------------------------------
@@ -665,11 +554,10 @@ def alerts(
         "--query",
         help=_HELP_QUERY,
     ),
-    fields: Optional[str] = typer.Option(
+    api_fields: Optional[str] = typer.Option(
         None,
-        "--fields",
-        "-f",
-        help=_HELP_FIELDS,
+        "--api-fields",
+        help=_HELP_API_FIELDS,
     ),
     start: Optional[str] = typer.Option(
         None,
@@ -713,14 +601,14 @@ def alerts(
 
     Examples:
         netskope events alerts --query 'alert_type eq "DLP"' --start 24h
-        netskope events alerts --query 'severity eq "high"' --limit 50 --fields timestamp,user,alert_name
+        netskope events alerts --query 'severity eq "high"' --limit 50 --api-fields timestamp,user,alert_name
         netskope -o json events alerts --start 7d --order-by "timestamp DESC"
     """
     _run_event_query(
         ctx,
         "/api/v2/events/datasearch/alert",
         query=query,
-        fields=fields,
+        api_fields=api_fields,
         start=start,
         end=end,
         limit=limit,
@@ -739,11 +627,10 @@ def application(
         "--query",
         help=_HELP_QUERY,
     ),
-    fields: Optional[str] = typer.Option(
+    api_fields: Optional[str] = typer.Option(
         None,
-        "--fields",
-        "-f",
-        help=_HELP_FIELDS,
+        "--api-fields",
+        help=_HELP_API_FIELDS,
     ),
     start: Optional[str] = typer.Option(
         None,
@@ -784,14 +671,14 @@ def application(
 
     Examples:
         netskope events application --query 'app eq "Dropbox"' --start 24h
-        netskope events application --query 'user eq "alice@example.com"' --fields app,action,timestamp
+        netskope events application --query 'user eq "alice@example.com"' --api-fields app,action,timestamp
         netskope -o json events application --start 7d --group-by app
     """
     _run_event_query(
         ctx,
         "/api/v2/events/datasearch/application",
         query=query,
-        fields=fields,
+        api_fields=api_fields,
         start=start,
         end=end,
         limit=limit,
@@ -810,11 +697,10 @@ def network(
         "--query",
         help=_HELP_QUERY,
     ),
-    fields: Optional[str] = typer.Option(
+    api_fields: Optional[str] = typer.Option(
         None,
-        "--fields",
-        "-f",
-        help=_HELP_FIELDS,
+        "--api-fields",
+        help=_HELP_API_FIELDS,
     ),
     start: Optional[str] = typer.Option(
         None,
@@ -863,7 +749,7 @@ def network(
         ctx,
         "/api/v2/events/datasearch/network",
         query=query,
-        fields=fields,
+        api_fields=api_fields,
         start=start,
         end=end,
         limit=limit,
@@ -882,11 +768,10 @@ def page(
         "--query",
         help=_HELP_QUERY,
     ),
-    fields: Optional[str] = typer.Option(
+    api_fields: Optional[str] = typer.Option(
         None,
-        "--fields",
-        "-f",
-        help=_HELP_FIELDS,
+        "--api-fields",
+        help=_HELP_API_FIELDS,
     ),
     start: Optional[str] = typer.Option(
         None,
@@ -928,14 +813,14 @@ def page(
 
     Examples:
         netskope events page --query 'url_category eq "Gambling"' --start 24h
-        netskope events page --query 'user eq "bob@example.com"' --fields url,category,action,timestamp
+        netskope events page --query 'user eq "bob@example.com"' --api-fields url,category,action,timestamp
         netskope events page --start 7d --limit 200 --order-by "timestamp DESC"
     """
     _run_event_query(
         ctx,
         "/api/v2/events/datasearch/page",
         query=query,
-        fields=fields,
+        api_fields=api_fields,
         start=start,
         end=end,
         limit=limit,
@@ -954,11 +839,10 @@ def incident(
         "--query",
         help=_HELP_QUERY,
     ),
-    fields: Optional[str] = typer.Option(
+    api_fields: Optional[str] = typer.Option(
         None,
-        "--fields",
-        "-f",
-        help=_HELP_FIELDS,
+        "--api-fields",
+        help=_HELP_API_FIELDS,
     ),
     start: Optional[str] = typer.Option(
         None,
@@ -1000,14 +884,14 @@ def incident(
 
     Examples:
         netskope events incident --query 'severity eq "critical"' --start 24h
-        netskope events incident --query 'status eq "open"' --fields incident_id,user,severity,timestamp
+        netskope events incident --query 'status eq "open"' --api-fields incident_id,user,severity,timestamp
         netskope -o json events incident --start 30d --group-by severity
     """
     _run_event_query(
         ctx,
         "/api/v2/events/datasearch/incident",
         query=query,
-        fields=fields,
+        api_fields=api_fields,
         start=start,
         end=end,
         limit=limit,
@@ -1031,11 +915,10 @@ def audit(
             "audit endpoint. Omit to return all audit event types."
         ),
     ),
-    fields: Optional[str] = typer.Option(
+    api_fields: Optional[str] = typer.Option(
         None,
-        "--fields",
-        "-f",
-        help=_HELP_FIELDS,
+        "--api-fields",
+        help=_HELP_API_FIELDS,
     ),
     start: Optional[str] = typer.Option(
         "24h",
@@ -1077,13 +960,13 @@ def audit(
 
     Examples:
         netskope events audit --type admin --start 7d
-        netskope events audit --type user --fields timestamp,user,action --limit 50
+        netskope events audit --type user --api-fields timestamp,user,action --limit 50
         netskope -o json events audit --start 24h --order-by "timestamp DESC"
     """
     _run_audit_query(
         ctx,
         audit_type=audit_type,
-        fields=fields,
+        api_fields=api_fields,
         start=start,
         end=end,
         limit=limit,
@@ -1100,11 +983,10 @@ def infrastructure(
         "--query",
         help=_HELP_QUERY,
     ),
-    fields: Optional[str] = typer.Option(
+    api_fields: Optional[str] = typer.Option(
         None,
-        "--fields",
-        "-f",
-        help=_HELP_FIELDS,
+        "--api-fields",
+        help=_HELP_API_FIELDS,
     ),
     start: Optional[str] = typer.Option(
         None,
@@ -1146,14 +1028,14 @@ def infrastructure(
 
     Examples:
         netskope events infrastructure --start 24h --limit 50
-        netskope events infrastructure --query 'status eq "down"' --fields name,status,timestamp
+        netskope events infrastructure --query 'status eq "down"' --api-fields name,status,timestamp
         netskope -o json events infrastructure --start 7d --group-by status
     """
     _run_event_query(
         ctx,
         "/api/v2/events/data/infrastructure",
         query=query,
-        fields=fields,
+        api_fields=api_fields,
         start=start,
         end=end,
         limit=limit,
@@ -1172,11 +1054,10 @@ def client_status(
         "--query",
         help=_HELP_QUERY,
     ),
-    fields: Optional[str] = typer.Option(
+    api_fields: Optional[str] = typer.Option(
         None,
-        "--fields",
-        "-f",
-        help=_HELP_FIELDS,
+        "--api-fields",
+        help=_HELP_API_FIELDS,
     ),
     start: Optional[str] = typer.Option(
         None,
@@ -1218,14 +1099,14 @@ def client_status(
 
     Examples:
         netskope events client-status --start 24h --limit 100
-        netskope events client-status --query 'device_os eq "Windows"' --fields user,device,status
+        netskope events client-status --query 'device_os eq "Windows"' --api-fields user,device,status
         netskope -o json events client-status --start 7d --group-by status
     """
     _run_event_query(
         ctx,
         "/api/v2/events/datasearch/clientstatus",
         query=query,
-        fields=fields,
+        api_fields=api_fields,
         start=start,
         end=end,
         limit=limit,
@@ -1244,11 +1125,10 @@ def epdlp(
         "--query",
         help=_HELP_QUERY,
     ),
-    fields: Optional[str] = typer.Option(
+    api_fields: Optional[str] = typer.Option(
         None,
-        "--fields",
-        "-f",
-        help=_HELP_FIELDS,
+        "--api-fields",
+        help=_HELP_API_FIELDS,
     ),
     start: Optional[str] = typer.Option(
         None,
@@ -1290,14 +1170,14 @@ def epdlp(
 
     Examples:
         netskope events epdlp --query 'policy eq "PCI"' --start 24h
-        netskope events epdlp --start 7d --fields user,file_name,action,dlp_rule --limit 50
+        netskope events epdlp --start 7d --api-fields user,file_name,action,dlp_rule --limit 50
         netskope -o json events epdlp --start 30d --group-by dlp_rule
     """
     _run_event_query(
         ctx,
         "/api/v2/events/datasearch/epdlp",
         query=query,
-        fields=fields,
+        api_fields=api_fields,
         start=start,
         end=end,
         limit=limit,
@@ -1316,11 +1196,10 @@ def transaction(
         "--query",
         help=_HELP_QUERY,
     ),
-    fields: Optional[str] = typer.Option(
+    api_fields: Optional[str] = typer.Option(
         None,
-        "--fields",
-        "-f",
-        help=_HELP_FIELDS,
+        "--api-fields",
+        help=_HELP_API_FIELDS,
     ),
     start: Optional[str] = typer.Option(
         None,
@@ -1369,7 +1248,7 @@ def transaction(
         ctx,
         "/api/v2/events/metrics/transactionevents",
         query=query,
-        fields=fields,
+        api_fields=api_fields,
         start=start,
         end=end,
         limit=limit,

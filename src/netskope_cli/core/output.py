@@ -13,6 +13,7 @@ import json
 import os
 import sys
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Generator, Sequence
 
@@ -182,6 +183,116 @@ def unwrap_api_response(
     return data, metadata
 
 
+#: Envelope keys that state how many rows exist in total.  ``status.count`` on the
+#: datasearch endpoints is the number of rows returned, so it is not one of them.
+TOTAL_KEYS = ("total", "totalResults", "status.total")
+
+#: Formats a program parses: a count prints as a bare integer there (``N+`` would not parse).
+MACHINE_FORMATS = ("json", "jsonl", "csv", "yaml")
+
+
+def stdout_is_tty() -> bool:
+    """True when stdout is a terminal (a person is reading; a pipe gets machine-friendly output)."""
+    try:
+        return sys.stdout.isatty()
+    except Exception:
+        return False
+
+
+def envelope_total(metadata: dict[str, Any]) -> int | None:
+    """The total an unwrapped envelope states, preferring a real total over ``status.count``.
+
+    A stated ``0`` is an answer, not a missing value, so keys are tested with
+    ``is not None`` rather than truthiness.
+    """
+    for key in (*TOTAL_KEYS, "status.count"):
+        value = metadata.get(key)
+        if value is None:
+            continue
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def page_is_capped(metadata: dict[str, Any], rows: int, limit: int, *, where_active: bool = False) -> bool:
+    """True when a page of *rows* filled *limit* and nothing proves the count exact.
+
+    Datasearch responses carry no total, or a ``status.count`` that is the
+    rows returned, so a full page means "at least this many".  A response
+    that states a real total (:data:`TOTAL_KEYS`) is exact whatever the total
+    is.  With a client-side ``--where`` a full page is always a lower bound:
+    the rows beyond it were never filtered.  ``--count``, ``ntsk status`` and
+    ``alerts summary`` all use this one rule.
+    """
+    if rows < limit:
+        return False
+    if where_active:
+        return True
+    return not any(metadata.get(key) is not None for key in TOTAL_KEYS)
+
+
+def page_count(metadata: dict[str, Any], rows: int, *, capped: bool, where_active: bool = False) -> int:
+    """The count a page supports: a stated total, else the rows (or the better lower bound).
+
+    With ``--where`` the envelope numbers describe unfiltered rows, so the
+    filtered *rows* are the answer.  A capped page has no real total
+    (:func:`page_is_capped` ruled one out) but a ``status.count`` above the
+    rows returned is the better lower bound.
+    """
+    if where_active:
+        return rows
+    stated = envelope_total(metadata)
+    if stated is None:
+        return rows
+    return max(stated, rows) if capped else stated
+
+
+@dataclass(frozen=True)
+class CountResult:
+    """What ``--count`` prints: the number, whether it is a lower bound, and what to do about that."""
+
+    count: int
+    capped: bool
+    hint: str | None = None
+
+
+def print_count(result: CountResult, *, fmt: str | None, err_console: Console) -> None:
+    """Print a :class:`CountResult` the one way every count path uses.
+
+    The number goes to stdout.  A lower bound gets a ``+`` marker only when a
+    person is reading (table/human output on a terminal); machine formats and
+    pipes get the bare integer so ``$(ntsk ... --count)`` keeps parsing, and
+    the *hint* goes to stderr as the record that it is a lower bound.
+    """
+    marker = result.capped and fmt not in MACHINE_FORMATS and stdout_is_tty()
+    print(f"{result.count}+" if marker else result.count)
+    if result.capped and result.hint:
+        err_console.print(f"[yellow]{result.hint}[/yellow]")
+
+
+def flatten_grouped_results(data: list) -> list:
+    """Flatten group-by API responses.
+
+    Detects responses shaped like ``[{"_id": {"field": "val"}, "count": N}, ...]``
+    or ``[{"_id": {"field": "val"}}, ...]`` (no count from API) and flattens them
+    to ``[{"field": "val", "count": N}, ...]``.
+    """
+    if not data or not isinstance(data, list):
+        return data
+    if all(isinstance(row, dict) and "_id" in row and isinstance(row["_id"], dict) for row in data):
+        flattened = []
+        for row in data:
+            new_row = dict(row["_id"])
+            for k, v in row.items():
+                if k != "_id":
+                    new_row[k] = v
+            flattened.append(new_row)
+        return flattened
+    return data
+
+
 # ---------------------------------------------------------------------------
 # Colour / Console helpers
 # ---------------------------------------------------------------------------
@@ -280,6 +391,8 @@ class OutputFormatter:
         count_only: bool = False,
         strip_internal: bool = True,
         add_iso_timestamps: bool = True,
+        capped_at: int | None = None,
+        capped_hint: str | None = None,
     ) -> None:
         """Format and print *data* to stdout.
 
@@ -291,7 +404,12 @@ class OutputFormatter:
             One of ``FORMATS``.  When *None* the format is auto-detected:
             ``"human"`` for interactive TTYs, ``"json"`` otherwise.
         fields:
-            Optional subset of keys/columns to include in the output.
+            A projection the command already sent to the API (``--api-fields``),
+            shown in this order.  The user's client-side list is the
+            constructor's ``fields`` (the global ``--fields``).  Either way a
+            name no returned record has is a warning with close matches and a
+            blank/null column, never a failure: which keys a page carries
+            depends on the rows that landed in it.
         default_fields:
             Default columns to show for table/human when *fields* is None.
             Ignored for json/csv/yaml/jsonl.
@@ -314,6 +432,16 @@ class OutputFormatter:
         add_iso_timestamps:
             When *True* (default), add ``{key}_iso`` companion fields for
             epoch timestamps in JSON/JSONL/CSV/YAML output.
+        capped_at:
+            The page size the API stopped at when *data* filled it (see
+            ``core.datasearch.is_page_capped``).  Counts are then lower
+            bounds: the result banner says so, ``--count`` prints ``N+`` in
+            table/human output (the bare integer in ``MACHINE_FORMATS``) and
+            a notice on stderr gives *capped_hint*.
+        capped_hint:
+            What the capped-count notice tells the user to do; defaults to
+            narrowing the time range.  ``core.datasearch.fetch_page`` adds
+            ``--exact`` when the endpoint can be paged.
         """
         if fmt is None:
             fmt = self._auto_detect_format()
@@ -361,29 +489,24 @@ class OutputFormatter:
                 parts.append(f"{mk}={mv}")
             self.err_console.print(f"[dim]API metadata: {', '.join(parts)}[/dim]")
 
+        count_only = count_only or self._default_count_only
+
         # Show record count for table/human/csv formats when there are results.
         if fmt in ("table", "human", "csv") and isinstance(data, list) and len(data) > 0:
             if removed > 0:
                 if not self._quiet:
                     self.err_console.print(f"[dim]{len(data)} of {len(data) + removed} results matched --where[/dim]")
+            elif capped_at is not None:
+                # --count prints its own capped notice below, so no banner then.
+                if not count_only and not self._quiet:
+                    self.err_console.print(f"[dim]{len(data):,}+ results (capped)[/dim]")
             elif unwrap:
-                total = None
-                if metadata:
-                    total = (
-                        metadata.get("total")
-                        or metadata.get("totalResults")
-                        or metadata.get("status.count")
-                        or metadata.get("status.total")
-                    )
-                if total is not None:
-                    try:
-                        total_int = int(total)
-                        if total_int != len(data):
-                            self.err_console.print(f"[dim]Showing {len(data)} of {total_int} results[/dim]")
-                        else:
-                            self.err_console.print(f"[dim]{total_int} results[/dim]")
-                    except (ValueError, TypeError):
-                        self.err_console.print(f"[dim]{len(data)} results returned[/dim]")
+                total_int = envelope_total(metadata) if metadata else None
+                if total_int is not None:
+                    if total_int != len(data):
+                        self.err_console.print(f"[dim]Showing {len(data)} of {total_int} results[/dim]")
+                    else:
+                        self.err_console.print(f"[dim]{total_int} results[/dim]")
                 else:
                     self.err_console.print(f"[dim]{len(data)} results returned[/dim]")
 
@@ -391,25 +514,18 @@ class OutputFormatter:
         if unwrap and fmt in ("table", "human") and isinstance(data, list) and all(isinstance(r, dict) for r in data):
             self._print_time_range(data)
 
-        # --count mode: print the count and return immediately.  When a
-        # --where filter is active the envelope total is meaningless, so the
-        # filtered record count is reported instead.
-        count_only = count_only or self._default_count_only
+        # --count mode: print the count and return immediately.
         if count_only:
-            total = None
-            if self._where is None:
-                total = (
-                    metadata.get("total")
-                    or metadata.get("totalResults")
-                    or metadata.get("status.count")
-                    or metadata.get("status.total")
+            rows = len(data) if isinstance(data, list) else (1 if data else 0)
+            capped = capped_at is not None
+            n = page_count(metadata, rows, capped=capped, where_active=self._where is not None)
+            hint = None
+            if capped_at is not None:
+                hint = (
+                    f"Count capped at the API maximum of {capped_at:,} rows; "
+                    f"{capped_hint or 'narrow the time range'}."
                 )
-            if total is not None:
-                print(int(total))
-            elif isinstance(data, list):
-                print(len(data))
-            else:
-                print(1 if data else 0)
+            print_count(CountResult(n, capped, hint), fmt=fmt, err_console=self.err_console)
             return
 
         # If the unwrapped data is empty, inform the user (except
@@ -451,6 +567,20 @@ class OutputFormatter:
         if self._sort:
             data = self._apply_sort(data)
 
+        # A server-side projection shaped the request, not the aggregation:
+        # grouped rows keep their group keys and ``count`` column.
+        if is_grouped and fields is not None:
+            fields = None
+        # The companions synthesised above belong to the fields the projection
+        # asked for; keep them so ``--api-fields timestamp`` still yields ``timestamp_iso``.
+        if fields is not None and add_iso_timestamps and fmt in ("json", "jsonl", "csv", "yaml"):
+            recs = self._records_of(data)
+            fields = [
+                f
+                for name in fields
+                for f in ((name, f"{name}_iso") if any(f"{name}_iso" in r for r in recs) else (name,))
+            ]
+
         # Field precedence: explicit per-command fields -> global --fields ->
         # default_fields (table/human/csv only, not grouped, not wide).
         explicit = fields if fields is not None else self._global_fields
@@ -470,7 +600,14 @@ class OutputFormatter:
         # Apply field selection AFTER unwrapping so that --fields applies to
         # individual records, not envelope keys.
         pre_selection_data = data
-        data = self._project(data, effective_fields, fmt=fmt, warn=explicit_requested)
+        data = self._project(
+            data,
+            effective_fields,
+            fmt=fmt,
+            warn=explicit_requested,
+            label="--api-fields" if fields is not None else "--fields",
+            hidden_internal=strip_internal,
+        )
 
         # Fallback: if default_fields removed every column (e.g. grouped
         # results whose keys differ), re-render without selection so the
@@ -528,8 +665,22 @@ class OutputFormatter:
             return ""
         return " Did you mean " + ", ".join(f"[cyan]{rich_escape(m)}[/cyan]" for m in matches) + "?"
 
-    def _project(self, data: Any, fields: Sequence[str] | None, *, fmt: str, warn: bool) -> Any:
-        """Project *data* onto *fields* (dotted paths, globs), warning about unknown names."""
+    def _project(
+        self,
+        data: Any,
+        fields: Sequence[str] | None,
+        *,
+        fmt: str,
+        warn: bool,
+        label: str = "--fields",
+        hidden_internal: bool = False,
+    ) -> Any:
+        """Project *data* onto *fields* (dotted paths, globs).
+
+        A name or glob no record matches is a warning prefixed with *label*
+        (with close matches) and renders blank/null.  *hidden_internal* says
+        ``_``-prefixed keys were stripped, so such a name points at ``--raw``.
+        """
         if fields is None:
             return data
         specs = [f.strip() for f in fields if f and f.strip()]
@@ -542,15 +693,22 @@ class OutputFormatter:
         else:
             paths = list(dict.fromkeys(specs))
         if warn and records:
-            for spec in unmatched_globs:
-                self.err_console.print(
-                    f"[yellow]--fields:[/yellow] pattern '{rich_escape(spec)}' matched no fields. "
-                    "[dim]Try --list-fields to see every field.[/dim]"
-                )
+            problems = [f"pattern '{rich_escape(spec)}' matched no fields." for spec in unmatched_globs]
             for path in find_unmatched(records, paths):
+                name = rich_escape(path)
+                if path.endswith("_iso") and not find_unmatched(records, [path[:-4]]):
+                    # Companions are synthesised for machine-readable formats only.
+                    problems.append(
+                        f"'{name}' is only added in json, jsonl, csv and yaml output "
+                        f"(use '{rich_escape(path[:-4])}' here); column left blank."
+                    )
+                elif hidden_internal and path.startswith("_") and path.split(".")[0].split("[")[0] != "_id":
+                    problems.append(f"'{name}' is internal and hidden unless you pass --raw; column left blank.")
+                else:
+                    problems.append(f"'{name}' not found in any record.{self._suggestion_text(path, records)}")
+            for problem in problems:
                 self.err_console.print(
-                    f"[yellow]--fields:[/yellow] '{rich_escape(path)}' not found in any record."
-                    f"{self._suggestion_text(path, records)} [dim]Run with --list-fields to see every field.[/dim]"
+                    f"[yellow]{label}:[/yellow] {problem} [dim]Run with --list-fields to see every field.[/dim]"
                 )
         if not paths:
             return data
@@ -811,25 +969,7 @@ class OutputFormatter:
 
     @staticmethod
     def _flatten_grouped_results(data: list) -> list:
-        """Flatten group-by API responses.
-
-        Detects responses shaped like ``[{"_id": {"field": "val"}, "count": N}, ...]``
-        or ``[{"_id": {"field": "val"}}, ...]`` (no count from API) and flattens them
-        to ``[{"field": "val", "count": N}, ...]``.
-        """
-        if not data or not isinstance(data, list):
-            return data
-        # Check if this looks like a group-by response (with or without count)
-        if all(isinstance(row, dict) and "_id" in row and isinstance(row["_id"], dict) for row in data):
-            flattened = []
-            for row in data:
-                new_row = dict(row["_id"])
-                for k, v in row.items():
-                    if k != "_id":
-                        new_row[k] = v
-                flattened.append(new_row)
-            return flattened
-        return data
+        return flatten_grouped_results(data)
 
     @staticmethod
     def _select_priority_columns(all_keys: list[str]) -> list[str]:
@@ -1045,19 +1185,6 @@ def build_formatter(ctx: Any) -> "OutputFormatter":
         sort=opt("sort_spec", None) or opt("sort", None),
         list_fields=opt("list_fields", False),
     )
-
-
-def resolve_fields(ctx: Any, local: str | Sequence[str] | None) -> list[str] | None:
-    """Merge a command's own ``--fields`` value with the global one (local wins)."""
-    if isinstance(local, str):
-        parsed = [f.strip() for f in local.split(",") if f.strip()]
-        if parsed:
-            return parsed
-    elif local:
-        return [f for f in local if f]
-    state = getattr(ctx, "obj", None)
-    global_fields = getattr(state, "fields", None) if state is not None else None
-    return list(global_fields) if global_fields else None
 
 
 # ---------------------------------------------------------------------------

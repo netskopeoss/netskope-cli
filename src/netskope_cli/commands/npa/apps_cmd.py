@@ -48,9 +48,6 @@ def apps_list(
     host: Optional[str] = typer.Option(None, "--host", help="Filter by host name."),
     in_policy: Optional[bool] = typer.Option(None, "--in-policy", help="Filter by whether the app is in a policy."),
     protocol: Optional[str] = typer.Option(None, "--protocol", help="Filter by protocol (e.g. tcp, udp)."),
-    fields: Optional[str] = typer.Option(
-        None, "--fields", "-f", help="Comma-separated list of field names to include."
-    ),
     count: bool = typer.Option(False, "--count", help="Print only the total count of matching applications."),
 ) -> None:
     """List NPA private applications.
@@ -94,13 +91,11 @@ def apps_list(
     with spinner("Fetching private applications...", no_color=no_color):
         data = client.request("GET", "/api/v2/steering/apps/private", params=params or None)
 
-    field_list = [f.strip() for f in fields.split(",") if f.strip()] if fields else None
     formatter.format_output(
         data,
         fmt=fmt,
         title="NPA Private Applications",
         default_fields=["app_name", "app_id", "host", "clientless_access", "use_publisher_dns"],
-        fields=field_list,
         count_only=count,
         strip_internal=not (state.raw if state else False),
         add_iso_timestamps=not (state.epoch if state else False),

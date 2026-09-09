@@ -20,6 +20,7 @@ from netskope_cli.commands.npa._helpers import (
 )
 from netskope_cli.commands.npa.local_brokers_cmd import local_brokers_app
 from netskope_cli.commands.npa.upgrade_profiles_cmd import upgrade_profiles_app
+from netskope_cli.core.datasearch import API_FIELDS_HELP, request_with_projection, resolve_api_fields
 from netskope_cli.core.output import echo_success, spinner
 
 # ---------------------------------------------------------------------------
@@ -66,14 +67,10 @@ def list_publishers(
         "-F",
         help="Filter expression to narrow results (API-specific syntax).",
     ),
-    fields: Optional[str] = typer.Option(
+    api_fields: Optional[str] = typer.Option(
         None,
-        "--fields",
-        help=(
-            "Comma-separated list of fields to include in the output."
-            " Sent to the API (top-level fields only). For nested paths, globs, or client-side "
-            "selection on any command see the global --fields and 'ntsk docs fields'."
-        ),
+        "--api-fields",
+        help=API_FIELDS_HELP,
     ),
     count: bool = typer.Option(
         False,
@@ -101,21 +98,19 @@ def list_publishers(
         params["offset"] = offset
     if filter_query is not None:
         params["filter"] = filter_query
-    if fields is not None:
-        params["fields"] = fields
+    selection = resolve_api_fields(ctx, api_fields, params)
 
     with spinner("Fetching publishers..."):
-        data = client.request("GET", "/api/v2/infrastructure/publishers", params=params or None)
+        data = request_with_projection(client, "/api/v2/infrastructure/publishers", params, selection)
 
-    if count:
-        formatter.format_output(data, fmt=fmt, title="Publishers", count_only=True)
-    else:
-        formatter.format_output(
-            data,
-            fmt=fmt,
-            title="Publishers",
-            default_fields=["publisher_name", "publisher_id", "status", "version", "apps_count"],
-        )
+    formatter.format_output(
+        data,
+        fmt=fmt,
+        title="Publishers",
+        fields=selection.display,
+        default_fields=["publisher_name", "publisher_id", "status", "version", "apps_count"],
+        count_only=count,
+    )
 
 
 @publishers_app.command("get")

@@ -13,6 +13,7 @@ from netskope_cli.commands.npa._helpers import (
     _get_output_format,
     _load_json_file,
 )
+from netskope_cli.core.datasearch import API_FIELDS_HELP, request_with_projection, resolve_api_fields
 from netskope_cli.core.output import echo_error, echo_success, spinner
 
 # ---------------------------------------------------------------------------
@@ -75,14 +76,10 @@ def list_rules(
         "-F",
         help="Filter expression to narrow results.",
     ),
-    fields: Optional[str] = typer.Option(
+    api_fields: Optional[str] = typer.Option(
         None,
-        "--fields",
-        help=(
-            "Comma-separated list of fields to include in the output."
-            " Sent to the API (top-level fields only). For nested paths, globs, or client-side "
-            "selection on any command see the global --fields and 'ntsk docs fields'."
-        ),
+        "--api-fields",
+        help=API_FIELDS_HELP,
     ),
     sort_by: Optional[str] = typer.Option(
         None,
@@ -119,20 +116,20 @@ def list_rules(
         params["offset"] = offset
     if filter_query is not None:
         params["filter"] = filter_query
-    if fields is not None:
-        params["fields"] = fields
+    selection = resolve_api_fields(ctx, api_fields, params)
     if sort_by is not None:
         params["sortby"] = sort_by
     if sort_order is not None:
         params["sortorder"] = sort_order
 
     with spinner("Fetching NPA policy rules..."):
-        data = client.request("GET", "/api/v2/policy/npa/rules", params=params or None)
+        data = request_with_projection(client, "/api/v2/policy/npa/rules", params, selection)
 
     formatter.format_output(
         data,
         fmt=fmt,
         title="NPA Policy Rules",
+        fields=selection.display,
         default_fields=["rule_id", "rule_name", "enabled", "group_name", "action"],
         count_only=count,
     )
@@ -142,14 +139,10 @@ def list_rules(
 def get_rule(
     ctx: typer.Context,
     rule_id: int = typer.Argument(..., help="Numeric rule ID to retrieve."),
-    fields: Optional[str] = typer.Option(
+    api_fields: Optional[str] = typer.Option(
         None,
-        "--fields",
-        help=(
-            "Comma-separated list of fields to include in the output."
-            " Sent to the API (top-level fields only). For nested paths, globs, or client-side "
-            "selection on any command see the global --fields and 'ntsk docs fields'."
-        ),
+        "--api-fields",
+        help=API_FIELDS_HELP,
     ),
 ) -> None:
     """Retrieve a specific NPA policy rule by ID.
@@ -165,13 +158,20 @@ def get_rule(
     fmt = _get_output_format(ctx)
 
     params: dict[str, object] = {}
-    if fields is not None:
-        params["fields"] = fields
+    selection = resolve_api_fields(ctx, api_fields, params)
 
     with spinner(f"Fetching NPA policy rule {rule_id}..."):
-        data = client.request("GET", f"/api/v2/policy/npa/rules/{rule_id}", params=params or None)
+        data = request_with_projection(client, f"/api/v2/policy/npa/rules/{rule_id}", params, selection)
 
-    formatter.format_output(data, fmt=fmt, title=f"NPA Policy Rule {rule_id}")
+    # The rule arrives as {"data": {...}, "status": ...}; render the rule itself so
+    # --api-fields and the global --fields apply to its keys, not the envelope's.
+    payload = data["data"] if isinstance(data, dict) and isinstance(data.get("data"), dict) else data
+    formatter.format_output(
+        payload,
+        fmt=fmt,
+        title=f"NPA Policy Rule {rule_id}",
+        fields=selection.display,
+    )
 
 
 @rules_app.command("create")
@@ -334,14 +334,10 @@ def list_groups(
         "--offset",
         help="Number of records to skip before returning results.",
     ),
-    fields: Optional[str] = typer.Option(
+    api_fields: Optional[str] = typer.Option(
         None,
-        "--fields",
-        help=(
-            "Comma-separated list of fields to include in the output."
-            " Sent to the API (top-level fields only). For nested paths, globs, or client-side "
-            "selection on any command see the global --fields and 'ntsk docs fields'."
-        ),
+        "--api-fields",
+        help=API_FIELDS_HELP,
     ),
     count: bool = typer.Option(
         False,
@@ -366,16 +362,16 @@ def list_groups(
         params["limit"] = limit
     if offset is not None:
         params["offset"] = offset
-    if fields is not None:
-        params["fields"] = fields
+    selection = resolve_api_fields(ctx, api_fields, params)
 
     with spinner("Fetching NPA policy groups..."):
-        data = client.request("GET", "/api/v2/policy/npa/policygroups", params=params or None)
+        data = request_with_projection(client, "/api/v2/policy/npa/policygroups", params, selection)
 
     formatter.format_output(
         data,
         fmt=fmt,
         title="NPA Policy Groups",
+        fields=selection.display,
         default_fields=["group_id", "group_name"],
         count_only=count,
     )

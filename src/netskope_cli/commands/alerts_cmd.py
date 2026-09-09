@@ -12,6 +12,14 @@ import typer
 from rich.console import Console
 
 from netskope_cli.core.client import NetskopeClient, build_client
+from netskope_cli.core.datasearch import (
+    API_FIELDS_HELP,
+    COUNT_HELP,
+    DATASEARCH_PAGE_CAP,
+    fetch_page,
+    is_page_capped,
+    raise_on_error_envelope,
+)
 from netskope_cli.core.output import OutputFormatter, spinner
 from netskope_cli.core.output import build_formatter as _core_build_formatter
 
@@ -245,17 +253,10 @@ def list_alerts(
             'AND user eq "alice@example.com"\'. Omit to return all alerts.'
         ),
     ),
-    fields: Optional[str] = typer.Option(
+    api_fields: Optional[str] = typer.Option(
         None,
-        "--fields",
-        "-f",
-        help=(
-            "Comma-separated list of field names to include in the response. Reduces "
-            "payload size and focuses on relevant data. For example: "
-            "'alert_name,severity,user,timestamp'. Omit to return all fields."
-            " Sent to the API (top-level fields only). For nested paths, globs, or client-side "
-            "selection on any command see the global --fields and 'ntsk docs fields'."
-        ),
+        "--api-fields",
+        help=API_FIELDS_HELP,
     ),
     start: Optional[str] = typer.Option(
         None,
@@ -328,7 +329,7 @@ def list_alerts(
     count: bool = typer.Option(
         False,
         "--count",
-        help="Print only the total count of matching alerts.",
+        help=COUNT_HELP,
     ),
 ) -> None:
     """List security alerts from the Netskope events datasearch API.
@@ -345,7 +346,10 @@ def list_alerts(
         ntsk alerts list --since 7d --limit 50
         ntsk alerts list --query 'alert_type eq "DLP"' --limit 50
         ntsk -o json alerts list --query 'severity eq "critical"' --since 24h
-        ntsk alerts list --count
+        ntsk alerts list --fields timestamp,alert_name,app -o csv
+        ntsk alerts list --api-fields timestamp,alert_name --where 'action eq "block"'
+        ntsk alerts list --since 24h --count
+        ntsk alerts list --since 7d --count --exact
     """
     # Validate limit
     if limit <= 0:
@@ -386,8 +390,6 @@ def list_alerts(
 
     if effective_query is not None:
         params["query"] = effective_query
-    if fields is not None:
-        params["fields"] = fields
     if start is not None or end is not None:
         from netskope_cli.utils.helpers import validate_time_range
 
@@ -395,7 +397,6 @@ def list_alerts(
         unix_start, unix_end = validate_time_range(effective_start, end)
         params["starttime"] = unix_start
         params["endtime"] = unix_end
-    params["limit"] = 10000 if count else limit
     if group_by is not None:
         params["groupbys"] = group_by
     if order_by is not None:
@@ -406,18 +407,25 @@ def list_alerts(
             direction = " ASC"
         params["orderby"] = f"{order_by}{direction}"
 
-    quiet = getattr(state, "quiet", False) if state else False
-    with spinner("Fetching alerts...", quiet=quiet):
-        data = client.request("GET", "/api/v2/events/datasearch/alert", params=params or None)
+    page = fetch_page(
+        ctx,
+        client,
+        "/api/v2/events/datasearch/alert",
+        params,
+        api_fields=api_fields,
+        limit=limit,
+        count=count,
+        spinner_text="Fetching alerts...",
+    )
+    if page is None:
+        return
 
     formatter.format_output(
-        data,
+        page.data,
         fmt=fmt,
         title="Alerts",
         default_fields=["alert_name", "alert_type", "severity", "user", "app", "timestamp"],
-        count_only=count,
-        strip_internal=not (state.raw if state else False),
-        add_iso_timestamps=not (state.epoch if state else False),
+        **page.format_kwargs(ctx),
     )
 
 
@@ -470,7 +478,7 @@ def alert_summary(
     fmt = _get_output_format(ctx)
     state = ctx.obj
 
-    params: dict[str, object] = {"limit": 10000}
+    params: dict[str, object] = {"limit": DATASEARCH_PAGE_CAP}
 
     if query is not None:
         params["query"] = query
@@ -483,6 +491,15 @@ def alert_summary(
     quiet = getattr(state, "quiet", False) if state else False
     with spinner(f"Summarising alerts by {by}...", quiet=quiet):
         data = client.request("GET", "/api/v2/events/datasearch/alert", params=params)
+    raise_on_error_envelope(data)
+
+    # The aggregation runs over one API page at most; say so when it filled up
+    # (a data-completeness warning, so it is not silenced by --quiet).
+    if is_page_capped(data, DATASEARCH_PAGE_CAP):
+        _get_console(ctx).print(
+            f"[yellow]Summary covers only the first {DATASEARCH_PAGE_CAP:,} alerts in the window "
+            "(API page cap); narrow the time range with --since/--end for complete counts.[/yellow]"
+        )
 
     # Unwrap the API envelope to get the list of records, then aggregate locally.
     from netskope_cli.core.output import unwrap_api_response

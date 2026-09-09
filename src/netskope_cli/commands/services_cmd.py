@@ -441,12 +441,6 @@ def publishers_list(
             "Number of records to skip for pagination. Combine with --limit " "to page through results. Defaults to 0."
         ),
     ),
-    fields: str | None = typer.Option(
-        None,
-        "--fields",
-        "-f",
-        help="Comma-separated list of field names to include in the response.",
-    ),
     count: bool = typer.Option(False, "--count", help="Print only the total count."),
 ) -> None:
     """List all publishers registered in the tenant.
@@ -465,13 +459,11 @@ def publishers_list(
 
     params: dict[str, object] = {"limit": limit, "offset": offset}
     data = client.request("GET", "/api/v2/infrastructure/publishers", params=params)
-    field_list = [f.strip() for f in fields.split(",") if f.strip()] if fields else None
     state = ctx.obj
     fmt.format_output(
         data,
         fmt=_output_format(ctx),
         title="Publishers",
-        fields=field_list,
         count_only=count,
         strip_internal=not (state.raw if state else False),
         add_iso_timestamps=not (state.epoch if state else False),
@@ -511,12 +503,6 @@ def publishers_get(
 @private_apps_app.command("list")
 def private_apps_list(
     ctx: typer.Context,
-    fields: str | None = typer.Option(
-        None,
-        "--fields",
-        "-f",
-        help="Comma-separated list of field names to include in the response.",
-    ),
     count: bool = typer.Option(False, "--count", help="Print only the total count."),
 ) -> None:
     """List all private applications configured in the tenant.
@@ -534,13 +520,11 @@ def private_apps_list(
     fmt = _get_formatter(ctx)
 
     data = client.request("GET", "/api/v2/steering/apps/private")
-    field_list = [f.strip() for f in fields.split(",") if f.strip()] if fields else None
     state = ctx.obj
     fmt.format_output(
         data,
         fmt=_output_format(ctx),
         title="Private Apps",
-        fields=field_list,
         default_fields=["app_name", "host", "port", "protocol", "publisher_name", "status"],
         count_only=count,
         strip_internal=not (state.raw if state else False),

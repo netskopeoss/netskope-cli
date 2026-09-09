@@ -11,7 +11,6 @@ from netskope_cli.commands.aicc._common import (
     AICC_BASE,
     HELP_ALL,
     HELP_END,
-    HELP_FIELDS,
     HELP_LIMIT,
     HELP_OFFSET,
     HELP_START,
@@ -97,7 +96,6 @@ def dp_violations(
     limit: int = typer.Option(50, "--limit", "-l", help=HELP_LIMIT),
     offset: int = typer.Option(0, "--offset", help=HELP_OFFSET),
     fetch_all: bool = typer.Option(False, "--all", help=HELP_ALL),
-    fields: Optional[str] = typer.Option(None, "--fields", "-f", help=HELP_FIELDS),
 ) -> None:
     """List individual DLP violations for a provider.
 
@@ -121,7 +119,6 @@ def dp_violations(
         limit=limit,
         offset=offset,
         fetch_all=fetch_all,
-        fields=fields,
         default_fields=["severity", "violation", "object_type", "user", "resource", "timestamp", "status"],
         empty_hint="No DLP violations for this provider in the window.",
     )

@@ -65,11 +65,6 @@ HELP_ALL = (
     "Use for full exports and report generation."
 )
 HELP_SEARCH = "Free-text search filter applied server-side to names."
-HELP_FIELDS = (
-    "Comma-separated list of fields to include in the output (client-side projection — "
-    "any response field is valid, unlike the events API where --fields is server-side). "
-    "Example: --fields name,ccl,identities"
-)
 HELP_TIMEZONE = (
     "IANA timezone used by the API to align trend buckets to local days (e.g. America/Los_Angeles). " "Default: UTC."
 )
@@ -225,13 +220,6 @@ def extract_items(payload: Any) -> tuple[list[Any], dict[str, Any]]:
     return [], {}
 
 
-def parse_fields(fields: Optional[str]) -> Optional[list[str]]:
-    if not fields:
-        return None
-    parsed = [f.strip() for f in fields.split(",") if f.strip()]
-    return parsed or None
-
-
 def run_list(
     ctx: typer.Context,
     path: str,
@@ -241,7 +229,6 @@ def run_list(
     limit: int,
     offset: int,
     fetch_all: bool,
-    fields: Optional[str] = None,
     default_fields: Optional[list[str]] = None,
     empty_hint: Optional[str] = None,
     spinner_text: Optional[str] = None,
@@ -250,6 +237,7 @@ def run_list(
 
     Handles single-page fetches (``--limit``/``--offset``), full pagination
     (``--all``), envelope unwrapping, and the "Showing X of Y" footnote.
+    Column selection is the global ``--fields`` option, applied by the formatter.
     """
     formatter = build_formatter(ctx)
     fmt = get_output_format(ctx)
@@ -289,7 +277,6 @@ def run_list(
         fmt=fmt,
         title=title,
         unwrap=False,
-        fields=parse_fields(fields),
         default_fields=default_fields,
         empty_hint=empty_hint,
     )
@@ -300,7 +287,6 @@ def show_payload(
     payload: Any,
     *,
     title: str,
-    fields: Optional[str] = None,
     default_fields: Optional[list[str]] = None,
     empty_hint: Optional[str] = None,
 ) -> None:
@@ -311,7 +297,6 @@ def show_payload(
         fmt=get_output_format(ctx),
         title=title,
         unwrap=False,
-        fields=parse_fields(fields),
         default_fields=default_fields,
         empty_hint=empty_hint,
     )
