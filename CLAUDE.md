@@ -23,7 +23,8 @@ uv run ruff format .                # Format (ruff format --check . to verify on
 uv run ty check                     # Type check src/ (scope and rules in [tool.ty])
 
 # CI (.github/workflows/ci.yml) runs the same four checks on Python 3.11 and 3.14 for every
-# pull request and push to master, then builds the wheel and smoke-tests it from a clean install.
+# pull request and push to master, then builds the wheel and sdist and smoke-tests both from a
+# clean install (scripts/smoke-dist.sh, which release.yml runs on the artifacts it publishes).
 ```
 
 ## Architecture
