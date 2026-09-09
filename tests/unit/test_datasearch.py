@@ -1149,3 +1149,47 @@ class TestFourthReview:
         assert page_count({"total": 25000}, 10000, capped=False) == 25000
         assert page_count({"total": 25000}, 3, capped=True, where_active=True) == 3
         assert page_is_capped({}, 9999, 10000) is False and page_count({}, 9999, capped=False) == 9999
+
+
+class TestFifthReview:
+    """Findings from the fifth review of #19."""
+
+    @respx.mock
+    def test_h1_a_limit_counted_endpoint_still_reports_a_full_page_as_a_lower_bound(self, runner: CliRunner) -> None:
+        """Audit counts with --limit rather than a full page, but a full page is still a lower bound.
+
+        Both of these once printed a bare number as if it were exact: the API's
+        ``total`` cannot answer a client-side ``--where`` (only the 25 rows
+        fetched were examined), and an audit response without a ``total`` has
+        nothing to fall back on but the row count.
+        """
+        rows = [{"severity_level": 1 if i < 3 else 2, "user": "u"} for i in range(25)]
+        route = respx.get(f"{BASE}/api/v2/events/data/audit").mock(
+            return_value=httpx.Response(200, json={"result": rows, "total": 9999})
+        )
+        filtered = _invoke(runner, "events", "audit", "--count", "--where", "severity_level eq 1")
+        assert filtered.exit_code == 0, filtered.output
+        assert filtered.stdout.strip() == "3+"
+        assert "--limit" in _flat(filtered.output)
+        assert _request_query(route)["limit"] == ["25"]  # still no 10,000-row fetch
+
+        respx.get(f"{BASE}/api/v2/events/data/audit").mock(
+            return_value=httpx.Response(200, json={"result": [{"user": "u"} for _ in range(25)]})
+        )
+        no_total = _invoke(runner, "events", "audit", "--count")
+        assert no_total.exit_code == 0, no_total.output
+        assert no_total.stdout.strip() == "25+"
+
+    @respx.mock
+    def test_h1_a_stated_total_or_a_short_page_still_counts_exactly(self, runner: CliRunner) -> None:
+        respx.get(f"{BASE}/api/v2/events/data/audit").mock(
+            return_value=httpx.Response(200, json={"result": [{"user": "u"} for _ in range(25)], "total": 9999})
+        )
+        stated = _invoke(runner, "events", "audit", "--count")
+        assert stated.stdout.strip() == "9999" and "+" not in stated.stdout
+
+        respx.get(f"{BASE}/api/v2/events/data/audit").mock(
+            return_value=httpx.Response(200, json={"result": [{"severity_level": 1} for _ in range(4)]})
+        )
+        short = _invoke(runner, "events", "audit", "--count", "--where", "severity_level eq 1")
+        assert short.stdout.strip() == "4" and "+" not in short.stdout

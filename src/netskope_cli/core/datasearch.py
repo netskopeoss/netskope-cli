@@ -241,6 +241,8 @@ def request_with_projection(client: Any, endpoint: str, params: dict[str, Any], 
 #: What a capped count should tell the user to do, by whether ``--exact`` can page the endpoint.
 CAPPED_HINT_EXACT = "narrow the time range or use --exact"
 CAPPED_HINT_NO_EXACT = "narrow the time range (--exact cannot page this endpoint)"
+#: The cap is the user's own --limit, not the API page cap, so raising it is the first thing to try.
+CAPPED_HINT_LIMIT = "raise --limit or narrow the time range"
 
 
 @dataclass(frozen=True)
@@ -286,8 +288,9 @@ def fetch_page(
     format from ``ctx.obj`` and resolves ``--api-fields`` (widened for the
     client-side options) into ``params["fields"]``.  A ``--count`` on an
     events endpoint without a total asks for a full :data:`DATASEARCH_PAGE_CAP`
-    page and a full page is a lower bound; elsewhere the request uses *limit*
-    and the envelope total speaks for itself.  With ``--exact`` on a
+    page; elsewhere the request uses *limit* and the envelope total speaks for
+    itself.  Either way a page that came back full is reported as a lower
+    bound, since the rows past it were never seen.  With ``--exact`` on a
     datasearch endpoint the count is paged and printed here and ``None`` is
     returned; that needs a ``starttime`` (the commands resolve ``--start`` to a
     fixed epoch once, which pins the window across pages), since paging the
@@ -336,13 +339,19 @@ def fetch_page(
             return None
 
     paged = count and counts_full_page(endpoint)
-    params["limit"] = DATASEARCH_PAGE_CAP if paged else limit
+    page_limit = DATASEARCH_PAGE_CAP if paged else limit
+    params["limit"] = page_limit
     with spinner(spinner_text, no_color=no_color, quiet=quiet):
         data = request_with_projection(client, endpoint, params, selection)
     raise_on_error_envelope(data)
-    capped = paged and is_page_capped(data, DATASEARCH_PAGE_CAP, where_active=where is not None)
-    hint = CAPPED_HINT_EXACT if datasearch else CAPPED_HINT_NO_EXACT
-    return Page(data, selection, count, DATASEARCH_PAGE_CAP if capped else None, hint)
+    # A full page is a lower bound whatever filled it: the API page cap, or (on an endpoint counted
+    # with --limit, such as audit) the limit itself, which a client-side --where always makes one.
+    capped = count and is_page_capped(data, page_limit, where_active=where is not None)
+    if not paged:
+        hint = CAPPED_HINT_LIMIT
+    else:
+        hint = CAPPED_HINT_EXACT if datasearch else CAPPED_HINT_NO_EXACT
+    return Page(data, selection, count, page_limit if capped else None, hint)
 
 
 @dataclass(frozen=True)
