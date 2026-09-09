@@ -37,39 +37,45 @@ uv run pytest
 - If there are lint errors that can't be auto-fixed, stop and report them.
 - ty must report 0 diagnostics and ALL tests must pass before continuing. If not, stop and report the issue — fix before continuing.
 
-### 5. Commit, push, tag, and create the GitHub Release
+### 5. Commit, push and tag
 ```bash
 git add pyproject.toml uv.lock src/netskope_cli/main.py CHANGELOG.md docs/index.html
 # Also add any other files modified in this session
 git commit -m "Release vX.Y.Z - <short summary>"
 git push origin master
 
-# Annotated tag, pushed to GitHub
+# Annotated tag, pushed to GitHub. Pushing it starts the publish workflow.
 git tag -a vX.Y.Z -m "vX.Y.Z - <short summary>"
 git push origin vX.Y.Z
-
-# GitHub Release notes are the version's CHANGELOG section, verbatim
-awk '/^## \[X.Y.Z\]/{f=1; next} /^## \[/{f=0} f' CHANGELOG.md > /tmp/release-notes.md
-gh release create vX.Y.Z --repo netskopeoss/netskope-cli --title "vX.Y.Z" --notes-file /tmp/release-notes.md
 ```
+The GitHub Release comes after the publish succeeds (step 6), not here: a release created up front and then a failed publish leaves a public announcement of a version PyPI does not have.
 
-### 6. Publish to PyPI (CI, triggered by the tag)
-Pushing the `vX.Y.Z` tag in step 5 starts `.github/workflows/release.yml`: it checks that the tag matches the project version, runs the same checks as CI, builds, and publishes with `uv publish --trusted-publishing always`. Authentication is PyPI's Trusted Publisher for this repository (workflow `release.yml`, environment `pypi`), so no token is involved.
+### 6. Publish to PyPI (CI, triggered by the tag), then announce
+Pushing the `vX.Y.Z` tag in step 5 starts `.github/workflows/release.yml`: it checks that the tag matches the project version, runs the same checks as CI, builds, smoke-tests the wheel and sdist with `scripts/smoke-dist.sh`, and publishes with `uv publish --trusted-publishing always --check-url https://pypi.org/simple/`. Authentication is PyPI's Trusted Publisher for this repository (workflow `release.yml`, environment `pypi`), so no token is involved.
 ```bash
 gh run watch --repo netskopeoss/netskope-cli --exit-status \
   "$(gh run list --repo netskopeoss/netskope-cli --workflow release.yml --limit 1 --json databaseId -q '.[0].databaseId')"
 ```
-- Wait for the run to succeed before continuing. If the publish step fails, fix the cause and `gh run rerun` it; PyPI rejects duplicate files rather than corrupting anything.
+- Wait for the run to succeed before continuing. If the publish step fails, fix the cause and `gh run rerun` it; `--check-url` makes a retry skip the files PyPI already accepted instead of failing on the first duplicate.
+- Once it is green, create the GitHub Release. The notes are the version's CHANGELOG section, verbatim; `mktemp` keeps a re-run from tripping over an existing file.
+```bash
+notes="$(mktemp)"
+awk -v v="X.Y.Z" 'index($0, "## [" v "]") == 1 {f=1; next} /^## \[/{f=0} f' CHANGELOG.md >| "$notes"
+[ -s "$notes" ] || { echo "no CHANGELOG section for X.Y.Z" >&2; exit 1; }
+gh release create vX.Y.Z --repo netskopeoss/netskope-cli --title "vX.Y.Z" --notes-file "$notes"
+```
 - Fallback only, when Actions cannot run (outage, publisher not registered yet): publish locally with the keychain token.
 ```bash
 rm -rf dist   # uv publish uploads everything in dist/, so the previous release's files must go first
 uv build
+./scripts/smoke-dist.sh   # the check CI would have run on the artifacts
 token="$(security find-generic-password -s pypi-netskope -w)" || { echo "keychain item pypi-netskope not found" >&2; exit 1; }
 [ -n "$token" ] || { echo "empty PyPI token" >&2; exit 1; }
 UV_PUBLISH_TOKEN="$token" uv publish --check-url https://pypi.org/simple/
 ```
-- The token comes from the macOS keychain entry set up once per CLAUDE.md; never echo it. A missing or empty token must stop here: uv would otherwise upload with blank credentials and PyPI's 403 would arrive after the tag and GitHub Release are already public.
+- The token comes from the macOS keychain entry set up once per CLAUDE.md; never echo it. A missing or empty token must stop here: uv would otherwise upload with blank credentials and PyPI's 403 would arrive after the tag is already public.
 - `--check-url` lets a retry skip files PyPI already has instead of failing on the first duplicate.
+- Create the GitHub Release with the same `gh release create` above once this succeeds.
 
 ### 7. Update the Homebrew tap
 - Sync the local tap first: `cd ../homebrew-tap && git pull --ff-only origin main`
