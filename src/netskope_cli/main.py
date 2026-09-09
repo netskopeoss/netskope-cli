@@ -70,8 +70,6 @@ class State:
     where_expr: Any = None
     sort: str | None = None
     sort_spec: list[tuple[str, bool]] | None = None
-    # ``--lenient``: warn about unknown ``--fields`` names instead of exiting 2.
-    lenient: bool = False
 
     # Lazily initialised console respects --no-color
     _console: Console | None = field(default=None, repr=False)
@@ -248,8 +246,9 @@ def main(
         help=(
             "Print only the record count instead of full results. Endpoints that return a total "
             "report that total. Events, alerts and incidents commands fetch up to 10,000 rows (the API "
-            "page cap) and print N+ when that cap is hit (json/jsonl/csv/yaml print the bare integer, a lower "
-            "bound); add --exact to page for the true total. Elsewhere the count is of the rows --limit fetched."
+            "page cap) and print N+ when that cap is hit (json/jsonl/csv/yaml and piped output print the bare "
+            "integer, a lower bound); add --exact to page for the true total. Elsewhere the count is of the rows "
+            "--limit fetched."
         ),
     ),
     exact: bool = typer.Option(
@@ -257,7 +256,8 @@ def main(
         "--exact",
         help=(
             "With --count on events, alerts and incidents commands: page through the API in 10,000-row "
-            "steps until the result set ends instead of stopping at the first page. Prints N+ if the "
+            "steps until the result set ends instead of stopping at the first page (requires --start so every "
+            "page is counted against one fixed window). Prints N+ if the "
             "NETSKOPE_COUNT_CEILING (default 200,000 rows) is reached first. Can issue many requests. "
             "Datasearch endpoints only (events audit, infrastructure and transaction count one page); no effect "
             "on other commands."
@@ -282,7 +282,7 @@ def main(
             "Comma-separated fields to output, in the order given. Works on every command and never changes "
             "the API request. Dotted paths reach nested values (host_info.os), a[].b maps over lists, and * "
             "globs expand (epdlp.*). Example: --fields hostname,host_info.os,last_event_timestamp. Discover "
-            "names with --list-fields. A name no record has stops the command with exit 2 unless --lenient. "
+            "names with --list-fields; a name no record has warns and renders blank/null. "
             "Events, alerts, incidents and npa publishers/policy commands also take --api-fields for a "
             "server-side projection; see 'ntsk docs fields'."
         ),
@@ -316,15 +316,6 @@ def main(
         help=(
             "Client-side sort: FIELD or FIELD:desc, comma-separated for several keys. Dotted paths allowed. "
             "Example: --sort host_info.os,last_event_timestamp:desc. Missing values sort last."
-        ),
-        rich_help_panel="Query options (client-side, any command)",
-    ),
-    lenient: bool = typer.Option(
-        False,
-        "--lenient",
-        help=(
-            "Do not fail when --fields names a field no returned record has: print a warning with close "
-            "matches and render the column blank (table/csv) or null (json/yaml) instead of exiting 2."
         ),
         rich_help_panel="Query options (client-side, any command)",
     ),
@@ -367,7 +358,6 @@ def main(
         where_expr=where_expr,
         sort=sort,
         sort_spec=sort_spec,
-        lenient=lenient,
     )
     ctx.obj = state
 
@@ -1034,7 +1024,6 @@ _GLOBAL_BOOL_FLAGS = frozenset(
         "--wide",
         "-W",
         "--list-fields",
-        "--lenient",
     }
 )
 
@@ -1246,7 +1235,7 @@ def cli() -> None:
                 if close:
                     msg = re.sub(r"\s*Did you mean '[^']*'\?", "", msg)
                     option_hint = f"Did you mean [cyan]{close[0]}[/cyan]?"
-                    if close[0] in ("--fields", "--where", "--sort", "--list-fields", "--lenient", "--api-fields"):
+                    if close[0] in ("--fields", "--where", "--sort", "--list-fields", "--api-fields"):
                         option_hint += " See 'ntsk docs fields' for the query options."
 
         if not redirected:

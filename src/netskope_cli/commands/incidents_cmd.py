@@ -12,7 +12,7 @@ from typing import Optional
 import typer
 
 from netskope_cli.core.client import NetskopeClient, build_client
-from netskope_cli.core.datasearch import fetch_page, resolve_api_fields
+from netskope_cli.core.datasearch import API_FIELDS_HELP, COUNT_HELP, fetch_page
 from netskope_cli.core.exceptions import APIError, ValidationError
 from netskope_cli.core.output import (
     OutputFormatter,
@@ -90,13 +90,7 @@ def _get_output_format(ctx: typer.Context) -> str:
 
 _INCIDENT_EVENTS_ENDPOINT = "/api/v2/events/datasearch/incident"
 
-_HELP_API_FIELDS = (
-    "Comma-separated top-level field names the API should return, e.g. 'incident_id,user,severity,timestamp'. "
-    "Sent to the API as a server-side projection to reduce payload size; automatically widened with any field "
-    "named by --fields, --where or --sort so those keep working. Output shows these columns in this order "
-    "unless --fields picks others. Omit to return every field. To choose columns client-side (nested paths, "
-    "globs) use the global --fields; see 'ntsk docs fields'."
-)
+_HELP_API_FIELDS = API_FIELDS_HELP
 
 
 def _query_incident_events(
@@ -117,47 +111,25 @@ def _query_incident_events(
     true total.  ``--api-fields`` is widened so client-side ``--fields``,
     ``--where`` and ``--sort`` still see the fields they reference.
     """
-    state = ctx.obj
-    client = _build_client(ctx)
-    formatter = _get_formatter(ctx)
-    fmt = _get_output_format(ctx)
-    quiet = bool(getattr(state, "quiet", False))
-    no_color = bool(getattr(state, "no_color", False))
-
-    selection = resolve_api_fields(ctx, api_fields)
-    if selection.request is not None:
-        params["fields"] = selection.request
-
     page = fetch_page(
-        client,
+        ctx,
+        _build_client(ctx),
         _INCIDENT_EVENTS_ENDPOINT,
         params,
-        selection=selection,
+        api_fields=api_fields,
         limit=limit,
         count=count,
-        exact=bool(getattr(state, "exact", False)),
-        where=getattr(state, "where_expr", None),
-        quiet=quiet,
-        no_color=no_color,
         spinner_text=spinner_text,
-        output_fmt=fmt,
     )
     if page is None:
         return
 
-    formatter.format_output(
+    _get_formatter(ctx).format_output(
         page.data,
-        fmt=fmt,
-        fields=selection.display,
-        projected=selection.projected,
+        fmt=_get_output_format(ctx),
         title=title,
         default_fields=default_fields,
-        count_only=count,
-        capped_at=page.capped_at,
-        capped_hint=page.capped_hint,
-        sparse=True,
-        strip_internal=not bool(getattr(state, "raw", False)),
-        add_iso_timestamps=not bool(getattr(state, "epoch", False)),
+        **page.format_kwargs(ctx),
     )
 
 
@@ -200,10 +172,7 @@ def incidents_list(
     count: bool = typer.Option(
         False,
         "--count",
-        help=(
-            "Print only the count of matching incidents. Fetches up to 10,000 rows (the API page cap) and "
-            "prints N+ when that cap is hit; add the global --exact to page for the true total."
-        ),
+        help=COUNT_HELP,
     ),
 ) -> None:
     """List recent incidents (alias for 'incidents search' with optional query).

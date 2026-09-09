@@ -13,11 +13,12 @@ from rich.console import Console
 
 from netskope_cli.core.client import NetskopeClient, build_client
 from netskope_cli.core.datasearch import (
+    API_FIELDS_HELP,
+    COUNT_HELP,
     DATASEARCH_PAGE_CAP,
     fetch_page,
     is_page_capped,
     raise_on_error_envelope,
-    resolve_api_fields,
 )
 from netskope_cli.core.output import OutputFormatter, spinner
 from netskope_cli.core.output import build_formatter as _core_build_formatter
@@ -255,14 +256,7 @@ def list_alerts(
     api_fields: Optional[str] = typer.Option(
         None,
         "--api-fields",
-        help=(
-            "Comma-separated top-level field names the API should return, e.g. "
-            "'alert_name,severity,user,timestamp'. Sent to the API as a server-side projection to "
-            "reduce payload size; automatically widened with any field named by --fields, --where or "
-            "--sort so those keep working. Output shows these columns in this order unless --fields "
-            "picks others. Omit to return every field. To choose columns client-side (nested paths, globs) "
-            "use the global --fields; see 'ntsk docs fields'."
-        ),
+        help=API_FIELDS_HELP,
     ),
     start: Optional[str] = typer.Option(
         None,
@@ -335,10 +329,7 @@ def list_alerts(
     count: bool = typer.Option(
         False,
         "--count",
-        help=(
-            "Print only the count of matching alerts. Fetches up to 10,000 rows (the API page cap) and "
-            "prints N+ when that cap is hit; add the global --exact to page for the true total."
-        ),
+        help=COUNT_HELP,
     ),
 ) -> None:
     """List security alerts from the Netskope events datasearch API.
@@ -373,10 +364,6 @@ def list_alerts(
     state = ctx.obj
     # Merge local --count flag with global --count
     count = count or (getattr(state, "count", False) if state else False)
-    exact = bool(getattr(state, "exact", False)) if state else False
-    quiet = getattr(state, "quiet", False) if state else False
-    no_color = getattr(state, "no_color", False) if state else False
-    where_expr = getattr(state, "where_expr", None) if state else None
 
     params: dict[str, object] = {}
 
@@ -403,9 +390,6 @@ def list_alerts(
 
     if effective_query is not None:
         params["query"] = effective_query
-    selection = resolve_api_fields(ctx, api_fields)
-    if selection.request is not None:
-        params["fields"] = selection.request
     if start is not None or end is not None:
         from netskope_cli.utils.helpers import validate_time_range
 
@@ -423,21 +407,15 @@ def list_alerts(
             direction = " ASC"
         params["orderby"] = f"{order_by}{direction}"
 
-    endpoint = "/api/v2/events/datasearch/alert"
-
     page = fetch_page(
+        ctx,
         client,
-        endpoint,
+        "/api/v2/events/datasearch/alert",
         params,
-        selection=selection,
+        api_fields=api_fields,
         limit=limit,
         count=count,
-        exact=exact,
-        where=where_expr,
-        quiet=quiet,
-        no_color=no_color,
         spinner_text="Fetching alerts...",
-        output_fmt=fmt,
     )
     if page is None:
         return
@@ -446,15 +424,8 @@ def list_alerts(
         page.data,
         fmt=fmt,
         title="Alerts",
-        fields=selection.display,
-        projected=selection.projected,
         default_fields=["alert_name", "alert_type", "severity", "user", "app", "timestamp"],
-        count_only=count,
-        capped_at=page.capped_at,
-        capped_hint=page.capped_hint,
-        sparse=True,
-        strip_internal=not (state.raw if state else False),
-        add_iso_timestamps=not (state.epoch if state else False),
+        **page.format_kwargs(ctx),
     )
 
 

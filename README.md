@@ -170,8 +170,7 @@ ntsk users list -o csv > users.csv
 | `-q` / `--quiet` | Suppress spinners and informational messages     |
 | `--no-color`   | Disable coloured output                             |
 | `-v` / `--verbose` | Increase verbosity (-vv for debug)              |
-| `-f` / `--fields A,B` | Pick output fields on any command, in order. Dotted paths, `a[].b` lists, `*` globs. Unknown names exit 2 |
-| `--lenient`    | Warn about unknown `--fields` names and print blank/null columns instead of exiting 2 |
+| `-f` / `--fields A,B` | Pick output fields on any command, in order. Dotted paths, `a[].b` lists, `*` globs. Unknown names warn |
 | `--list-fields` | Show every field in the response (nested paths, type, presence, sample) instead of the records |
 | `--where 'EXPR'` | Client-side JQL row filter (`eq ne gt ge lt le in like between and or not`) |
 | `--sort FIELD[:desc]` | Client-side sort, comma-separated for several keys, missing values last |
@@ -206,10 +205,9 @@ ntsk devices list --where 'host_info.os like "mac*"' --sort last_event_timestamp
                   --fields hostname,host_info.os_version -o csv > macs.csv
 ```
 
-A `--fields` name that no returned record has stops the command with exit code 2 and suggests close matches
-(`--lenient` downgrades that to a warning and blank/null columns). Event, alert and incident records carry different
-keys per subtype, so on those commands an unknown name only warns: the exit code never depends on which subtypes landed
-in the window. A `--where` syntax error is reported (exit code 2) before any API call. Run `ntsk docs fields` for the full reference.
+A `--fields` name that no returned record has prints a warning with close matches and leaves the column blank (table/csv)
+or null (json/yaml); it never fails the command, since which keys a page carries depends on the rows that landed in it.
+A `--where` syntax error is reported (exit code 2) before any API call. Run `ntsk docs fields` for the full reference.
 
 Some commands also have **server-side** options, with distinct names, that change what the API returns:
 `events`/`alerts`/`incidents --api-fields` (server-side projection of top-level fields, widened automatically with
@@ -223,9 +221,9 @@ ntsk alerts list --since 7d --api-fields timestamp,alert_name,qdomain --where 'a
 
 `--count` on `events`, `alerts` and `incidents` fetches one API page (10,000 rows, the datasearch maximum) and prints
 `N+` with a notice when the page filled up, so a busy tenant is never reported as having exactly 10,000 alerts. Machine
-formats (`-o json`, `jsonl`, `csv`, `yaml`) print the bare integer, a lower bound, and keep the notice on stderr. Add
-`--exact` to page through the endpoint for the true total (bounded by `NETSKOPE_COUNT_CEILING`, default 200,000);
-`events audit`, `infrastructure` and `transaction` cannot be paged. `ntsk status` marks capped counts with `≥` and, in
+formats (`-o json`, `jsonl`, `csv`, `yaml`) and any piped output print the bare integer, a lower bound, and keep the
+notice on stderr. Add `--exact` (with `--start`) to page through the endpoint for the true total (bounded by
+`NETSKOPE_COUNT_CEILING`, default 200,000); `events audit`, `infrastructure` and `transaction` cannot be paged. `ntsk status` marks capped counts with `≥` and, in
 JSON, `alerts_capped: true`.
 
 ---

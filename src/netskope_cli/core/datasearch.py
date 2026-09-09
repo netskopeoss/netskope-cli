@@ -30,9 +30,10 @@ from netskope_cli.core.exceptions import APIError, NetskopeError, ValidationErro
 from netskope_cli.core.fieldpaths import find_unmatched, top_level_name
 from netskope_cli.core.filtering import Expr, apply_filter
 from netskope_cli.core.output import (
-    MACHINE_FORMATS,
-    TOTAL_KEYS,
+    CountResult,
     flatten_grouped_results,
+    page_is_capped,
+    print_count,
     spinner,
     unwrap_api_response,
 )
@@ -43,6 +44,20 @@ DATASEARCH_PAGE_CAP = 10_000
 #: Rows ``--exact`` will page through before giving up and reporting ``N+``.
 DEFAULT_COUNT_CEILING = 200_000
 COUNT_CEILING_ENV = "NETSKOPE_COUNT_CEILING"
+
+#: Help for every ``--api-fields`` option (events, alerts, incidents, NPA publishers and policy).
+API_FIELDS_HELP = (
+    "Comma-separated top-level field names the API should return (a server-side projection that reduces "
+    "payload size). Widened automatically with any field named by --fields, --where or --sort so those keep "
+    "working. Output shows these columns in this order unless --fields picks others. Omit to return every "
+    "field. To choose columns client-side (nested paths, globs) use the global --fields; see 'ntsk docs fields'."
+)
+
+#: Help for the local ``--count`` option on the datasearch list commands.
+COUNT_HELP = (
+    f"Print only the count of matching records. Fetches up to {DATASEARCH_PAGE_CAP:,} rows (the API page cap) "
+    "and prints N+ when that cap is hit; add the global --exact to page for the true total."
+)
 
 
 def count_ceiling() -> int:
@@ -110,7 +125,7 @@ def _err_console(state: Any) -> Console:
     return Console(stderr=True, no_color=bool(getattr(state, "no_color", False)))
 
 
-def resolve_api_fields(ctx: Any, api_fields: str | None) -> ApiFieldSelection:
+def resolve_api_fields(ctx: Any, api_fields: str | None, params: dict[str, Any] | None = None) -> ApiFieldSelection:
     """Widen ``--api-fields`` with the names ``--fields``/``--where``/``--sort`` need.
 
     When ``--api-fields`` is absent nothing is sent and, for one release, a
@@ -118,7 +133,15 @@ def resolve_api_fields(ctx: Any, api_fields: str | None) -> ApiFieldSelection:
     list (the old server-side spelling) how to get the payload trimming back.
     Scripts that pipe the output are its audience, so the note ignores the
     non-TTY auto-quiet and is suppressed only by an explicit ``--quiet``.
+    With *params* the request projection is stored under ``fields`` there.
     """
+    selection = _resolve_api_fields(ctx, api_fields)
+    if params is not None and selection.request is not None:
+        params["fields"] = selection.request
+    return selection
+
+
+def _resolve_api_fields(ctx: Any, api_fields: str | None) -> ApiFieldSelection:
     state = getattr(ctx, "obj", None)
     global_fields: list[str] | None = getattr(state, "fields", None) or None
     requested = split_names(api_fields)
@@ -162,33 +185,31 @@ def is_datasearch_endpoint(endpoint: str) -> bool:
     return "/datasearch/" in endpoint
 
 
-def is_events_endpoint(endpoint: str) -> bool:
-    """The ``/api/v2/events/`` endpoints rarely state a total, so ``--count`` fetches a full page there.
+#: Events endpoints that state a ``total``, so ``--count`` needs only ``--limit`` rows there.
+STATES_TOTAL_ENDPOINTS = ("/api/v2/events/data/audit",)
+
+
+def counts_full_page(endpoint: str) -> bool:
+    """``--count`` fetches a full :data:`DATASEARCH_PAGE_CAP` page on events endpoints that return no total.
 
     Only the datasearch ones are known to page by ``offset``; ``events/data/*``
-    (audit, infrastructure, transaction) count a single page and cannot be
-    paged with ``--exact``.
+    (infrastructure, transaction) count a single page and cannot be paged with
+    ``--exact``.  Audit states a total, so its rows would be fetched only to be
+    discarded.
     """
-    return endpoint.startswith("/api/v2/events/")
+    return endpoint.startswith("/api/v2/events/") and endpoint not in STATES_TOTAL_ENDPOINTS
 
 
 def is_page_capped(data: Any, limit: int, *, where_active: bool = False) -> bool:
     """True when a response filled the ``limit``-row page and the count is therefore a lower bound.
 
-    Datasearch responses carry no total, or a ``status.count`` that is the
-    rows returned, so a full page means "at least this many" (a larger
-    ``status.count`` is a better lower bound, never an exact total; ``ntsk
-    status`` applies the same rule).  A response that states a real total
-    (``total``, ``totalResults``, ``status.total``) is exact whatever the total
-    is.  With a client-side ``--where`` a full page is always a lower bound:
-    the rows beyond it were never filtered.
+    The rule is :func:`netskope_cli.core.output.page_is_capped`; this unwraps
+    the envelope first.
     """
     records, meta = unwrap_api_response(data)
-    if not isinstance(records, list) or len(records) < limit:
+    if not isinstance(records, list):
         return False
-    if where_active:
-        return True
-    return not any(meta.get(key) is not None for key in TOTAL_KEYS)
+    return page_is_capped(meta, len(records), limit, where_active=where_active)
 
 
 def raise_on_error_envelope(page: Any) -> None:
@@ -224,50 +245,82 @@ CAPPED_HINT_NO_EXACT = "narrow the time range (--exact cannot page this endpoint
 
 @dataclass(frozen=True)
 class Page:
-    """One fetched page: the raw response, the page size it was capped at (if any) and the advice to print."""
+    """One fetched page and everything the formatter needs to know about how it was fetched."""
 
     data: Any
+    selection: ApiFieldSelection
+    count: bool
+    #: The page size the API stopped at when the page filled it (a count is then a lower bound).
     capped_at: int | None
     #: Passed as ``format_output(capped_hint=)``; only meaningful when ``capped_at`` is set.
     capped_hint: str = CAPPED_HINT_EXACT
 
+    def format_kwargs(self, ctx: Any) -> dict[str, Any]:
+        """The ``format_output`` keywords this page determines (add ``fmt``, ``title``, ``default_fields``)."""
+        state = getattr(ctx, "obj", None)
+        return {
+            "fields": self.selection.display,
+            "count_only": self.count,
+            "capped_at": self.capped_at,
+            "capped_hint": self.capped_hint,
+            "strip_internal": not bool(getattr(state, "raw", False)),
+            "add_iso_timestamps": not bool(getattr(state, "epoch", False)),
+        }
+
 
 def fetch_page(
+    ctx: Any,
     client: Any,
     endpoint: str,
     params: dict[str, Any],
     *,
-    selection: ApiFieldSelection,
+    api_fields: str | None,
     limit: int,
     count: bool,
-    exact: bool,
-    where: Expr | None,
-    quiet: bool,
-    no_color: bool,
     spinner_text: str,
-    output_fmt: str | None = None,
+    api_fields_supported: bool = True,
 ) -> Page | None:
     """Run the request for a list/count command, or the whole ``--exact`` count.
 
-    A ``--count`` on any events endpoint asks for a full :data:`DATASEARCH_PAGE_CAP`
-    page (none of them returns a total) and a full page is a lower bound;
-    elsewhere the request uses *limit* and the envelope total speaks for
-    itself.  With ``--exact`` on a datasearch endpoint the count is paged and
-    printed here (a bare integer when *output_fmt* is machine-readable) and
-    ``None`` is returned.  The commands resolve ``--start``/``--end`` to fixed
-    epochs before calling, so the window is already pinned across pages; when
-    the user gave no window none is invented, since only the API knows its
-    default start.  An HTTP 200 ``ok: 0`` body raises, and an HTTP 400 for a
-    name widening added to the projection says which option did it.
+    Reads ``--exact``, ``--where``, ``--quiet``, ``--no-color`` and the output
+    format from ``ctx.obj`` and resolves ``--api-fields`` (widened for the
+    client-side options) into ``params["fields"]``.  A ``--count`` on an
+    events endpoint without a total asks for a full :data:`DATASEARCH_PAGE_CAP`
+    page and a full page is a lower bound; elsewhere the request uses *limit*
+    and the envelope total speaks for itself.  With ``--exact`` on a
+    datasearch endpoint the count is paged and printed here and ``None`` is
+    returned; that needs a ``starttime`` (the commands resolve ``--start`` to a
+    fixed epoch once, which pins the window across pages), since paging the
+    API's rolling default window would count a moving target.  An HTTP 200
+    ``ok: 0`` body raises, and an HTTP 400 for a name widening added to the
+    projection says which option did it.
     """
+    state = getattr(ctx, "obj", None)
+    exact = bool(getattr(state, "exact", False))
+    where: Expr | None = getattr(state, "where_expr", None)
+    quiet = bool(getattr(state, "quiet", False))
+    no_color = bool(getattr(state, "no_color", False))
+    fmt = getattr(getattr(state, "output", None), "value", None)
     console = Console(stderr=True, no_color=no_color)
+
+    # ``events get`` has no --api-fields option, so it must not print the transition note.
+    selection = resolve_api_fields(ctx, api_fields, params) if api_fields_supported else ApiFieldSelection(None, None)
+
     datasearch = is_datasearch_endpoint(endpoint)
     if count and exact:
         if not datasearch:
-            console.print("[dim]--exact applies to the datasearch endpoints only; counting a single page.[/dim]")
+            if not quiet:
+                console.print("[dim]--exact applies to the datasearch endpoints only; counting a single page.[/dim]")
         elif "groupbys" in params:
-            console.print("[dim]--exact does not page group-by results; counting the groups on one page.[/dim]")
+            if not quiet:
+                console.print("[dim]--exact does not page group-by results; counting the groups on one page.[/dim]")
         else:
+            if "starttime" not in params:
+                raise ValidationError(
+                    "--exact needs a time window: pass --start (for example --start 7d).",
+                    suggestion="Every page is then counted against the same fixed window; without one the API "
+                    "applies a rolling default and rows arriving mid-count would shift the pages.",
+                )
             ceiling = count_ceiling()
             result = count_exact(
                 client,
@@ -279,24 +332,17 @@ def fetch_page(
                 quiet=quiet,
                 no_color=no_color,
             )
-            print_exact_count(
-                result,
-                where=where is not None,
-                ceiling=ceiling,
-                quiet=quiet,
-                no_color=no_color,
-                plain=output_fmt in MACHINE_FORMATS,
-            )
+            print_exact_count(result, where=where is not None, ceiling=ceiling, quiet=quiet, no_color=no_color, fmt=fmt)
             return None
 
-    paged = count and is_events_endpoint(endpoint)
+    paged = count and counts_full_page(endpoint)
     params["limit"] = DATASEARCH_PAGE_CAP if paged else limit
     with spinner(spinner_text, no_color=no_color, quiet=quiet):
         data = request_with_projection(client, endpoint, params, selection)
     raise_on_error_envelope(data)
     capped = paged and is_page_capped(data, DATASEARCH_PAGE_CAP, where_active=where is not None)
     hint = CAPPED_HINT_EXACT if datasearch else CAPPED_HINT_NO_EXACT
-    return Page(data, DATASEARCH_PAGE_CAP if capped else None, hint)
+    return Page(data, selection, count, DATASEARCH_PAGE_CAP if capped else None, hint)
 
 
 @dataclass(frozen=True)
@@ -325,16 +371,19 @@ def count_exact(
     fetched (``reached_ceiling``).  Only the running count is kept, so memory
     stays flat however many pages are read.  A page whose first ``_id`` is the
     previous page's means the endpoint ignored ``offset``; that raises rather
-    than counting the first page twice or, worse, reporting it as exact
-    (rows without ``_id``, such as a narrow ``--api-fields`` projection, are
-    not checked since identical rows are then legitimate).  A total that is
-    an exact multiple of *page_size* costs one extra, empty request and cannot
-    be told from an endpoint that answers an empty page past its window.
-    *selection* lets an HTTP 400 for a widened ``--api-fields`` name be
-    explained as :func:`request_with_projection` does.
+    than counting the first page twice or, worse, reporting it as exact.  A
+    ``--api-fields`` projection is widened with ``_id`` so the check always
+    has something to compare (the rows are counted, never rendered).  A total
+    that is an exact multiple of *page_size* costs one extra, empty request
+    and cannot be told from an endpoint that answers an empty page past its
+    window.  *selection* lets an HTTP 400 for a widened ``--api-fields`` name
+    be explained as :func:`request_with_projection` does.
     """
     ceiling = count_ceiling() if ceiling is None else ceiling
     base = {k: v for k, v in params.items() if k not in ("limit", "offset")}
+    projection = split_names(base.get("fields")) if isinstance(base.get("fields"), str) else []
+    if projection and "_id" not in projection:
+        base["fields"] = ",".join([*projection, "_id"])
     count = fetched = requests = 0
     offset = 0
     reached_ceiling = False
@@ -384,9 +433,6 @@ def count_exact(
                 count += len(rows)
             if len(rows) < size:
                 break
-            if fetched >= ceiling:
-                reached_ceiling = True
-                break
             offset += len(rows)
             if progress is not None and progress.task_ids:
                 progress.update(progress.task_ids[0], description=f"Counting... {fetched:,} rows so far")
@@ -395,21 +441,27 @@ def count_exact(
 
 
 def print_exact_count(
-    result: ExactCount, *, where: bool, ceiling: int, quiet: bool, no_color: bool, plain: bool = False
+    result: ExactCount,
+    *,
+    where: bool,
+    ceiling: int,
+    quiet: bool,
+    no_color: bool,
+    fmt: str | None = None,
 ) -> None:
-    """Print an :class:`ExactCount` the way ``--count`` does: the number on stdout, notes on stderr.
+    """Print an :class:`ExactCount` the way ``--count`` does (:func:`print_count`): number on stdout, notes on stderr.
 
     The ceiling warning is printed even under ``--quiet`` (the count is a lower
     bound, which a pipeline consumer needs to know); the ``--where`` summary is
-    informational and is suppressed.  *plain* prints the bare integer (machine
-    formats, where ``N+`` would not parse); the ``+`` marker is for people.
+    informational and is suppressed.
     """
-    print(f"{result.count}+" if result.reached_ceiling and not plain else result.count)
     console = Console(stderr=True, no_color=no_color)
+    hint = None
+    if result.reached_ceiling:
+        hint = (
+            f"Count reached the --exact ceiling of {ceiling:,} rows after {result.requests} requests; "
+            f"narrow the time range or raise {COUNT_CEILING_ENV}."
+        )
+    print_count(CountResult(result.count, result.reached_ceiling, hint), fmt=fmt, err_console=console)
     if where and not quiet:
         console.print(f"[dim]{result.count:,} of {result.fetched:,} rows matched --where[/dim]")
-    if result.reached_ceiling:
-        console.print(
-            f"[yellow]Count reached the --exact ceiling of {ceiling:,} rows after {result.requests} requests; "
-            f"narrow the time range or raise {COUNT_CEILING_ENV}.[/yellow]"
-        )

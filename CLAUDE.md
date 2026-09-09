@@ -67,22 +67,24 @@ Each module defines helper functions: `_build_client()`, `_get_formatter()`, `_g
 - **Secrets:** Never hardcode; use env vars or keyring. Config files in `.gitignore`.
 - **Formatters:** always obtain one via `netskope_cli.core.output.build_formatter(ctx)` (each module's
   `_get_formatter`/`_build_formatter` is a thin wrapper). The global query options `--fields`, `--list-fields`,
-  `--where`, `--sort`, `--lenient` live on `State` and are applied inside `OutputFormatter.format_output`. Never
+  `--where`, `--sort` live on `State` and are applied inside `OutputFormatter.format_output`; an unknown `--fields`
+  name is always a warning, never an exit code (which keys a page has depends on the rows in it). Never
   declare a per-command `--fields`/`-f`: it is global and client-side only, and a local one would shadow it. An
   endpoint that accepts a server-side `fields` parameter exposes it as `--api-fields` (no short flag) and runs it
-  through `core.datasearch.resolve_api_fields(ctx, value)`, which widens the projection with every top-level name
-  `--fields`/`--where`/`--sort` reference and returns an `ApiFieldSelection` (`request` for the API, `display` for
-  `format_output(fields=)`, `projected` for `format_output(projected=)`); send the request through
-  `request_with_projection` so an HTTP 400 for a widened name names the option. Datasearch commands also pass
-  `format_output(sparse=True)`: event keys vary per subtype, so an unknown `--fields` name warns instead of exiting 2. Other
+  through `core.datasearch.resolve_api_fields(ctx, value, params)`, which widens the projection with every top-level
+  name `--fields`/`--where`/`--sort` reference, stores it in `params["fields"]` and returns an `ApiFieldSelection`
+  (`display` goes to `format_output(fields=)`); send the request through `request_with_projection` so an HTTP 400 for
+  a widened name names the option. The datasearch list commands do all of this through `fetch_page(ctx, client, ...)`
+  and spread `page.format_kwargs(ctx)` into `format_output`. Help strings come from `API_FIELDS_HELP`/`COUNT_HELP`. Other
   per-command options that share a global name (`dem --where`, a local `--count`) are protected from hoisting by
   `_resolve_leaf_command()` in `main.py`. Path/filter machinery lives in `core/fieldpaths.py` and
   `core/filtering.py`; the user-facing reference is `ntsk docs fields`.
 - **Datasearch counts:** `/api/v2/events/datasearch/*` returns at most 10,000 rows and no total. `--count` on those
   commands goes through `core/datasearch.py` (`DATASEARCH_PAGE_CAP`, `is_page_capped`, `count_exact`) and passes
-  `capped_at=`/`capped_hint=` to `format_output` so a full page prints `N+` (a bare integer in machine formats); the
-  global `--exact` pages with `offset` on datasearch endpoints only. Every `/api/v2/events/` endpoint fetches the full
-  page under `--count`.
+  `capped_at=`/`capped_hint=` to `format_output`; every count path prints through `output.print_count` (`N+` on a
+  terminal in table/human output, the bare integer otherwise) and shares `output.page_is_capped`/`page_count` with
+  `ntsk status`. The global `--exact` pages with `offset` on datasearch endpoints only and requires `--start`. The
+  events endpoints without a total (`counts_full_page`) fetch the full page under `--count`; audit keeps `--limit`.
 
 ## Releasing to PyPI
 

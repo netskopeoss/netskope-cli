@@ -13,6 +13,7 @@ import json
 import os
 import sys
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Generator, Sequence
 
@@ -24,12 +25,10 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.syntax import Syntax
 from rich.table import Table
 
-from netskope_cli.core.exceptions import ValidationError
 from netskope_cli.core.fieldpaths import (
     FieldInfo,
     discover_schema,
     expand_field_specs,
-    find_unknown,
     find_unmatched,
     is_glob,
     project_records,
@@ -37,20 +36,6 @@ from netskope_cli.core.fieldpaths import (
     suggest_fields,
 )
 from netskope_cli.core.filtering import Expr, apply_filter, parse_filter, parse_sort_spec, sort_records
-
-
-class UnknownFieldError(ValidationError):
-    """``--fields`` named something no returned record has (exit code 2 unless ``--lenient``)."""
-
-    def __init__(self, problems: list[str], *, extra_hint: str | None = None) -> None:
-        suggestion = (
-            "Run with --list-fields to see every field, or add --lenient to print blank/null "
-            "columns for unknown names instead of stopping."
-        )
-        if extra_hint:
-            suggestion += " " + extra_hint
-        super().__init__("--fields: " + " ".join(problems), suggestion=suggestion)
-
 
 # ---------------------------------------------------------------------------
 # API response envelope unwrapping
@@ -206,6 +191,14 @@ TOTAL_KEYS = ("total", "totalResults", "status.total")
 MACHINE_FORMATS = ("json", "jsonl", "csv", "yaml")
 
 
+def stdout_is_tty() -> bool:
+    """True when stdout is a terminal (a person is reading; a pipe gets machine-friendly output)."""
+    try:
+        return sys.stdout.isatty()
+    except Exception:
+        return False
+
+
 def envelope_total(metadata: dict[str, Any]) -> int | None:
     """The total an unwrapped envelope states, preferring a real total over ``status.count``.
 
@@ -221,6 +214,62 @@ def envelope_total(metadata: dict[str, Any]) -> int | None:
         except (TypeError, ValueError):
             continue
     return None
+
+
+def page_is_capped(metadata: dict[str, Any], rows: int, limit: int, *, where_active: bool = False) -> bool:
+    """True when a page of *rows* filled *limit* and nothing proves the count exact.
+
+    Datasearch responses carry no total, or a ``status.count`` that is the
+    rows returned, so a full page means "at least this many".  A response
+    that states a real total (:data:`TOTAL_KEYS`) is exact whatever the total
+    is.  With a client-side ``--where`` a full page is always a lower bound:
+    the rows beyond it were never filtered.  ``--count``, ``ntsk status`` and
+    ``alerts summary`` all use this one rule.
+    """
+    if rows < limit:
+        return False
+    if where_active:
+        return True
+    return not any(metadata.get(key) is not None for key in TOTAL_KEYS)
+
+
+def page_count(metadata: dict[str, Any], rows: int, *, capped: bool, where_active: bool = False) -> int:
+    """The count a page supports: a stated total, else the rows (or the better lower bound).
+
+    With ``--where`` the envelope numbers describe unfiltered rows, so the
+    filtered *rows* are the answer.  A capped page has no real total
+    (:func:`page_is_capped` ruled one out) but a ``status.count`` above the
+    rows returned is the better lower bound.
+    """
+    if where_active:
+        return rows
+    stated = envelope_total(metadata)
+    if stated is None:
+        return rows
+    return max(stated, rows) if capped else stated
+
+
+@dataclass(frozen=True)
+class CountResult:
+    """What ``--count`` prints: the number, whether it is a lower bound, and what to do about that."""
+
+    count: int
+    capped: bool
+    hint: str | None = None
+
+
+def print_count(result: CountResult, *, fmt: str | None, err_console: Console) -> None:
+    """Print a :class:`CountResult` the one way every count path uses.
+
+    The number goes to stdout.  A lower bound gets a ``+`` marker only when a
+    person is reading (table/human output on a terminal); machine formats and
+    pipes get the bare integer so ``$(ntsk ... --count)`` keeps parsing, and
+    the *hint* goes to stderr as the record that it is a lower bound.
+    """
+    marker = result.capped and fmt not in MACHINE_FORMATS and stdout_is_tty()
+    print(f"{result.count}+" if marker else result.count)
+    if result.capped and result.hint:
+        err_console.print(f"[yellow]{result.hint}[/yellow]")
 
 
 def flatten_grouped_results(data: list) -> list:
@@ -300,17 +349,14 @@ class OutputFormatter:
         sort: Sequence[tuple[str, bool]] | str | None = None,
         list_fields: bool = False,
         quiet: bool = False,
-        lenient: bool = False,
     ) -> None:
         """Create a formatter.
 
         The keyword arguments mirror the global CLI options: ``fields`` is the
         global ``--fields`` list, ``where`` a parsed (or raw) ``--where``
-        expression, ``sort`` a parsed (or raw) ``--sort`` specification,
-        ``list_fields`` the ``--list-fields`` switch and ``lenient`` the
-        ``--lenient`` switch (warn about unknown ``--fields`` names instead of
-        raising :class:`UnknownFieldError`).  Strings are parsed here so tests
-        and ad-hoc callers can pass them directly.
+        expression, ``sort`` a parsed (or raw) ``--sort`` specification and
+        ``list_fields`` the ``--list-fields`` switch.  Strings are parsed here
+        so tests and ad-hoc callers can pass them directly.
         """
         self.no_color = no_color
         self.console = _make_console(no_color=no_color)
@@ -325,7 +371,6 @@ class OutputFormatter:
             parse_sort_spec(sort) if isinstance(sort, str) else (list(sort) if sort else None)
         )
         self._list_fields = list_fields
-        self._lenient = lenient
         self._fields_applied = False
         self._schema_cache: list[FieldInfo] | None = None
 
@@ -348,8 +393,6 @@ class OutputFormatter:
         add_iso_timestamps: bool = True,
         capped_at: int | None = None,
         capped_hint: str | None = None,
-        projected: bool = False,
-        sparse: bool = False,
     ) -> None:
         """Format and print *data* to stdout.
 
@@ -362,10 +405,11 @@ class OutputFormatter:
             ``"human"`` for interactive TTYs, ``"json"`` otherwise.
         fields:
             A projection the command already sent to the API (``--api-fields``),
-            shown in this order.  A name the API did not return is reported as
-            a warning and rendered blank/null; it never fails the command.  The
-            user's client-side list is the constructor's ``fields`` (the global
-            ``--fields``) and is strict unless ``lenient``.
+            shown in this order.  The user's client-side list is the
+            constructor's ``fields`` (the global ``--fields``).  Either way a
+            name no returned record has is a warning with close matches and a
+            blank/null column, never a failure: which keys a page carries
+            depends on the rows that landed in it.
         default_fields:
             Default columns to show for table/human when *fields* is None.
             Ignored for json/csv/yaml/jsonl.
@@ -398,16 +442,6 @@ class OutputFormatter:
             What the capped-count notice tells the user to do; defaults to
             narrowing the time range.  ``core.datasearch.fetch_page`` adds
             ``--exact`` when the endpoint can be paged.
-        projected:
-            *True* when the command sent a server-side ``--api-fields``
-            projection.  The API then legitimately omits fields, so unknown
-            global ``--fields`` names warn instead of raising.
-        sparse:
-            *True* when the endpoint's records do not share one schema
-            (datasearch event types carry different keys per subtype).  A
-            ``--fields`` name absent from every record fetched here may exist
-            in the next window, so it warns instead of exiting 2; the exit code
-            must not depend on which subtypes happened to land in the page.
         """
         if fmt is None:
             fmt = self._auto_detect_format()
@@ -480,26 +514,18 @@ class OutputFormatter:
         if unwrap and fmt in ("table", "human") and isinstance(data, list) and all(isinstance(r, dict) for r in data):
             self._print_time_range(data)
 
-        # --count mode: print the count and return immediately.  When a
-        # --where filter is active the envelope total is meaningless, so the
-        # filtered record count is reported instead.  A capped page has no
-        # real total either (``is_page_capped`` ruled one out), but a stated
-        # ``status.count`` above the rows returned is the better lower bound.
+        # --count mode: print the count and return immediately.
         if count_only:
-            total = envelope_total(metadata) if self._where is None else None
             rows = len(data) if isinstance(data, list) else (1 if data else 0)
-            if total is None:
-                n = rows
-            elif capped_at is not None:
-                n = max(total, rows)
-            else:
-                n = total
-            print(f"{n}+" if capped_at is not None and fmt not in MACHINE_FORMATS else n)
+            capped = capped_at is not None
+            n = page_count(metadata, rows, capped=capped, where_active=self._where is not None)
+            hint = None
             if capped_at is not None:
-                self.err_console.print(
-                    f"[yellow]Count capped at the API maximum of {capped_at:,} rows; "
-                    f"{capped_hint or 'narrow the time range'}.[/yellow]"
+                hint = (
+                    f"Count capped at the API maximum of {capped_at:,} rows; "
+                    f"{capped_hint or 'narrow the time range'}."
                 )
+            print_count(CountResult(n, capped, hint), fmt=fmt, err_console=self.err_console)
             return
 
         # If the unwrapped data is empty, inform the user (except
@@ -570,21 +596,6 @@ class OutputFormatter:
         if effective_fields is None and explicit is not None:
             effective_fields = list(explicit)
         explicit_requested = explicit is not None
-        # A per-command ``fields`` is a server-side projection the API may
-        # legitimately not fill (sparse event schemas), so it only warns; the
-        # global --fields is the user's own list and is strict unless --lenient.
-        # Strictness is about lists of records: a single-object response is
-        # usually an envelope around the object, and group-by rows only carry
-        # the group keys and count, so both warn instead.
-        server_side = fields is not None
-        strict = (
-            not server_side
-            and not self._lenient
-            and not projected
-            and not sparse
-            and isinstance(data, list)
-            and not is_grouped
-        )
 
         # Apply field selection AFTER unwrapping so that --fields applies to
         # individual records, not envelope keys.
@@ -594,8 +605,7 @@ class OutputFormatter:
             effective_fields,
             fmt=fmt,
             warn=explicit_requested,
-            strict=strict,
-            label="--api-fields" if server_side else "--fields",
+            label="--api-fields" if fields is not None else "--fields",
             hidden_internal=strip_internal,
         )
 
@@ -662,17 +672,14 @@ class OutputFormatter:
         *,
         fmt: str,
         warn: bool,
-        strict: bool = True,
         label: str = "--fields",
         hidden_internal: bool = False,
     ) -> Any:
         """Project *data* onto *fields* (dotted paths, globs).
 
-        Unknown names raise :class:`UnknownFieldError` when *strict*, else
-        print a warning prefixed with *label*.  Under *strict* only provably
-        wrong names raise (see :func:`find_unknown`); a path whose parents are
-        null or empty in every record warns and renders blank.  *hidden_internal*
-        says ``_``-prefixed keys were stripped, so the error can point at ``--raw``.
+        A name or glob no record matches is a warning prefixed with *label*
+        (with close matches) and renders blank/null.  *hidden_internal* says
+        ``_``-prefixed keys were stripped, so such a name points at ``--raw``.
         """
         if fields is None:
             return data
@@ -686,50 +693,19 @@ class OutputFormatter:
         else:
             paths = list(dict.fromkeys(specs))
         if warn and records:
-            unmatched = find_unmatched(records, paths)
             problems = [f"pattern '{rich_escape(spec)}' matched no fields." for spec in unmatched_globs]
-            problems += [
-                f"'{rich_escape(path)}' not found in any record.{self._suggestion_text(path, records)}"
-                for path in unmatched
-            ]
-            if strict:
-                wrong = set(find_unknown(records, unmatched))
-                # ``<field>_iso`` companions exist only in machine-readable formats;
-                # when the base field resolves the name is legitimate, not a typo.
-                iso_only = {p for p in unmatched if p.endswith("_iso") and not find_unmatched(records, [p[:-4]])}
-                wrong -= iso_only
-                # A glob under a parent that exists but is null or empty everywhere
-                # (``host_info.*`` when no device reported host_info) is not wrong either.
-                soft_globs = set()
-                for spec in unmatched_globs:
-                    parent = spec.rsplit(".", 1)[0] if "." in spec else ""
-                    if parent and not is_glob(parent) and not find_unknown(records, [parent]):
-                        soft_globs.add(spec)
-                errors = [
-                    t for spec, t in zip(unmatched_globs, problems[: len(unmatched_globs)]) if spec not in soft_globs
-                ]
-                errors += [text for path, text in zip(unmatched, problems[len(unmatched_globs) :]) if path in wrong]
-                if errors:
-                    hint = None
-                    internal = [p for p in wrong if p.startswith("_") and p.split(".")[0].split("[")[0] != "_id"]
-                    if hidden_internal and internal:
-                        hint = "Fields starting with '_' are internal and hidden unless you pass --raw."
-                    raise UnknownFieldError(errors, extra_hint=hint)
-                problems = [
-                    f"pattern '{rich_escape(spec)}' matched no fields here (its parent is null or empty)."
-                    for spec in soft_globs
-                ]
-                for path in unmatched:
-                    if path in iso_only:
-                        problems.append(
-                            f"'{rich_escape(path)}' is only added in json, jsonl, csv and yaml output "
-                            f"(use '{rich_escape(path[:-4])}' here); column left blank."
-                        )
-                    else:
-                        problems.append(
-                            f"'{rich_escape(path)}' has no value in any record here (its parent is null or empty); "
-                            "column left blank."
-                        )
+            for path in find_unmatched(records, paths):
+                name = rich_escape(path)
+                if path.endswith("_iso") and not find_unmatched(records, [path[:-4]]):
+                    # Companions are synthesised for machine-readable formats only.
+                    problems.append(
+                        f"'{name}' is only added in json, jsonl, csv and yaml output "
+                        f"(use '{rich_escape(path[:-4])}' here); column left blank."
+                    )
+                elif hidden_internal and path.startswith("_") and path.split(".")[0].split("[")[0] != "_id":
+                    problems.append(f"'{name}' is internal and hidden unless you pass --raw; column left blank.")
+                else:
+                    problems.append(f"'{name}' not found in any record.{self._suggestion_text(path, records)}")
             for problem in problems:
                 self.err_console.print(
                     f"[yellow]{label}:[/yellow] {problem} [dim]Run with --list-fields to see every field.[/dim]"
@@ -1188,7 +1164,7 @@ def build_formatter(ctx: Any) -> "OutputFormatter":
     """Create an ``OutputFormatter`` pre-configured from the global CLI state.
 
     Reads ``no_color``, ``count``, ``wide``, ``quiet`` and the query options
-    (``fields``, ``where_expr``, ``sort_spec``, ``list_fields``, ``lenient``) from
+    (``fields``, ``where_expr``, ``sort_spec``, ``list_fields``) from
     ``ctx.obj`` (the ``State`` dataclass set by the main callback).  Safe to
     call even when ``ctx.obj`` is *None*.  Every command module's
     ``_get_formatter`` / ``_build_formatter`` helper delegates here so the
@@ -1208,7 +1184,6 @@ def build_formatter(ctx: Any) -> "OutputFormatter":
         where=opt("where_expr", None) or opt("where", None),
         sort=opt("sort_spec", None) or opt("sort", None),
         list_fields=opt("list_fields", False),
-        lenient=opt("lenient", False),
     )
 
 

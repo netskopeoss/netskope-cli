@@ -10,7 +10,7 @@ import pytest
 import respx
 from typer.testing import CliRunner
 
-from netskope_cli.core.output import OutputFormatter, UnknownFieldError, build_formatter
+from netskope_cli.core.output import OutputFormatter, build_formatter
 from netskope_cli.main import State, _hoist_global_options, app, cli
 
 BASE = "https://test.goskope.com"
@@ -77,18 +77,8 @@ class TestFormatterFields:
         out, _ = _out(capsys)
         assert out.splitlines()[0] == "hostname"
 
-    def test_unknown_field_is_an_error_with_suggestion(self, capsys: pytest.CaptureFixture[str]) -> None:
-        with pytest.raises(UnknownFieldError) as exc:
-            OutputFormatter(no_color=True, fields=["hostnme", "nothing.*"]).format_output(DEVICES, fmt="json")
-        assert exc.value.exit_code == 2
-        assert "'hostnme' not found in any record" in exc.value.message
-        assert "hostname" in exc.value.message
-        assert "pattern 'nothing.*' matched no fields" in exc.value.message
-        assert "--list-fields" in (exc.value.suggestion or "") and "--lenient" in (exc.value.suggestion or "")
-        assert _out(capsys)[0] == ""  # nothing reached stdout
-
-    def test_lenient_unknown_field_warns(self, capsys: pytest.CaptureFixture[str]) -> None:
-        OutputFormatter(no_color=True, lenient=True, fields=["hostnme", "nothing.*"]).format_output(DEVICES, fmt="json")
+    def test_unknown_field_warns_with_suggestion(self, capsys: pytest.CaptureFixture[str]) -> None:
+        OutputFormatter(no_color=True, fields=["hostnme", "nothing.*"]).format_output(DEVICES, fmt="json")
         out, err = _out(capsys)
         assert "'hostnme' not found in any record" in err
         assert "hostname" in err
@@ -233,16 +223,12 @@ class TestWideHint:
 class TestFactory:
     def test_build_formatter_reads_state(self) -> None:
         class Ctx:
-            obj = State(
-                fields=["a"], where="x eq 1", sort="a:desc", list_fields=True, quiet=True, wide=True, lenient=True
-            )
+            obj = State(fields=["a"], where="x eq 1", sort="a:desc", list_fields=True, quiet=True, wide=True)
 
         fmt = build_formatter(Ctx())
         assert fmt._global_fields == ["a"]
         assert fmt._where is not None and fmt._sort == [("a", True)] and fmt._list_fields and fmt._quiet
-        assert fmt._lenient
         assert build_formatter(object())._global_fields is None
-        assert not build_formatter(object())._lenient
 
 
 # ---------------------------------------------------------------------------

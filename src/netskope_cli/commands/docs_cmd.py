@@ -367,14 +367,10 @@ They run client-side on the rows the API returned (so --limit still applies).
      epdlp.*                  glob: every field under epdlp
      *_timestamp              glob: every field ending in _timestamp
 
-   A name no returned record has stops the command (exit 2) and suggests
-   close matches; add --lenient to warn instead and render that column
-   blank (table/csv) or null (json/yaml). Only lists of records with a fixed
-   schema are strict: a path or glob whose parent is null or empty in every
-   record, any name when --api-fields trimmed the response, single-object
-   responses (get, create, update), group-by rows and the events/alerts/
-   incidents commands (keys vary per event subtype, so the exit code must not
-   depend on the window) all warn. Quote globs in zsh:  --fields 'epdlp.*'
+   A name no returned record has prints a warning with close matches and
+   renders the column blank (table/csv) or null (json/yaml); it never fails
+   the command, because which keys a page carries depends on the rows that
+   landed in it. Quote globs in zsh:  --fields 'epdlp.*'
 
      ntsk devices list --fields hostname,host_info.os,last_event_timestamp
      ntsk npa apps list --fields app_name,protocols[].port -o csv
@@ -436,10 +432,11 @@ Counting
 --------
    --count on events/alerts/incidents fetches one API page (10,000 rows) and
    prints N+ when it filled up, with a notice on stderr; -o json/jsonl/csv/yaml
-   print the bare integer (a lower bound) so scripts keep parsing a number.
-   Add --exact to page through the endpoint for the true total (bounded by
-   NETSKOPE_COUNT_CEILING, default 200,000 rows; N+ again if reached). --where
-   is applied per page. events audit/infrastructure/transaction cannot be paged.
+   and any piped output print the bare integer (a lower bound) so scripts keep
+   parsing a number. Add --exact (with --start) to page through the endpoint
+   for the true total (bounded by NETSKOPE_COUNT_CEILING, default 200,000 rows;
+   N+ again if reached). --where is applied per page. events audit states a
+   total; infrastructure/transaction cannot be paged.
 """
 
 
@@ -489,8 +486,7 @@ def fields_reference(
 
     Displays an inline reference for the global query options that work on
     every command: --list-fields (discover the response schema), --fields
-    (pick columns incl. nested paths and globs; --lenient to tolerate unknown
-    names), --where (client-side JQL row filter) and --sort. Explains the
+    (pick columns incl. nested paths and globs), --where (client-side JQL row filter) and --sort. Explains the
     path grammar, comparison rules, which per-command options are
     server-side (--api-fields, --query, --filter) and how --count/--exact
     behave on the 10,000-row datasearch page cap.

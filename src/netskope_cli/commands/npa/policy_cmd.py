@@ -13,7 +13,7 @@ from netskope_cli.commands.npa._helpers import (
     _get_output_format,
     _load_json_file,
 )
-from netskope_cli.core.datasearch import request_with_projection, resolve_api_fields
+from netskope_cli.core.datasearch import API_FIELDS_HELP, request_with_projection, resolve_api_fields
 from netskope_cli.core.output import echo_error, echo_success, spinner
 
 # ---------------------------------------------------------------------------
@@ -79,12 +79,7 @@ def list_rules(
     api_fields: Optional[str] = typer.Option(
         None,
         "--api-fields",
-        help=(
-            "Comma-separated top-level field names the API should return (server-side projection). "
-            "Widened automatically with any field named by --fields, --where or --sort; output shows these "
-            "columns in this order unless --fields picks others. For client-side selection (nested paths, "
-            "globs) use the global --fields; see 'ntsk docs fields'."
-        ),
+        help=API_FIELDS_HELP,
     ),
     sort_by: Optional[str] = typer.Option(
         None,
@@ -121,9 +116,7 @@ def list_rules(
         params["offset"] = offset
     if filter_query is not None:
         params["filter"] = filter_query
-    selection = resolve_api_fields(ctx, api_fields)
-    if selection.request is not None:
-        params["fields"] = selection.request
+    selection = resolve_api_fields(ctx, api_fields, params)
     if sort_by is not None:
         params["sortby"] = sort_by
     if sort_order is not None:
@@ -137,7 +130,6 @@ def list_rules(
         fmt=fmt,
         title="NPA Policy Rules",
         fields=selection.display,
-        projected=selection.projected,
         default_fields=["rule_id", "rule_name", "enabled", "group_name", "action"],
         count_only=count,
     )
@@ -150,12 +142,7 @@ def get_rule(
     api_fields: Optional[str] = typer.Option(
         None,
         "--api-fields",
-        help=(
-            "Comma-separated top-level field names the API should return (server-side projection). "
-            "Widened automatically with any field named by --fields, --where or --sort; output shows these "
-            "columns in this order unless --fields picks others. For client-side selection (nested paths, "
-            "globs) use the global --fields; see 'ntsk docs fields'."
-        ),
+        help=API_FIELDS_HELP,
     ),
 ) -> None:
     """Retrieve a specific NPA policy rule by ID.
@@ -171,9 +158,7 @@ def get_rule(
     fmt = _get_output_format(ctx)
 
     params: dict[str, object] = {}
-    selection = resolve_api_fields(ctx, api_fields)
-    if selection.request is not None:
-        params["fields"] = selection.request
+    selection = resolve_api_fields(ctx, api_fields, params)
 
     with spinner(f"Fetching NPA policy rule {rule_id}..."):
         data = request_with_projection(client, f"/api/v2/policy/npa/rules/{rule_id}", params, selection)
@@ -186,7 +171,6 @@ def get_rule(
         fmt=fmt,
         title=f"NPA Policy Rule {rule_id}",
         fields=selection.display,
-        projected=selection.projected,
     )
 
 
@@ -353,12 +337,7 @@ def list_groups(
     api_fields: Optional[str] = typer.Option(
         None,
         "--api-fields",
-        help=(
-            "Comma-separated top-level field names the API should return (server-side projection). "
-            "Widened automatically with any field named by --fields, --where or --sort; output shows these "
-            "columns in this order unless --fields picks others. For client-side selection (nested paths, "
-            "globs) use the global --fields; see 'ntsk docs fields'."
-        ),
+        help=API_FIELDS_HELP,
     ),
     count: bool = typer.Option(
         False,
@@ -383,9 +362,7 @@ def list_groups(
         params["limit"] = limit
     if offset is not None:
         params["offset"] = offset
-    selection = resolve_api_fields(ctx, api_fields)
-    if selection.request is not None:
-        params["fields"] = selection.request
+    selection = resolve_api_fields(ctx, api_fields, params)
 
     with spinner("Fetching NPA policy groups..."):
         data = request_with_projection(client, "/api/v2/policy/npa/policygroups", params, selection)
@@ -395,7 +372,6 @@ def list_groups(
         fmt=fmt,
         title="NPA Policy Groups",
         fields=selection.display,
-        projected=selection.projected,
         default_fields=["group_id", "group_name"],
         count_only=count,
     )

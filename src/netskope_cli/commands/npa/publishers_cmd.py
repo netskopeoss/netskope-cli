@@ -20,7 +20,7 @@ from netskope_cli.commands.npa._helpers import (
 )
 from netskope_cli.commands.npa.local_brokers_cmd import local_brokers_app
 from netskope_cli.commands.npa.upgrade_profiles_cmd import upgrade_profiles_app
-from netskope_cli.core.datasearch import request_with_projection, resolve_api_fields
+from netskope_cli.core.datasearch import API_FIELDS_HELP, request_with_projection, resolve_api_fields
 from netskope_cli.core.output import echo_success, spinner
 
 # ---------------------------------------------------------------------------
@@ -70,12 +70,7 @@ def list_publishers(
     api_fields: Optional[str] = typer.Option(
         None,
         "--api-fields",
-        help=(
-            "Comma-separated top-level field names the API should return (server-side projection). "
-            "Widened automatically with any field named by --fields, --where or --sort; output shows these "
-            "columns in this order unless --fields picks others. For client-side selection (nested paths, "
-            "globs) use the global --fields; see 'ntsk docs fields'."
-        ),
+        help=API_FIELDS_HELP,
     ),
     count: bool = typer.Option(
         False,
@@ -103,9 +98,7 @@ def list_publishers(
         params["offset"] = offset
     if filter_query is not None:
         params["filter"] = filter_query
-    selection = resolve_api_fields(ctx, api_fields)
-    if selection.request is not None:
-        params["fields"] = selection.request
+    selection = resolve_api_fields(ctx, api_fields, params)
 
     with spinner("Fetching publishers..."):
         data = request_with_projection(client, "/api/v2/infrastructure/publishers", params, selection)
@@ -115,7 +108,6 @@ def list_publishers(
         fmt=fmt,
         title="Publishers",
         fields=selection.display,
-        projected=selection.projected,
         default_fields=["publisher_name", "publisher_id", "status", "version", "apps_count"],
         count_only=count,
     )

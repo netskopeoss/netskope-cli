@@ -320,47 +320,6 @@ def find_unmatched(records: Sequence[Any], paths: Sequence[str]) -> list[str]:
     return unmatched
 
 
-def find_unknown(records: Sequence[Any], paths: Sequence[str]) -> list[str]:
-    """Return the *paths* that are provably wrong for *records* (a subset of :func:`find_unmatched`).
-
-    A path is wrong when some record holds a dict at the parent position and no
-    such dict has the next key, or when the parent is a scalar.  A path whose
-    parents are null, missing or empty in every record (``host_info.os`` when
-    no device reported ``host_info``, ``tags[].name`` when every ``tags`` is
-    ``[]``) cannot be resolved but is not wrong, and is left out so a strict
-    ``--fields`` does not fail on data that merely has no value in this window.
-    """
-    dicts = [r for r in records if isinstance(r, dict)]
-    return [path for path in find_unmatched(dicts, paths) if _is_unknown(dicts, split_path(path))]
-
-
-def _is_unknown(parents: list[Any], segments: list[str]) -> bool:
-    for segment in segments:
-        key, idx = _parse_segment(segment)
-        if key:
-            flat: list[Any] = []
-            for parent in parents:
-                flat.extend(parent) if isinstance(parent, list) else flat.append(parent)
-            holders = [p for p in flat if isinstance(p, dict)]
-            if not holders:
-                # Nothing to look the key up in: a scalar proves the path wrong,
-                # null or empty containers merely have no data here.
-                return any(p is not None and not isinstance(p, (dict, list)) for p in flat)
-            values = [h[key] for h in holders if key in h]
-            if not values:
-                return True
-        else:
-            values = list(parents)
-        if idx is None:
-            parents = values
-        elif idx == "":
-            parents = [item for v in values if isinstance(v, list) for item in v]
-        else:
-            position = int(idx)
-            parents = [v[position] for v in values if isinstance(v, list) and -len(v) <= position < len(v)]
-    return False
-
-
 def project_records(data: Any, fields: Sequence[str], *, missing: Any = None) -> Any:
     """Project *data* (dict or list of dicts) onto *fields*, in request order.
 

@@ -59,15 +59,8 @@ class TestQueryOptions:
         assert hoist("events", "alerts", "-f", "a") == ["ntsk", "-f", "a", "events", "alerts"]
         assert hoist("atp", "scan-file", "-f", "./x") == ["ntsk", "atp", "scan-file", "-f", "./x"]
 
-    def test_lenient_and_exact_are_global_bool_flags(self) -> None:
-        assert hoist("alerts", "list", "--count", "--exact", "--lenient") == [
-            "ntsk",
-            "--exact",
-            "--lenient",
-            "alerts",
-            "list",
-            "--count",
-        ]
+    def test_exact_is_a_global_bool_flag(self) -> None:
+        assert hoist("alerts", "list", "--count", "--exact") == ["ntsk", "--exact", "alerts", "list", "--count"]
 
     def test_where_hoisted_and_kept_local_for_dem(self) -> None:
         assert hoist("users", "list", "--where", "a eq 1") == ["ntsk", "--where", "a eq 1", "users", "list"]

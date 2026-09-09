@@ -20,7 +20,7 @@ from rich.text import Text
 
 from netskope_cli.core.client import NetskopeClient, build_client
 from netskope_cli.core.datasearch import DATASEARCH_PAGE_CAP
-from netskope_cli.core.output import TOTAL_KEYS, envelope_total, spinner, unwrap_api_response
+from netskope_cli.core.output import page_count, page_is_capped, spinner, unwrap_api_response
 from netskope_cli.utils.helpers import validate_time_range
 
 status_app = typer.Typer(name="status", invoke_without_command=True)
@@ -55,10 +55,9 @@ async def _fetch_event_count(
 ) -> EventCount:
     """Fetch an event count from a datasearch endpoint.
 
-    Same rules as ``--count`` (``core.datasearch.is_page_capped``): a stated
-    total (``total``, ``totalResults``, ``status.total``) is exact; otherwise
-    the count is ``status.count`` or the rows returned, and it is flagged
-    ``capped`` (a lower bound) when the page filled the requested ``limit``.
+    The same :func:`page_is_capped` / :func:`page_count` rules as ``--count``:
+    a stated total is exact, otherwise ``status.count`` or the rows returned,
+    flagged ``capped`` (a lower bound) when the page filled the ``limit``.
     """
     import httpx
 
@@ -71,20 +70,11 @@ async def _fetch_event_count(
                 return EventCount(None, False)
             data = resp.json()
             if isinstance(data, dict):
-                _records, meta = unwrap_api_response(data)
-                total = envelope_total({k: v for k, v in meta.items() if k in TOTAL_KEYS})
-                if total is not None:
-                    return EventCount(total, False)
-                result = data.get("result")
-                rows = len(result) if isinstance(result, list) else None
-                count = envelope_total(meta)  # only status.count can be left
-                if count is None:
-                    count = rows
-                if count is None:
+                records, meta = unwrap_api_response(data)
+                if not isinstance(records, list):
                     return EventCount(None, False)
-                limit = params.get("limit")
-                capped = rows is not None and limit is not None and rows >= int(limit)
-                return EventCount(max(count, rows or 0), capped)
+                capped = page_is_capped(meta, len(records), int(params.get("limit", _EVENT_LIMIT)))
+                return EventCount(page_count(meta, len(records), capped=capped), capped)
     except Exception as exc:
         if errors is not None:
             errors.append(f"{path}: {exc}")

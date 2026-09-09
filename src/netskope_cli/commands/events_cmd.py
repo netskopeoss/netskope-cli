@@ -13,15 +13,8 @@ from typing import Any, Optional
 import typer
 
 from netskope_cli.core.client import NetskopeClient, build_client
-from netskope_cli.core.datasearch import (
-    ApiFieldSelection,
-    Page,
-    fetch_page,
-    raise_on_error_envelope,
-    resolve_api_fields,
-)
+from netskope_cli.core.datasearch import API_FIELDS_HELP, COUNT_HELP, Page, fetch_page, raise_on_error_envelope
 from netskope_cli.core.exceptions import NetskopeError
-from netskope_cli.core.output import OutputFormatter
 from netskope_cli.core.output import build_formatter as _core_build_formatter
 from netskope_cli.utils.helpers import validate_time_range
 
@@ -54,13 +47,7 @@ _HELP_QUERY = (
     '\'user eq "alice@example.com" AND action eq "block"\'. Omit to return all events. '
     "Run 'netskope docs jql' for full JQL syntax reference."
 )
-_HELP_API_FIELDS = (
-    "Comma-separated top-level field names the API should return, e.g. 'timestamp,user,action,app'. "
-    "Sent to the API as a server-side projection to reduce payload size; automatically widened with any "
-    "field named by --fields, --where or --sort so those keep working. Output shows these columns in this "
-    "order unless --fields picks others. Omit to return every field. To choose columns client-side "
-    "(nested paths, globs) use the global --fields; see 'ntsk docs fields'."
-)
+_HELP_API_FIELDS = API_FIELDS_HELP
 _HELP_START = (
     "Start of the time range for the query. Accepts a Unix epoch timestamp (seconds) or a "
     "relative offset such as '24h' (last 24 hours), '7d' (last 7 days), or '1h' (last hour). "
@@ -132,38 +119,6 @@ def _apply_sort_direction(order_by: str | None, descending: bool, ascending: boo
     return order_by
 
 
-def _fetch_events(
-    ctx: typer.Context,
-    endpoint: str,
-    params: dict[str, Any],
-    *,
-    selection: ApiFieldSelection,
-    limit: int,
-    count_only: bool,
-    spinner_text: str,
-) -> Page | None:
-    """Run the request for an events command and return the fetched :class:`Page`.
-
-    The page-cap and ``--exact`` rules live in :func:`fetch_page`; ``None``
-    means the exact count was printed and the caller is done.
-    """
-    state = ctx.obj
-    return fetch_page(
-        _build_client(ctx),
-        endpoint,
-        params,
-        selection=selection,
-        limit=limit,
-        count=count_only,
-        exact=bool(getattr(state, "exact", False)),
-        where=getattr(state, "where_expr", None),
-        quiet=bool(getattr(state, "quiet", False)),
-        no_color=bool(getattr(state, "no_color", False)),
-        spinner_text=spinner_text,
-        output_fmt=getattr(getattr(state, "output", None), "value", None),
-    )
-
-
 def _run_event_query(
     ctx: typer.Context,
     endpoint: str,
@@ -190,8 +145,6 @@ def _run_event_query(
     using :class:`OutputFormatter`.
     """
     state = ctx.obj
-    no_color = state.no_color if state is not None else False
-    output_fmt = state.output.value if state is not None else "table"
     count_only = count_only or (getattr(state, "count", False) if state is not None else False)
 
     # Validate limit
@@ -213,43 +166,19 @@ def _run_event_query(
 
     params.update(_parse_time_params(start, end))
 
-    # Server-side projection (--api-fields), widened for --fields/--where/--sort.
-    # ``events get`` has no --api-fields option, so it must not print the note.
-    selection = resolve_api_fields(ctx, api_fields) if api_fields_supported else ApiFieldSelection(None, None)
-    if selection.request is not None:
-        params["fields"] = selection.request
-
-    # -- Execute request ---------------------------------------------------
-    page = _fetch_events(
+    page = fetch_page(
         ctx,
+        _build_client(ctx),
         endpoint,
         params,
-        selection=selection,
+        api_fields=api_fields,
         limit=limit,
-        count_only=count_only,
+        count=count_only,
         spinner_text=spinner_text,
+        api_fields_supported=api_fields_supported,
     )
-    if page is None:
-        return
-
-    # -- Process and render ------------------------------------------------
-    wide = getattr(state, "wide", False) if state is not None else False
-    _render_event_response(
-        page.data,
-        ctx=ctx,
-        title=title,
-        output_fmt=output_fmt,
-        no_color=no_color,
-        selected_fields=selection.display,
-        projected=selection.projected,
-        default_fields=default_fields,
-        count_only=count_only,
-        capped_at=page.capped_at,
-        capped_hint=page.capped_hint,
-        strip_internal=not (state.raw if state else False),
-        add_iso_timestamps=not (state.epoch if state else False),
-        wide=wide,
-    )
+    if page is not None:
+        _render_event_response(ctx, page, title=title, default_fields=default_fields)
 
 
 def _run_audit_query(
@@ -289,69 +218,38 @@ def _run_audit_query(
 
 
 def _render_event_response(
-    data: Any,
-    *,
-    ctx: typer.Context | None = None,
-    title: str,
-    output_fmt: str,
-    no_color: bool,
-    selected_fields: list[str] | None,
-    projected: bool = False,
-    default_fields: list[str] | None = None,
-    count_only: bool = False,
-    capped_at: int | None = None,
-    capped_hint: str | None = None,
-    strip_internal: bool = True,
-    add_iso_timestamps: bool = True,
-    wide: bool = False,
+    ctx: typer.Context, page: Page, *, title: str, default_fields: list[str] | None = None
 ) -> None:
     """Validate and render an events API response.
 
     Counting is left to the formatter so a client-side ``--where`` is applied
-    first; *capped_at* marks a count that filled the API page (lower bound).
-    Event records carry different keys per subtype, so the formatter is told
-    the schema is sparse and an unknown ``--fields`` name warns instead of
-    failing.
+    first.  The envelope is handed over whole when ``result`` is a list, so an
+    endpoint total drives ``--count`` and the "Showing N of M" banner; a dict
+    ``result`` (metrics endpoints) or a missing one is rendered on its own.
+    ``ok``/``message`` are dropped so ``--verbose`` metadata shows only the
+    counts.
     """
+    data = page.data
     if not isinstance(data, dict):
         raise NetskopeError(
             "Unexpected response format from the API.",
             details={"response": data},
         )
-
     raise_on_error_envelope(data)
 
-    results = data.get("result", [])
+    state = ctx.obj
+    output_fmt = state.output.value if state is not None else "table"
     total = data.get("total")
-
-    if ctx is not None:
-        formatter = _core_build_formatter(ctx)
+    if isinstance(data.get("result"), list) or (page.count and total is not None):
+        payload: Any = {k: v for k, v in data.items() if k not in ("ok", "message")}
     else:
-        formatter = OutputFormatter(no_color=no_color, count_only=count_only, wide=wide)
-
-    display_title = title
-    if total is not None:
-        display_title = f"{title} ({total} total, showing {len(results)})"
-
-    # Hand over the whole envelope when ``result`` is a list, so an endpoint
-    # total (audit, some datasearch responses) drives --count and the
-    # "Showing N of M" banner, and when counting a response that states a
-    # total.  Otherwise a dict ``result`` (metrics endpoints) or a missing one
-    # is rendered on its own, never the envelope.
-    payload: Any = data if isinstance(data.get("result"), list) or (count_only and total is not None) else results
-    formatter.format_output(
+        payload = data.get("result", [])
+    _core_build_formatter(ctx).format_output(
         payload,
         fmt=output_fmt,
-        fields=selected_fields,
-        projected=projected,
+        title=title,
         default_fields=default_fields,
-        title=display_title,
-        count_only=count_only,
-        capped_at=capped_at,
-        capped_hint=capped_hint,
-        strip_internal=strip_internal,
-        add_iso_timestamps=add_iso_timestamps,
-        sparse=True,
+        **page.format_kwargs(ctx),
     )
 
 
@@ -589,14 +487,7 @@ def events_list(
     order_by: Optional[str] = typer.Option(None, "--order-by", help=_HELP_ORDER_BY),
     descending: bool = typer.Option(False, "--desc", help=_HELP_DESC),
     ascending: bool = typer.Option(False, "--asc", help=_HELP_ASC),
-    count: bool = typer.Option(
-        False,
-        "--count",
-        help=(
-            "Print only the count of matching records. Fetches up to 10,000 rows (the API page cap) and "
-            "prints N+ when that cap is hit; add the global --exact to page for the true total."
-        ),
-    ),
+    count: bool = typer.Option(False, "--count", help=COUNT_HELP),
 ) -> None:
     """Query events by type using a unified interface.
 
