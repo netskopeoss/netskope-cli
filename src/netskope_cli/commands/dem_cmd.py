@@ -820,7 +820,7 @@ def metrics_query(
         None,
         "--where",
         "-w",
-        help=("JSON where clause (operator-first format). " 'Example: \'["=", "user_id", ["$", "john@example.com"]]\''),
+        help=('JSON where clause (operator-first format). Example: \'["=", "user_id", ["$", "john@example.com"]]\''),
     ),
     groupby: Optional[str] = typer.Option(
         None,
@@ -959,7 +959,7 @@ def dataset_query(
         None,
         "--where",
         "-w",
-        help=("JSON where clause (operator-first format). " 'Example: \'["=", "site_name", ["$", "Paris"]]\''),
+        help=('JSON where clause (operator-first format). Example: \'["=", "site_name", ["$", "Paris"]]\''),
     ),
     groupby: Optional[str] = typer.Option(
         None,
@@ -1058,9 +1058,7 @@ def sites_summary(
         None,
         "--where",
         "-w",
-        help=(
-            "JSON where clause applied to both underlying queries. " 'Example: \'["=", "country", ["$", "France"]]\''
-        ),
+        help=('JSON where clause applied to both underlying queries. Example: \'["=", "country", ["$", "France"]]\''),
     ),
     limit: Optional[int] = typer.Option(
         None, "--limit", "-l", help=f"Maximum sites per source (default 100, max {DATASET_MAX_LIMIT})."
@@ -1149,7 +1147,7 @@ def sites_summary(
         default_fields=SITE_SUMMARY_DEFAULT_FIELDS,
         title="DEM Sites — per-site network summary",
         empty_hint=(
-            "No site data in this window. Sites need Netskope Client synthetic " "(http_steered/traceroute_pop) data."
+            "No site data in this window. Sites need Netskope Client synthetic (http_steered/traceroute_pop) data."
         ),
     )
 

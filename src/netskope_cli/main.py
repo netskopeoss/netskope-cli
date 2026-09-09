@@ -16,11 +16,10 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Optional
 
-import click
-import click.exceptions
 import typer
 from rich.console import Console
 from typer._completion_classes import completion_init
+from typer.core import TyperCommand, TyperGroup, TyperOption
 
 from netskope_cli.core.exceptions import NetskopeError
 from netskope_cli.core.filtering import parse_filter, parse_sort_spec
@@ -501,9 +500,7 @@ def _maybe_show_setup_hint(ctx: typer.Context, cli_profile: str | None) -> None:
             )
         else:
             console.print()
-            console.print(
-                "[bold yellow]No credentials configured[/bold yellow] " f"for profile [bold]'{active}'[/bold]."
-            )
+            console.print(f"[bold yellow]No credentials configured[/bold yellow] for profile [bold]'{active}'[/bold].")
             console.print()
             console.print("  Set up authentication (choose one):")
             console.print("    [cyan]netskope config set-token[/cyan]          # interactive prompt")
@@ -512,7 +509,7 @@ def _maybe_show_setup_hint(ctx: typer.Context, cli_profile: str | None) -> None:
             console.print('    [cyan]export NETSKOPE_API_TOKEN="..."[/cyan]    # env variable')
             console.print()
             console.print(
-                "  [dim]Get a token from: Settings > Tools > REST API v2 in your" " Netskope admin console.[/dim]"
+                "  [dim]Get a token from: Settings > Tools > REST API v2 in your Netskope admin console.[/dim]"
             )
             console.print()
             raise ConfigError(
@@ -539,7 +536,7 @@ def _print_welcome_banner() -> None:
     console.print("  [bold]Then try:[/bold]")
     console.print("    [cyan]netskope alerts list --limit 5[/cyan]")
     console.print()
-    console.print("  [dim]Get a token from: Settings > Tools > REST API v2 in your" " Netskope admin console.[/dim]")
+    console.print("  [dim]Get a token from: Settings > Tools > REST API v2 in your Netskope admin console.[/dim]")
     console.print()
 
 
@@ -1005,7 +1002,16 @@ for _module, _attr, _help, _panel in _optional_groups:
 # ---------------------------------------------------------------------------
 # Error handling wrapper
 # ---------------------------------------------------------------------------
+# typer exports Exit, Abort and BadParameter but not the UsageError their
+# bad-usage errors derive from, and cli() needs it to add hints ("did you
+# mean", ntsk docs fields). This is the one import from typer's private
+# vendored click; tests/integration/test_cli_commands.py pins it.
+from typer._click.exceptions import UsageError  # noqa: E402
+
 _error_displayed = False
+
+# Every command typer builds is one of these two classes.
+_AnyCommand = TyperGroup | TyperCommand
 
 
 # Global flags that take a value / are boolean, hoisted to the global position.
@@ -1028,27 +1034,27 @@ _GLOBAL_BOOL_FLAGS = frozenset(
 )
 
 
-def _option_takes_value(cmd: click.Command, flag: str) -> bool:
+def _option_takes_value(cmd: _AnyCommand, flag: str) -> bool:
     for param in cmd.params:
-        if isinstance(param, click.Option) and flag in (*param.opts, *param.secondary_opts):
+        if isinstance(param, TyperOption) and flag in (*param.opts, *param.secondary_opts):
             return not (param.is_flag or param.count)
     return False
 
 
-def _local_option_names(cmd: click.Command | None) -> set[str]:
+def _local_option_names(cmd: _AnyCommand | None) -> set[str]:
     """Every option spelling (``--fields``, ``-f`` ...) the command declares itself."""
     names: set[str] = set()
     if cmd is None:
         return names
     for param in cmd.params:
-        if isinstance(param, click.Option):
+        if isinstance(param, TyperOption):
             names.update(param.opts)
             names.update(param.secondary_opts)
     return names
 
 
-def _resolve_leaf_command(argv: list[str]) -> click.Command | None:
-    """Walk the Click tree to the leaf subcommand named in *argv*.
+def _resolve_leaf_command(argv: list[str]) -> TyperCommand | None:
+    """Walk the command tree to the leaf subcommand named in *argv*.
 
     Returns ``None`` when the leaf cannot be determined (unknown command,
     ``help``, a bare group, or any unexpected error), in which case callers
@@ -1056,8 +1062,10 @@ def _resolve_leaf_command(argv: list[str]) -> click.Command | None:
     """
     try:
         root = typer.main.get_command(app)
-        current: click.Command = root
-        ctx = click.Context(root, info_name=argv[0] if argv else "netskope")
+        if not isinstance(root, TyperGroup):
+            return None
+        current: _AnyCommand = root
+        ctx = typer.Context(root, info_name=argv[0] if argv else "netskope")
         i = 1
         while i < len(argv):
             tok = argv[i]
@@ -1070,17 +1078,17 @@ def _resolve_leaf_command(argv: list[str]) -> click.Command | None:
                 takes_value = tok in _GLOBAL_VALUE_FLAGS or _option_takes_value(current, tok)
                 i += 2 if takes_value else 1
                 continue
-            if not isinstance(current, click.Group):
+            if not isinstance(current, TyperGroup):
                 return current
             nxt = current.get_command(ctx, tok)
-            if nxt is None:
+            if not isinstance(nxt, (TyperGroup, TyperCommand)):
                 return None
-            ctx = click.Context(nxt, parent=ctx, info_name=tok)
+            ctx = typer.Context(nxt, parent=ctx, info_name=tok)
             current = nxt
-            if not isinstance(nxt, click.Group):
+            if isinstance(nxt, TyperCommand):
                 return nxt
             i += 1
-        return None if isinstance(current, click.Group) else current
+        return None if isinstance(current, TyperGroup) else current
     except Exception:  # pragma: no cover - defensive: argv rewriting must never crash
         return None
 
@@ -1141,19 +1149,9 @@ def _hoist_global_options(argv: list[str]) -> list[str]:
     return result + hoisted + rest
 
 
-def _show_group_hint(ctx: click.Context) -> None:
+def _show_group_hint(group: TyperGroup, cmd_path: str) -> None:
     """Print available subcommands when a group is invoked without a subcommand."""
-    group = ctx.command
-    if not isinstance(group, click.Group):
-        return
-    # Build full command path from context chain
-    parts: list[str] = []
-    c: click.Context | None = ctx
-    while c is not None:
-        if c.info_name:
-            parts.append(c.info_name)
-        c = c.parent
-    cmd_path = " ".join(reversed(parts))
+    ctx = typer.Context(group, info_name=cmd_path.rsplit(" ", 1)[-1])
     console = Console(stderr=True)
     console.print(f"\n[yellow]'{cmd_path}' is a command group. Available subcommands:[/yellow]\n")
     for name in sorted(group.list_commands(ctx)):
@@ -1182,12 +1180,12 @@ def cli() -> None:
         sys.argv[idx] = "--help"
 
     try:
-        app(standalone_mode=False)
-    except click.exceptions.Exit as e:
-        raise SystemExit(e.exit_code)
-    except click.exceptions.Abort:
+        # With standalone_mode=False typer returns an Exit's code instead of
+        # raising it; it is turned back into the process status below.
+        rc = app(standalone_mode=False)
+    except typer.Abort:
         raise SystemExit(130)
-    except click.exceptions.UsageError as exc:
+    except UsageError as exc:
         # Must be caught BEFORE NetskopeError / generic Exception so that
         # Click-generated usage errors (e.g. "No such option") are shown
         # exactly once and never double-printed.
@@ -1197,8 +1195,8 @@ def cli() -> None:
         if not msg or "Missing command" in msg or "missing command" in msg.lower():
             # Help was already displayed by no_args_is_help or we triggered it.
             # Show available subcommands as a hint before exiting.
-            if exc.ctx and isinstance(exc.ctx.command, click.Group):
-                _show_group_hint(exc.ctx)
+            if exc.ctx and isinstance(exc.ctx.command, TyperGroup):
+                _show_group_hint(exc.ctx.command, exc.ctx.command_path)
             raise SystemExit(0)
         console = Console(stderr=True)
         # Use the actual command name from sys.argv[0] (e.g. "ntsk" or "netskope")
@@ -1223,8 +1221,8 @@ def cli() -> None:
                     redirected = True
                 break
 
-        # Unknown option: replace Click's guess with the closest global or
-        # subcommand option (Click only knows the options of one command).
+        # Unknown option: replace typer's guess with the closest global or
+        # subcommand option (typer only knows the options of one command).
         option_hint: str | None = None
         if "No such option" in msg:
             bad = re.search(r"No such option:? '?(-{1,2}[\w-]+)", msg)
@@ -1233,7 +1231,7 @@ def cli() -> None:
                 candidates.update(_local_option_names(_resolve_leaf_command(sys.argv)))
                 close = difflib.get_close_matches(bad.group(1), sorted(candidates), n=1, cutoff=0.6)
                 if close:
-                    msg = re.sub(r"\s*Did you mean '[^']*'\?", "", msg)
+                    msg = re.sub(r"\s*Did you mean '[^']*'\?|\s*\(Possible options: [^)]*\)", "", msg)
                     option_hint = f"Did you mean [cyan]{close[0]}[/cyan]?"
                     if close[0] in ("--fields", "--where", "--sort", "--list-fields", "--api-fields"):
                         option_hint += " See 'ntsk docs fields' for the query options."
@@ -1311,6 +1309,8 @@ def cli() -> None:
         console = Console(stderr=True)
         console.print(f"[bold red]Error:[/bold red] {exc}")
         raise SystemExit(1)
+    if isinstance(rc, int) and rc:
+        raise SystemExit(rc)
 
 
 # Allow `python -m netskope_cli.main`

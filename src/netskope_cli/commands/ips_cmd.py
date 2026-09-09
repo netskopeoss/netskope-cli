@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 ips_app = typer.Typer(
     name="ips",
-    help=("Intrusion Prevention System — view IPS status, manage IP allowlists, " "and browse signature references."),
+    help=("Intrusion Prevention System — view IPS status, manage IP allowlists, and browse signature references."),
     no_args_is_help=True,
 )
 
@@ -230,13 +230,10 @@ def allowlist_add(
     formatter = _get_formatter(ctx)
     fmt = _get_output_format(ctx)
 
-    body: dict[str, object] = {
-        "data": {
-            "ip": ip,
-        }
-    }
+    data: dict[str, str] = {"ip": ip}
     if description is not None:
-        body["data"]["description"] = description  # type: ignore[index]
+        data["description"] = description
+    body: dict[str, object] = {"data": data}
 
     if not _is_quiet(ctx):
         with spinner(f"Adding '{ip}' to IPS allowlist...", no_color=_no_color(ctx)):

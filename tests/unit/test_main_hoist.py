@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-import click
 import pytest
+import typer
+import typer.main
+from typer.core import TyperGroup
 
 from netskope_cli.main import _hoist_global_options, _local_option_names, _resolve_leaf_command
 
@@ -118,23 +120,24 @@ class TestQueryOptions:
         ]
 
 
-def _make_group() -> click.Group:
-    root = click.Group("root")
-    sub = click.Group("sub")
-    root.add_command(sub)
+def _make_group() -> TyperGroup:
+    root = typer.Typer()
+    sub = typer.Typer()
 
     @sub.command("leaf")
-    @click.option("--fields")
-    @click.option("--flag", is_flag=True)
-    @click.option("--limit", type=int)
-    def leaf(fields: str, flag: bool, limit: int) -> None:  # pragma: no cover - never invoked
+    def leaf(  # pragma: no cover - never invoked
+        fields: str = typer.Option(None, "--fields"),
+        flag: bool = typer.Option(False, "--flag"),
+        limit: int = typer.Option(None, "--limit"),
+    ) -> None:
         pass
 
     @root.command("plain")
     def plain() -> None:  # pragma: no cover - never invoked
         pass
 
-    return root
+    root.add_typer(sub, name="sub")
+    return typer.main.get_group(root)
 
 
 class TestResolveLeaf:
@@ -157,10 +160,10 @@ class TestResolveLeaf:
 
     def test_local_option_names_synthetic(self) -> None:
         root = _make_group()
-        ctx = click.Context(root, info_name="root")
+        ctx = typer.Context(root, info_name="root")
         sub = root.get_command(ctx, "sub")
-        assert isinstance(sub, click.Group)
-        leaf = sub.get_command(click.Context(sub, parent=ctx, info_name="sub"), "leaf")
+        assert isinstance(sub, TyperGroup)
+        leaf = sub.get_command(typer.Context(sub, parent=ctx, info_name="sub"), "leaf")
         assert _local_option_names(leaf) == {"--fields", "--flag", "--limit"}
         assert _local_option_names(None) == set()
 

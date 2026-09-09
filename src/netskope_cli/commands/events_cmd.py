@@ -103,7 +103,7 @@ def _parse_time_params(
     except ValueError as exc:
         raise NetskopeError(
             f"Invalid time range: {exc}",
-            suggestion=("Use a Unix timestamp or relative offset " "(e.g. 24h, 7d)."),
+            suggestion=("Use a Unix timestamp or relative offset (e.g. 24h, 7d)."),
         ) from exc
     return {"starttime": unix_start, "endtime": unix_end}
 

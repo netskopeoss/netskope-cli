@@ -5,22 +5,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build & Development Commands
 
 ```bash
-poetry install                          # Install dependencies
-poetry run netskope --help              # Run the CLI
-poetry run ntsk --help                   # Short alias
+uv sync                                 # Create .venv and install runtime + dev dependencies
+uv run netskope --help              # Run the CLI
+uv run ntsk --help                   # Short alias
 
 # Testing
-poetry run pytest                       # All tests
-poetry run pytest tests/unit/           # Unit tests only
-poetry run pytest tests/integration/    # Integration tests only
-poetry run pytest tests/unit/test_client.py::TestClassName  # Single test class
-poetry run pytest --cov=src/netskope_cli tests/             # With coverage
+uv run pytest                       # All tests
+uv run pytest tests/unit/           # Unit tests only
+uv run pytest tests/integration/    # Integration tests only
+uv run pytest tests/unit/test_client.py::TestClassName  # Single test class
+uv run pytest --cov=src/netskope_cli tests/             # With coverage
 
-# Linting & Formatting (run before commits/PRs)
-poetry run ruff check .                 # Lint
-poetry run ruff check . --fix           # Auto-fix lint issues
-poetry run black .                      # Format
-poetry run mypy src/                    # Type check
+# Lint, format, type-check (run before commits/PRs)
+uv run ruff check .                 # Lint
+uv run ruff check . --fix           # Auto-fix lint issues
+uv run ruff format .                # Format (ruff format --check . to verify only)
+uv run ty check                     # Type check src/ (scope and rules in [tool.ty])
+
+# CI (.github/workflows/ci.yml) runs the same four checks on Python 3.11 and 3.14 for every
+# pull request and push to master, then builds the wheel and sdist and smoke-tests both from a
+# clean install (scripts/smoke-dist.sh, which release.yml runs on the artifacts it publishes).
 ```
 
 ## Architecture
@@ -60,9 +64,14 @@ Each module defines helper functions: `_build_client()`, `_get_formatter()`, `_g
 
 ### Key Conventions
 
-- **Line length:** 120 (ruff and black)
+- **Line length:** 120 (ruff lint and ruff format)
 - **Python target:** 3.11+
-- **Config format:** Ruff rules E, F, W, I; mypy strict mode
+- **Toolchain:** uv for packaging, ruff for lint (rules E, F, W, I) and formatting, ty for type checking of `src/`;
+  all configured in `pyproject.toml`. Suppress a ty diagnostic with `# ty: ignore[rule]`; bare `# type: ignore` also works.
+- **Changelog:** `CHANGELOG.md` follows Keep a Changelog 1.1.0 throughout. Every user-visible change
+  lands in the same PR under `### Added` / `Changed` / `Deprecated` / `Removed` / `Fixed` / `Security` in the Unreleased
+  section, one or two sentences per entry; the release runbook turns that section into the version entry and the
+  GitHub Release notes.
 - **Test tools:** pytest + respx (httpx mocking) + pytest-mock
 - **Secrets:** Never hardcode; use env vars or keyring. Config files in `.gitignore`.
 - **Formatters:** always obtain one via `netskope_cli.core.output.build_formatter(ctx)` (each module's
@@ -89,23 +98,33 @@ Each module defines helper functions: `_build_client()`, `_get_formatter()`, `_g
 ## Releasing to PyPI
 
 ```bash
-# 1. Bump version in BOTH places (keep them in sync)
+# 1. Bump version in BOTH places (keep them in sync), then refresh the lockfile
 #    - pyproject.toml  →  version = "X.Y.Z"
 #    - src/netskope_cli/main.py  →  __version__ = "X.Y.Z"
+uv lock                     # uv.lock records the project version; uv sync --locked fails until this runs
 
 # 2. Commit and push the version bump
-git add pyproject.toml src/netskope_cli/main.py
+git add pyproject.toml uv.lock src/netskope_cli/main.py
 git commit -m "Bump version to X.Y.Z"
 git push origin master
 
-# 3. Build and publish (PyPI token must be pre-configured in Poetry)
-poetry build
-poetry publish
+# 3. Publish. Pushing the vX.Y.Z tag runs .github/workflows/release.yml, which
+#    checks, builds and publishes through PyPI's Trusted Publisher for this repo;
+#    no token is stored anywhere. Watch it with `gh run watch`.
+#    The manual path below is the fallback when Actions cannot run. uv has no
+#    credential store and does not read ~/.pypirc, so the token comes from the
+#    macOS keychain for the one command.
+rm -rf dist                 # uv publish uploads everything in dist/
+uv build
+token="$(security find-generic-password -s pypi-netskope -w)" && [ -n "$token" ] || exit 1
+UV_PUBLISH_TOKEN="$token" uv publish --check-url https://pypi.org/simple/
 ```
 
 **PyPI token setup** (one-time, done by the user — never by AI):
 ```bash
-poetry config pypi-token.pypi pypi-YOUR_TOKEN
+security add-generic-password -U -s pypi-netskope -a __token__ -w   # prompts for the token; -U lets a rotated one overwrite
 ```
 
-The token is stored locally by Poetry. Never pass it as a CLI argument in shared sessions or commit it to any file.
+`release.yml` uses PyPI's Trusted Publisher, Astral's recommended method, which needs no long-lived token;
+the keychain-backed variable is the fallback only. Never echo the token, pass it on the command line in
+shared sessions, or commit it to any file.

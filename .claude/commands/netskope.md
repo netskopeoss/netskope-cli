@@ -16,7 +16,7 @@ ntsk alerts list --limit 10
 
 If the CLI is not on PATH (e.g. you get "command not found"), fall back to running from the source repo:
 ```bash
-poetry run netskope <command>
+uv run netskope <command>
 ```
 
 ## Authentication

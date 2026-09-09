@@ -1,7 +1,7 @@
 """Integration tests for DEM commands against a live Netskope tenant.
 
 Run with:
-    DEM_INTEGRATION_TESTS=1 poetry run pytest tests/integration/test_dem_integration.py -v
+    DEM_INTEGRATION_TESTS=1 uv run pytest tests/integration/test_dem_integration.py -v
 """
 
 from __future__ import annotations

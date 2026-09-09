@@ -157,9 +157,7 @@ def cci(
     offset: Optional[int] = typer.Option(
         None,
         "--offset",
-        help=(
-            "Number of results to skip for pagination. Combine with --limit to page " "through results. Defaults to 0."
-        ),
+        help=("Number of results to skip for pagination. Combine with --limit to page through results. Defaults to 0."),
     ),
 ) -> None:
     """Look up Cloud Confidence Index (CCI) risk data for a cloud application.
@@ -267,7 +265,7 @@ def tags_get(
     ctx: typer.Context,
     tag_id: int = typer.Argument(
         ...,
-        help=("Numeric ID of the service tag to retrieve. Find tag IDs by running " "'netskope services tags list'."),
+        help=("Numeric ID of the service tag to retrieve. Find tag IDs by running 'netskope services tags list'."),
     ),
 ) -> None:
     """Retrieve details for a specific service tag by ID.
@@ -343,7 +341,7 @@ def tags_update(
     name: Optional[str] = typer.Option(
         None,
         "--name",
-        help=("New display name for the tag. Omit to keep the current name. " "Must be unique within your tenant."),
+        help=("New display name for the tag. Omit to keep the current name. Must be unique within your tenant."),
     ),
     apps: Optional[str] = typer.Option(
         None,
@@ -394,8 +392,7 @@ def tags_delete(
     tag_id: int = typer.Argument(
         ...,
         help=(
-            "Numeric ID of the tag to delete. Find IDs via 'netskope services tags list'. "
-            "This action cannot be undone."
+            "Numeric ID of the tag to delete. Find IDs via 'netskope services tags list'. This action cannot be undone."
         ),
     ),
 ) -> None:
@@ -437,9 +434,7 @@ def publishers_list(
     offset: int = typer.Option(
         0,
         "--offset",
-        help=(
-            "Number of records to skip for pagination. Combine with --limit " "to page through results. Defaults to 0."
-        ),
+        help=("Number of records to skip for pagination. Combine with --limit to page through results. Defaults to 0."),
     ),
     count: bool = typer.Option(False, "--count", help="Print only the total count."),
 ) -> None:
@@ -475,7 +470,7 @@ def publishers_get(
     ctx: typer.Context,
     publisher_id: int = typer.Argument(
         ...,
-        help=("Numeric ID of the publisher to retrieve. Find IDs via " "'netskope services publishers list'."),
+        help=("Numeric ID of the publisher to retrieve. Find IDs via 'netskope services publishers list'."),
     ),
 ) -> None:
     """Retrieve details for a specific publisher by ID.
@@ -537,9 +532,7 @@ def private_apps_get(
     ctx: typer.Context,
     app_id: int = typer.Argument(
         ...,
-        help=(
-            "Numeric ID of the private application to retrieve. " "Find IDs via 'netskope services private-apps list'."
-        ),
+        help=("Numeric ID of the private application to retrieve. Find IDs via 'netskope services private-apps list'."),
     ),
 ) -> None:
     """Retrieve details of a specific private application by ID.

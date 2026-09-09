@@ -1,79 +1,102 @@
-[tool.poetry]
+[project]
 name = "netskope"
 version = "1.4.8"
 description = "The official Netskope CLI — manage your Netskope tenant from the command line"
-authors = ["Netskope"]
-license = "MIT"
 readme = "README.md"
-repository = "https://github.com/netskopeoss/netskope-cli"
-homepage = "https://netskopeoss.github.io/netskope-cli/"
-documentation = "https://netskopeoss.github.io/netskope-cli/"
-packages = [{include = "netskope_cli", from = "src"}]
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Netskope" }]
+requires-python = ">=3.11"
+keywords = ["netskope", "cli", "sase", "security"]
+classifiers = [
+    "Environment :: Console",
+    "Intended Audience :: System Administrators",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Security",
+]
+# Runtime dependencies are pinned exactly: open ranges let fresh installs drift
+# away from the versions the test suite ran against, and typer 0.26 showed how
+# quietly that can break things (see v1.4.6). Bump deliberately: change the pin,
+# run `uv lock` and the full suite, then re-verify `netskope commands` on a fresh
+# install of the built wheel.
+dependencies = [
+    "typer==0.27.2",
+    "rich==14.3.4",
+    "shellingham==1.5.4",
+    "httpx==0.28.1",
+    "toml==0.10.2",
+    "keyring==25.7.0",
+    "pydantic==2.13.5",
+    "pydantic-settings==2.15.0",
+    "pyyaml==6.0.3",
+]
 
-[tool.poetry.scripts]
+[project.optional-dependencies]
+browser = ["playwright==1.58.0"]
+
+[project.urls]
+Homepage = "https://netskopeoss.github.io/netskope-cli/"
+Repository = "https://github.com/netskopeoss/netskope-cli"
+Documentation = "https://netskopeoss.github.io/netskope-cli/"
+Changelog = "https://github.com/netskopeoss/netskope-cli/blob/master/CHANGELOG.md"
+Issues = "https://github.com/netskopeoss/netskope-cli/issues"
+
+[project.scripts]
 netskope = "netskope_cli.main:cli"
 ntsk = "netskope_cli.main:cli"
 
-[tool.poetry.dependencies]
-# Runtime dependencies are pinned exactly. typer 0.26 shipped a vendored copy of
-# click that silently broke isinstance(obj, click.Group) checks (see v1.4.6), and
-# open ranges let fresh installs drift away from the versions the test suite runs
-# against. Bump deliberately: change the pin, `poetry lock`, run the full suite,
-# then re-verify `netskope commands` on a fresh install of the built wheel.
-python = "^3.11"
-typer = {extras = ["all"], version = "==0.25.1"}
-click = "==8.5.0"
-rich = "==14.3.4"
-shellingham = "==1.5.4"
-httpx = "==0.28.1"
-toml = "==0.10.2"
-keyring = "==25.7.0"
-pydantic = "==2.13.5"
-pydantic-settings = "==2.15.0"
-pyyaml = "==6.0.3"
-playwright = {version = "==1.58.0", optional = true}
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    "pytest-cov==7.1.0",
+    "pytest-mock==3.15.1",
+    "respx==0.22.0",
+    "ruff==0.15.5",
+    "ty==0.0.79",
+]
 
-[tool.poetry.extras]
-browser = ["playwright"]
-
-[tool.poetry.group.dev.dependencies]
-pytest = "==9.1.1"
-pytest-asyncio = "==1.4.0"
-pytest-cov = "==7.1.0"
-pytest-mock = "==3.15.1"
-respx = "==0.22.0"
-ruff = "==0.15.5"
-black = "==26.1.0"
-mypy = "==1.19.1"
-types-toml = "==0.10.8.20260518"
-types-pyyaml = "==6.0.12.20260518"
-
+# hatchling rather than uv_build: Homebrew installs the sdist with pip's
+# --no-binary=:all:, which pip also applies to build dependencies, so a compiled
+# backend would be built from its Rust sources on every `brew install`. hatchling
+# is pure Python and, like poetry-core before it, leaves VCS-ignored files (.env,
+# editor swap files) out of the wheel and the sdist.
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
 
+[tool.hatch.build.targets.wheel]
+packages = ["src/netskope_cli"]
+
+[tool.hatch.build.targets.sdist]
+# hatchling always adds pyproject.toml, the readme and the license file.
+only-include = ["src/netskope_cli", "CHANGELOG.md"]
+
+# Target Python version is inferred from requires-python.
 [tool.ruff]
 line-length = 120
-target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
-
-[tool.black]
-line-length = 120
-target-version = ["py311"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 
-[tool.mypy]
-python_version = "3.11"
-warn_return_any = true
-warn_unused_configs = true
+# Python version is inferred from requires-python. Type-check the package;
+# tests are exercised by pytest.
+[tool.ty.src]
+include = ["src"]
 
-# playwright is an optional extra ([browser]); browser_auth.py imports it
-# lazily behind try/except ImportError, so stubs are absent in a base install.
-[[tool.mypy.overrides]]
-module = "playwright.*"
-ignore_missing_imports = true
+# playwright is an optional extra ([browser]); browser_auth.py imports it lazily
+# behind try/except ImportError, so it is absent from a base install.
+[[tool.ty.overrides]]
+include = ["src/netskope_cli/core/browser_auth.py"]
+
+[tool.ty.overrides.rules]
+unresolved-import = "ignore"

@@ -214,7 +214,7 @@ def set_tenant(
 
     console = _get_console(ctx)
     console.print(
-        f"[green]Tenant set to[/green] [bold]{hostname}[/bold] " f"[green]for profile[/green] [bold]'{profile}'[/bold]."
+        f"[green]Tenant set to[/green] [bold]{hostname}[/bold] [green]for profile[/green] [bold]'{profile}'[/bold]."
     )
 
 
@@ -223,7 +223,7 @@ def set_token(
     ctx: typer.Context,
     token_arg: Optional[str] = typer.Argument(
         None,
-        help=("API token value (positional). You can also use --token or the " "interactive prompt instead."),
+        help=("API token value (positional). You can also use --token or the interactive prompt instead."),
         show_default=False,
     ),
     token_opt: Optional[str] = typer.Option(
@@ -276,7 +276,7 @@ def set_token(
     token = token.strip()
     used_keyring = _store_token(profile, token, console=console)
     if used_keyring:
-        console.print(f"[green]Token stored in keyring for profile[/green] " f"[bold]'{profile}'[/bold].")
+        console.print(f"[green]Token stored in keyring for profile[/green] [bold]'{profile}'[/bold].")
     else:
         console.print(f"[green]Token stored for profile[/green] [bold]'{profile}'[/bold].")
 
@@ -684,8 +684,8 @@ def test_config(
     ci_session = get_session_cookie(profile=active, cfg=cfg)
 
     if not api_token and not ci_session:
-        console.print("[bold red]FAIL[/bold red] No credentials configured for " f"profile '{active}'.")
-        console.print("[dim]Hint: Run `netskope config set-token` or " "`netskope auth login`.[/dim]")
+        console.print(f"[bold red]FAIL[/bold red] No credentials configured for profile '{active}'.")
+        console.print("[dim]Hint: Run `netskope config set-token` or `netskope auth login`.[/dim]")
         raise typer.Exit(code=1)
 
     client = NetskopeClient(
@@ -705,10 +705,9 @@ def test_config(
             params={"starttime": now - 3600, "endtime": now, "limit": 1},
         )
         console.print(
-            f"[bold green]OK[/bold green] Successfully connected to "
-            f"[bold]{base_url}[/bold] using profile '{active}'."
+            f"[bold green]OK[/bold green] Successfully connected to [bold]{base_url}[/bold] using profile '{active}'."
         )
     except Exception as exc:
         console.print(f"[bold red]FAIL[/bold red] API call failed: {exc}")
-        console.print("[dim]Hint: Check your tenant hostname and API token. " "Use --verbose for more details.[/dim]")
+        console.print("[dim]Hint: Check your tenant hostname and API token. Use --verbose for more details.[/dim]")
         raise typer.Exit(code=1)

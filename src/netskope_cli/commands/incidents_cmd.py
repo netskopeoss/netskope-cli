@@ -450,7 +450,7 @@ def update(
                         "  netskope incidents search --query 'incident_id eq <id>' "
                         "--fields incident_id,status,severity"
                         + (
-                            "\nWith --object-id, --old-value must also match the field's " "current value exactly."
+                            "\nWith --object-id, --old-value must also match the field's current value exactly."
                             if object_id
                             else ""
                         )
@@ -646,7 +646,7 @@ def anomalies(
         "--limit",
         min=1,
         max=10000,
-        help=("Maximum number of anomaly results to return. Must be between 1 and 10000. " "Defaults to 100."),
+        help=("Maximum number of anomaly results to return. Must be between 1 and 10000. Defaults to 100."),
     ),
     offset: int = typer.Option(
         0,
@@ -657,7 +657,7 @@ def anomalies(
     sortby: str = typer.Option(
         "time",
         "--sortby",
-        help=("Field to sort results by. Defaults to 'time'. Other useful values include " "'severity' or 'user'."),
+        help=("Field to sort results by. Defaults to 'time'. Other useful values include 'severity' or 'user'."),
     ),
     sortorder: str = typer.Option(
         "desc",
@@ -838,7 +838,7 @@ def notes_add(
 
     if len(content) >= _NOTE_CONTENT_LIMIT:
         echo_error(
-            f"Note content is {len(content)} characters; it must be under " f"{_NOTE_CONTENT_LIMIT}.",
+            f"Note content is {len(content)} characters; it must be under {_NOTE_CONTENT_LIMIT}.",
             no_color=state.no_color,
         )
         raise typer.Exit(code=1)

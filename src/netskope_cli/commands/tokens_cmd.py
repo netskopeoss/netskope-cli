@@ -193,7 +193,7 @@ def tokens_update(
     ctx: typer.Context,
     token_id: int = typer.Argument(
         ...,
-        help=("Unique numeric identifier of the token to update.  Run " "'netskope tokens list' to find token IDs."),
+        help=("Unique numeric identifier of the token to update.  Run 'netskope tokens list' to find token IDs."),
     ),
     name: Optional[str] = typer.Option(
         None,

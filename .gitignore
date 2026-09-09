@@ -33,14 +33,12 @@ ENV/
 .coverage
 htmlcov/
 .pytest_cache/
-.mypy_cache/
+.ruff_cache/
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Poetry
-poetry.lock
 
 # Local scratch files
 local/

@@ -140,7 +140,7 @@ def create_token(
         None,
         "--max-devices",
         "-m",
-        help="Maximum number of devices that can enroll using this token set. " "Omit for unlimited enrollments.",
+        help="Maximum number of devices that can enroll using this token set. Omit for unlimited enrollments.",
     ),
 ) -> None:
     """Create a new enrollment token set.

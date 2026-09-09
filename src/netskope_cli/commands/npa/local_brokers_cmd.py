@@ -407,6 +407,5 @@ def _validate_access_via_public_ip(value: str) -> None:
     """Raise BadParameter if the access-via-public-ip value is invalid."""
     if value not in _VALID_ACCESS_VIA_PUBLIC_IP:
         raise typer.BadParameter(
-            f"Invalid access-via-public-ip '{value}'. "
-            f"Must be one of: {', '.join(sorted(_VALID_ACCESS_VIA_PUBLIC_IP))}"
+            f"Invalid access-via-public-ip '{value}'. Must be one of: {', '.join(sorted(_VALID_ACCESS_VIA_PUBLIC_IP))}"
         )

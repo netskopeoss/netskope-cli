@@ -44,6 +44,15 @@ py -m pip install --user pipx && pipx ensurepath
 pipx install netskope
 ```
 
+### uv (isolated install)
+
+[uv](https://docs.astral.sh/uv/) installs the CLI into its own environment, like pipx, and can also run it without installing anything.
+
+```bash
+uv tool install netskope      # installs netskope and ntsk on your PATH
+uvx netskope --help           # or run it once without installing
+```
+
 ### Windows
 
 ```powershell

@@ -299,8 +299,7 @@ def app_deployments(
         offset=offset,
         fetch_all=fetch_all,
         empty_hint=(
-            "No deployments of this type. Run 'ntsk aicc apps get' and use one of the "
-            "footprint.types values as --type."
+            "No deployments of this type. Run 'ntsk aicc apps get' and use one of the footprint.types values as --type."
         ),
     )
 

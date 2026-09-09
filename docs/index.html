@@ -242,6 +242,14 @@
       </div>
     </div>
     <div class="card p-5">
+      <h3 class="font-semibold mb-3">uv (isolated install)</h3>
+      <div class="code-block p-4 relative">
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        <code><span class="prompt">$</span> uv tool install netskope   <span class="comment"># netskope and ntsk on your PATH</span>
+<span class="prompt">$</span> uvx netskope --help         <span class="comment"># or run once without installing</span></code>
+      </div>
+    </div>
+    <div class="card p-5">
       <h3 class="font-semibold mb-3">Homebrew (macOS / Linux)</h3>
       <div class="code-block p-4 relative">
         <button class="copy-btn" onclick="copyCode(this)">Copy</button>
@@ -842,12 +850,12 @@ Session timeout for Workday...,Security Assessment,Workday,,1766610188,</span></
         <tr>
           <td><code class="text-xs font-semibold">--count</code></td>
           <td><span class="badge badge-gray">flag</span></td>
-          <td>Print only the record count. Endpoints that return a total report it. <code>events</code>/<code>alerts</code>/<code>incidents</code> fetch one API page (10,000 rows, the datasearch cap) and print <code>N+</code> with a stderr notice when it fills up (<code>-o json</code>/<code>jsonl</code>/<code>csv</code>/<code>yaml</code> and any piped output print the bare integer, a lower bound). Elsewhere the count is of the rows <code class="text-xs">--limit</code> fetched.</td>
+          <td>Print only the record count. Endpoints that return a total report it. <code>events</code>/<code>alerts</code>/<code>incidents</code> fetch one API page (10,000 rows, the datasearch cap) and print <code>N+</code> with a stderr notice when it fills up (<code>-o json</code>/<code>jsonl</code>/<code>csv</code>/<code>yaml</code> and any piped output print the bare integer, a lower bound). Elsewhere the count is of the rows <code class="text-xs">--limit</code> fetched. Elsewhere the count is of the rows <code class="text-xs">--limit</code> fetched. Combined with <code>--group-by</code> it is the number of groups.</td>
         </tr>
         <tr>
           <td><code class="text-xs font-semibold">--exact</code></td>
           <td><span class="badge badge-gray">flag</span></td>
-          <td>With <code>--count</code> and <code>--start</code> on <code>events</code>/<code>alerts</code>/<code>incidents</code>: page through the API in 10,000-row steps for the true total, applying <code>--where</code> per page. Stops at <code>NETSKOPE_COUNT_CEILING</code> rows (default 200,000) and prints <code>N+</code> if reached. Can issue many requests.</td>
+          <td>With <code>--count</code> and <code>--start</code> on <code>events</code>/<code>alerts</code>/<code>incidents</code>: page through the API in 10,000-row steps for the true total, applying <code>--where</code> per page. Stops at <code>NETSKOPE_COUNT_CEILING</code> rows (default 200,000) and prints <code>N+</code> if reached. Can issue many requests. Datasearch endpoints only: <code>events audit</code>, <code>infrastructure</code> and <code>transaction</code> count a single page and say so.</td>
         </tr>
         <tr>
           <td><code class="text-xs font-semibold">--no-color</code></td>
@@ -1739,6 +1747,7 @@ Hint: Run 'ntsk docs fields' for the --where syntax ...   (exit 2, no API call m
       <div class="code-block p-3 mt-4 text-xs">
         <code><span class="prompt">$</span> ntsk npa apps list <span class="flag">--limit</span> <span class="string">10</span>
 <span class="prompt">$</span> ntsk npa policy rules list
+<span class="prompt">$</span> ntsk npa policy rules get 42 <span class="flag">--api-fields</span> <span class="string">rule_name,enabled</span>   <span class="comment"># prints the rule object; --api-fields and --fields apply to its keys</span>
 <span class="prompt">$</span> ntsk npa publishers list
 <span class="prompt">$</span> ntsk npa tags list
 <span class="prompt">$</span> ntsk npa search <span class="string">"internal-wiki"</span>
@@ -2957,7 +2966,7 @@ ntsk alerts list --limit 10
 
 If the CLI is not on PATH (e.g. you get "command not found"), fall back to running from the source repo:
 \`\`\`bash
-poetry run netskope <command>
+uv run netskope <command>
 \`\`\`
 
 ## Authentication
@@ -3568,6 +3577,7 @@ ntsk alerts list --start 30d --limit 5000 -o jsonl > alerts.jsonl
 13. **\`npa policy list\`** does not exist — use \`npa policy rules list\` or \`npa policy groups list\`.
 14. **\`alerts summary\` uses \`--by\` or \`--group-by\`** (NOT \`--field\`). Example: \`ntsk alerts summary --by severity --since 7d\`
 
-Now, understand the user's request in "$ARGUMENTS" and use the CLI to accomplish it. If the request is ambiguous, ask what they want. Prefer \`-o json\` for your own parsing, and table format for direct display to the user. Always show the commands you're running so the user can learn.`;
+Now, understand the user's request in "$ARGUMENTS" and use the CLI to accomplish it. If the request is ambiguous, ask what they want. Prefer \`-o json\` for your own parsing, and table format for direct display to the user. Always show the commands you're running so the user can learn.
+`;
 </script>
 </body></html>
