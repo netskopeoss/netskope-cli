@@ -522,8 +522,7 @@ class OutputFormatter:
             hint = None
             if capped_at is not None:
                 hint = (
-                    f"Count capped at the API maximum of {capped_at:,} rows; "
-                    f"{capped_hint or 'narrow the time range'}."
+                    f"Count capped at the API maximum of {capped_at:,} rows; {capped_hint or 'narrow the time range'}."
                 )
             print_count(CountResult(n, capped, hint), fmt=fmt, err_console=self.err_console)
             return
