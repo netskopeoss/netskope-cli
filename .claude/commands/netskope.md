@@ -52,7 +52,7 @@ These flags can appear **before or after** the subcommand:
 - TTY: prints metadata lines + bare integer (e.g. `1616 results\nTime range: ...\n1616`)
 - With `-o json`: prints just the bare integer (`1616`) — best for scripting
 - For reliable scripting: `ntsk alerts list --start 24h --count -o json` gives a clean number
-- **Note:** `--count` on `events`/`alerts`/`incidents` fetches one API page (10,000 rows, the datasearch cap) and prints `N+` with a stderr notice when that page filled up; add `--exact` to page for the true total (up to `NETSKOPE_COUNT_CEILING`, default 200,000). Endpoints that return a `total` report it. Elsewhere the count is of the rows `--limit` fetched. `ntsk status` marks capped counts with `≥` and `*_capped: true` in JSON.
+- **Note:** `--count` on `events`/`alerts`/`incidents` fetches one API page (10,000 rows, the datasearch cap) and prints `N+` with a stderr notice when that page filled up (`-o json`/`jsonl`/`csv`/`yaml` and any piped output print the bare integer, a lower bound); add `--exact` with `--start` to page for the true total (up to `NETSKOPE_COUNT_CEILING`, default 200,000; not on `events audit`/`infrastructure`/`transaction`). Endpoints that return a `total` report it. Elsewhere the count is of the rows `--limit` fetched. `ntsk status` marks capped counts with `≥` and `*_capped: true` in JSON.
 
 **`-q` behavior:** Suppresses spinners and progress indicators only. Errors still print to stderr. Exit codes are unchanged. Safe to use in scripts.
 
@@ -60,7 +60,7 @@ These flags can appear **before or after** the subcommand:
 
 ## `--fields` (client-side) vs `--api-fields` (server-side)
 
-`--fields`/`-f` is **global and client-side** on every command: it picks output columns, in the order given, from whatever the API returned. Dotted paths (`host_info.os`), list hops (`a[].b`) and globs (`epdlp.*`) work; discover names with `--list-fields`. A name that **no returned record has exits 2** with close-match suggestions; add `--lenient` to warn and print blank/`null` columns instead.
+`--fields`/`-f` is **global and client-side** on every command: it picks output columns, in the order given, from whatever the API returned. Dotted paths (`host_info.os`), list hops (`a[].b`) and globs (`epdlp.*`) work; discover names with `--list-fields`. A name that no returned record has **warns** with close-match suggestions and prints a blank/`null` column; it never fails the command, since which keys a page carries depends on the rows that landed in it.
 
 `--api-fields` (events, alerts, incidents, npa publishers/policy) is the **server-side projection**: comma-separated top-level field names sent to the API to shrink the payload. It is widened automatically with every name `--fields`, `--where` or `--sort` reference, so filtering on a field you did not project still works. Output shows the projected columns in order unless `--fields` picks others. A projected name the API did not return is a warning, not an error.
 
@@ -198,7 +198,7 @@ ntsk incidents list --start 7d --limit 25
 ntsk incidents list --query 'severity eq "critical"' --start 7d --limit 25
 ntsk incidents list --count                             # Just the count
 
-# Pick columns client-side with the global --fields (any response field, nested paths too; a name no record has exits 2):
+# Pick columns client-side with the global --fields (any response field, nested paths too; a name no record has warns):
 ntsk incidents list --start 7d --limit 10 --fields incident_id,user,app,object,severity,dlp_file -o json
 
 # Trim the payload server-side with --api-fields (verified-safe names below; unknown names cause API 400 errors):
@@ -615,7 +615,7 @@ ntsk alerts list --start 30d --limit 5000 -o jsonl > alerts.jsonl
 1. **Time flags:** `alerts list/get/summary` accept both `--start` and `--since` (aliases). `incidents list/search` and `events` subcommands use `--start`/`-s` only.
 2. **Default limits:** `alerts list` defaults to 25. `incidents list` defaults to 100 (can be huge). Always set `--limit` explicitly.
 3. **Output size:** Use `--limit` to cap records and the global `--fields` to pick columns (client-side, never a 400). Start small (`--limit 5`) when exploring.
-4. **`--api-fields` is server-side** (events/alerts/incidents/npa) and the API rejects unknown names with HTTP 400. The global `--fields` is client-side and exits 2 on a name no record has (`--lenient` to warn instead).
+4. **`--api-fields` is server-side** (events/alerts/incidents/npa) and the API rejects unknown names with HTTP 400. The global `--fields` is client-side and warns on a name no record has.
 5. **JQL is case-sensitive.** Severity values have inconsistent casing (`"high"` vs `"High"`). Check actual values with `alerts summary --by severity` first.
 6. **JQL queries** must be single-quoted in the shell: `--query 'field eq "value"'`
 7. **Piping:** Output auto-switches to JSON when piped. You never need `-o json` explicitly when piping.
