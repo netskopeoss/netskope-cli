@@ -247,6 +247,23 @@ def is_glob(spec: str) -> bool:
     return "*" in spec or "?" in spec
 
 
+def top_level_name(spec: str) -> str | None:
+    """Return the top-level key a field spec starts with, or ``None`` when there is none.
+
+    ``host_info.os`` -> ``host_info``; ``protocols[].port`` -> ``protocols``;
+    ``epdlp.*`` -> ``epdlp``; ``*_timestamp`` -> ``None`` (a glob names nothing a
+    server-side projection could ask for).  Used to widen an API ``fields``
+    parameter so client-side ``--fields``/``--where``/``--sort`` paths resolve.
+    """
+    segments = split_path(spec)
+    if not segments:
+        return None
+    key, _ = _parse_segment(segments[0])
+    if not key or is_glob(key):
+        return None
+    return key
+
+
 def glob_to_regex(pattern: str) -> re.Pattern[str]:
     """Translate a ``*``/``?`` glob into a compiled, case-insensitive regex.
 

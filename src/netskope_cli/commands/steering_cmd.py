@@ -140,12 +140,6 @@ def private_apps_list(
             "supports field comparisons. Omit to return all private applications."
         ),
     ),
-    fields: Optional[str] = typer.Option(
-        None,
-        "--fields",
-        "-f",
-        help="Comma-separated list of field names to include in the response.",
-    ),
     count: bool = typer.Option(False, "--count", help="Print only the total count."),
 ) -> None:
     """List private applications in the steering configuration.
@@ -179,13 +173,11 @@ def private_apps_list(
             params=params or None,
         )
 
-    field_list = [f.strip() for f in fields.split(",") if f.strip()] if fields else None
     formatter.format_output(
         data,
         fmt=_get_output_format(ctx),
         title="Steering — Private Applications",
         default_fields=["app_name", "host", "port", "protocol", "publisher_name", "status"],
-        fields=field_list,
         count_only=count,
         strip_internal=not (state.raw if state else False),
         add_iso_timestamps=not (state.epoch if state else False),

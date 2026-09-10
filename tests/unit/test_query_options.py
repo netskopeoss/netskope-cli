@@ -10,7 +10,7 @@ import pytest
 import respx
 from typer.testing import CliRunner
 
-from netskope_cli.core.output import OutputFormatter, build_formatter, resolve_fields
+from netskope_cli.core.output import OutputFormatter, build_formatter
 from netskope_cli.main import State, _hoist_global_options, app, cli
 
 BASE = "https://test.goskope.com"
@@ -230,15 +230,6 @@ class TestFactory:
         assert fmt._where is not None and fmt._sort == [("a", True)] and fmt._list_fields and fmt._quiet
         assert build_formatter(object())._global_fields is None
 
-    def test_resolve_fields(self) -> None:
-        class Ctx:
-            obj = State(fields=["g"])
-
-        assert resolve_fields(Ctx(), "a, b,") == ["a", "b"]
-        assert resolve_fields(Ctx(), None) == ["g"]
-        assert resolve_fields(Ctx(), ["x"]) == ["x"]
-        assert resolve_fields(object(), None) is None
-
 
 # ---------------------------------------------------------------------------
 # End-to-end through the CLI (hoisting + State + formatter)
@@ -300,15 +291,19 @@ class TestEndToEnd:
         assert result.stdout.strip() == "1"
 
     @respx.mock
-    def test_events_fields_stay_server_side(self, runner: CliRunner) -> None:
+    def test_events_api_fields_go_server_side_and_fields_stay_client_side(self, runner: CliRunner) -> None:
         route = respx.get(f"{BASE}/api/v2/events/datasearch/alert").mock(
             return_value=httpx.Response(200, json={"ok": 1, "result": [{"alert_name": "x", "severity": "high"}]})
         )
-        result = _invoke_hoisted(runner, "events", "alerts", "--fields", "alert_name,severity", "-o", "json")
+        result = _invoke_hoisted(runner, "events", "alerts", "--api-fields", "alert_name,severity", "-o", "json")
         assert result.exit_code == 0, result.output
-        assert "fields=alert_name%2Cseverity" in str(route.calls[0].request.url) or "fields=alert_name,severity" in str(
-            route.calls[0].request.url
-        )
+        url = str(route.calls[0].request.url)
+        assert "fields=alert_name%2Cseverity" in url or "fields=alert_name,severity" in url
+
+        result = _invoke_hoisted(runner, "events", "alerts", "--fields", "severity", "-o", "json")
+        assert result.exit_code == 0, result.output
+        assert "fields=" not in str(route.calls[1].request.url)
+        assert json.loads(result.stdout) == [{"severity": "high"}]
 
     def test_where_syntax_error_exits_2_before_any_call(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(sys, "argv", ["ntsk", "users", "list", "--where", "userName eq"])

@@ -15,7 +15,6 @@ import typer
 from netskope_cli.commands.aicc._common import (
     AICC_BASE,
     HELP_END,
-    HELP_FIELDS,
     HELP_START,
     HELP_TIMEZONE,
     add_filters,
@@ -204,7 +203,6 @@ def breakdown(
     ),
     start: Optional[str] = typer.Option(None, "--start", "-s", "--since", help=HELP_START),
     end: Optional[str] = typer.Option(None, "--end", "-e", help=HELP_END),
-    fields: Optional[str] = typer.Option(None, "--fields", "-f", help=HELP_FIELDS),
 ) -> None:
     """Break an entity population down by a dimension (the dashboard charts).
 
@@ -245,7 +243,6 @@ def breakdown(
         ctx,
         segments if isinstance(segments, list) else payload,
         title=f"AICC — {entity.value.title()} by {dimension}",
-        fields=fields,
         empty_hint="No data for this breakdown in the window.",
     )
 

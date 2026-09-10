@@ -12,7 +12,6 @@ from netskope_cli.commands.aicc._common import (
     AICC_BASE,
     HELP_ALL,
     HELP_END,
-    HELP_FIELDS,
     HELP_LIMIT,
     HELP_OFFSET,
     HELP_SEARCH,
@@ -72,7 +71,6 @@ def get_extension(
     ),
     start: Optional[str] = typer.Option(None, "--start", "-s", "--since", help=HELP_START),
     end: Optional[str] = typer.Option(None, "--end", "-e", help=HELP_END),
-    fields: Optional[str] = typer.Option(None, "--fields", "-f", help=HELP_FIELDS),
 ) -> None:
     """Show details for one AI extension.
 
@@ -88,7 +86,7 @@ def get_extension(
     params: dict = {"start_time": start_iso, "end_time": end_iso}
     add_filters(params, type=extension_type.value if extension_type else None)
     response = aicc_get(ctx, _ext_path(extension_name), params, spinner_text=f"Fetching {extension_name}...")
-    show_payload(ctx, unwrap_data(response), title=f"AICC Extension — {extension_name}", fields=fields)
+    show_payload(ctx, unwrap_data(response), title=f"AICC Extension — {extension_name}")
 
 
 @extensions_app.command("deployments")
@@ -107,7 +105,6 @@ def extension_deployments(
     limit: int = typer.Option(50, "--limit", "-l", help=HELP_LIMIT),
     offset: int = typer.Option(0, "--offset", help=HELP_OFFSET),
     fetch_all: bool = typer.Option(False, "--all", help=HELP_ALL),
-    fields: Optional[str] = typer.Option(None, "--fields", "-f", help=HELP_FIELDS),
 ) -> None:
     """List devices where an extension is installed.
 
@@ -127,7 +124,6 @@ def extension_deployments(
         limit=limit,
         offset=offset,
         fetch_all=fetch_all,
-        fields=fields,
     )
 
 
@@ -149,7 +145,6 @@ def extension_identities(
     limit: int = typer.Option(50, "--limit", "-l", help=HELP_LIMIT),
     offset: int = typer.Option(0, "--offset", help=HELP_OFFSET),
     fetch_all: bool = typer.Option(False, "--all", help=HELP_ALL),
-    fields: Optional[str] = typer.Option(None, "--fields", "-f", help=HELP_FIELDS),
 ) -> None:
     """List the identities that installed an extension.
 
@@ -174,5 +169,4 @@ def extension_identities(
         limit=limit,
         offset=offset,
         fetch_all=fetch_all,
-        fields=fields,
     )

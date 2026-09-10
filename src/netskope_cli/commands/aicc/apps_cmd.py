@@ -13,7 +13,6 @@ from netskope_cli.commands.aicc._common import (
     HELP_ACTIVE_ONLY,
     HELP_ALL,
     HELP_END,
-    HELP_FIELDS,
     HELP_FIRST_SEEN_AFTER,
     HELP_LIMIT,
     HELP_OFFSET,
@@ -107,7 +106,6 @@ def list_apps(
     limit: int = typer.Option(50, "--limit", "-l", help=HELP_LIMIT),
     offset: int = typer.Option(0, "--offset", help=HELP_OFFSET),
     fetch_all: bool = typer.Option(False, "--all", help=HELP_ALL),
-    fields: Optional[str] = typer.Option(None, "--fields", "-f", help=HELP_FIELDS),
 ) -> None:
     """List discovered AI applications with usage and risk data.
 
@@ -146,7 +144,6 @@ def list_apps(
         limit=limit,
         offset=offset,
         fetch_all=fetch_all,
-        fields=fields,
         default_fields=[
             "name",
             "category",
@@ -175,7 +172,6 @@ def get_app(
     ),
     start: Optional[str] = typer.Option(None, "--start", "-s", "--since", help=HELP_START),
     end: Optional[str] = typer.Option(None, "--end", "-e", help=HELP_END),
-    fields: Optional[str] = typer.Option(None, "--fields", "-f", help=HELP_FIELDS),
 ) -> None:
     """Show full details for one AI application.
 
@@ -195,7 +191,7 @@ def get_app(
         {"start_time": start_iso, "end_time": end_iso},
         spinner_text=f"Fetching {app_name}...",
     )
-    show_payload(ctx, unwrap_data(response), title=f"AICC App — {app_name}", fields=fields)
+    show_payload(ctx, unwrap_data(response), title=f"AICC App — {app_name}")
 
 
 @apps_app.command("status")
@@ -231,7 +227,6 @@ def app_identities(
     limit: int = typer.Option(50, "--limit", "-l", help=HELP_LIMIT),
     offset: int = typer.Option(0, "--offset", help=HELP_OFFSET),
     fetch_all: bool = typer.Option(False, "--all", help=HELP_ALL),
-    fields: Optional[str] = typer.Option(None, "--fields", "-f", help=HELP_FIELDS),
 ) -> None:
     """List the identities (users and unknown sources) using an application.
 
@@ -260,7 +255,6 @@ def app_identities(
         limit=limit,
         offset=offset,
         fetch_all=fetch_all,
-        fields=fields,
         default_fields=["name", "type", "uploaded_bytes", "downloaded_bytes", "sessions", "events"],
     )
 
@@ -284,7 +278,6 @@ def app_deployments(
     limit: int = typer.Option(50, "--limit", "-l", help=HELP_LIMIT),
     offset: int = typer.Option(0, "--offset", help=HELP_OFFSET),
     fetch_all: bool = typer.Option(False, "--all", help=HELP_ALL),
-    fields: Optional[str] = typer.Option(None, "--fields", "-f", help=HELP_FIELDS),
 ) -> None:
     """List deployment instances of an application (per footprint type).
 
@@ -305,7 +298,6 @@ def app_deployments(
         limit=limit,
         offset=offset,
         fetch_all=fetch_all,
-        fields=fields,
         empty_hint=(
             "No deployments of this type. Run 'ntsk aicc apps get' and use one of the "
             "footprint.types values as --type."
@@ -371,7 +363,6 @@ def app_violations(
     limit: int = typer.Option(50, "--limit", "-l", help=HELP_LIMIT),
     offset: int = typer.Option(0, "--offset", help=HELP_OFFSET),
     fetch_all: bool = typer.Option(False, "--all", help=HELP_ALL),
-    fields: Optional[str] = typer.Option(None, "--fields", "-f", help=HELP_FIELDS),
 ) -> None:
     """List policy violations triggered by an application's traffic.
 
@@ -391,7 +382,6 @@ def app_violations(
         limit=limit,
         offset=offset,
         fetch_all=fetch_all,
-        fields=fields,
         default_fields=["policy_name", "severity", "category", "count"],
         empty_hint="No policy violations for this app in the window.",
     )

@@ -14,7 +14,6 @@ from netskope_cli.commands.aicc._common import (
     add_filters,
     build_sort,
     extract_items,
-    parse_fields,
     to_iso_utc,
     unwrap_data,
 )
@@ -105,10 +104,6 @@ class TestHelpers:
         assert meta["total"] == 3
         rows, meta = extract_items({"no_rows": True})
         assert rows == []
-
-    def test_parse_fields(self):
-        assert parse_fields(None) is None
-        assert parse_fields(" a, b ,") == ["a", "b"]
 
 
 # ---------------------------------------------------------------------------

@@ -378,7 +378,7 @@ class TestEventsCommands:
             assert parsed[0]["id"] == "X1"
 
     def test_events_alerts_with_fields_selection(self):
-        """Verify --fields filters the output columns."""
+        """Verify --api-fields is sent to the API and also picks the output columns."""
         import json
 
         mock_response = {
@@ -402,7 +402,7 @@ class TestEventsCommands:
                     "--quiet",
                     "events",
                     "alerts",
-                    "--fields",
+                    "--api-fields",
                     "alert_id,severity",
                 ],
             )
