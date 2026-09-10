@@ -86,9 +86,7 @@ def devices_list(
     offset: int = typer.Option(
         0,
         "--offset",
-        help=(
-            "Number of records to skip for pagination. Combine with --limit " "to page through results. Defaults to 0."
-        ),
+        help=("Number of records to skip for pagination. Combine with --limit to page through results. Defaults to 0."),
     ),
     no_fallback: bool = typer.Option(
         False,
@@ -206,8 +204,7 @@ def tags_get(
     tag_id: int = typer.Argument(
         ...,
         help=(
-            "Unique numeric identifier of the device tag to retrieve. "
-            "Run 'netskope devices tags list' to find tag IDs."
+            "Unique numeric identifier of the device tag to retrieve. Run 'netskope devices tags list' to find tag IDs."
         ),
     ),
 ) -> None:
@@ -292,8 +289,7 @@ def tags_update(
     tag_id: int = typer.Argument(
         ...,
         help=(
-            "Unique numeric identifier of the device tag to update. "
-            "Run 'netskope devices tags list' to find tag IDs."
+            "Unique numeric identifier of the device tag to update. Run 'netskope devices tags list' to find tag IDs."
         ),
     ),
     name: Optional[str] = typer.Option(

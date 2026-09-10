@@ -66,7 +66,7 @@ HELP_ALL = (
 )
 HELP_SEARCH = "Free-text search filter applied server-side to names."
 HELP_TIMEZONE = (
-    "IANA timezone used by the API to align trend buckets to local days (e.g. America/Los_Angeles). " "Default: UTC."
+    "IANA timezone used by the API to align trend buckets to local days (e.g. America/Los_Angeles). Default: UTC."
 )
 HELP_ACTIVE_ONLY = "Only include entities with activity inside the time window (excludes dormant entities)."
 HELP_FIRST_SEEN_AFTER = (

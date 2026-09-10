@@ -767,23 +767,57 @@ class TestUsersCommands:
 
 
 # ---------------------------------------------------------------------------
-# Regression: typer >=0.26 vendors its own copy of click, which makes the
-# ``isinstance(obj, click.Group)`` checks in tree_cmd/main silently fail and
-# renders ``netskope commands`` empty.  These tests drive the *real* app (not a
-# synthetic click group) so the breakage cannot pass unnoticed again.
+# Regression: typer 0.26 bundled its own copy of click and reshaped its command
+# classes, which made the ``isinstance(obj, click.Group)`` checks in tree_cmd/main
+# silently fail and rendered ``netskope commands`` empty (v1.4.6).  The walkers
+# now key on typer's public classes (typer.core.TyperGroup and friends) and the
+# error handler keeps one private import; these tests drive the *real* app so a
+# typer bump that moves either cannot pass unnoticed.
 # ---------------------------------------------------------------------------
 
 
 class TestCommandTreeRegression:
-    def test_typer_context_subclasses_real_click_context(self) -> None:
-        """typer must build on the same click we import, not a vendored copy."""
-        import click
-        import typer
+    def test_built_app_is_a_typer_group(self) -> None:
+        """The walkers key on typer.core.TyperGroup; the app typer builds must be one."""
+        import typer.main
+        from typer.core import TyperGroup
 
-        assert issubclass(typer.Context, click.Context), (
-            "typer is using a vendored click; isinstance(..., click.Group) checks "
-            "in tree_cmd.py/main.py will silently fail. Keep typer <0.26."
+        assert isinstance(typer.main.get_command(app), TyperGroup), (
+            "typer no longer builds apps as typer.core.TyperGroup; the isinstance checks in "
+            "tree_cmd.py/main.py will silently fail."
         )
+
+    def test_every_parameter_is_a_typer_option_or_argument(self) -> None:
+        """_local_option_names/_option_takes_value key on TyperOption; nothing else may appear."""
+        import typer
+        import typer.main
+        from typer.core import TyperArgument, TyperCommand, TyperGroup, TyperOption
+
+        from netskope_cli.commands.tree_cmd import _children
+
+        seen = 0
+
+        def walk(group: TyperGroup, ctx: typer.Context) -> None:
+            nonlocal seen
+            for name, cmd in _children(group, ctx):
+                for p in cmd.params:
+                    assert isinstance(p, (TyperOption, TyperArgument)), (name, p)
+                    seen += 1
+                if isinstance(cmd, TyperGroup):
+                    walk(cmd, typer.Context(cmd, parent=ctx, info_name=name))
+                else:
+                    assert isinstance(cmd, TyperCommand)
+
+        root = typer.main.get_group(app)
+        walk(root, typer.Context(root, info_name="ntsk"))
+        assert seen > 500
+
+    def test_usage_error_is_still_what_typer_raises(self) -> None:
+        """main.py's one private import must remain the base of typer's bad-usage errors."""
+        import typer
+        from typer._click.exceptions import UsageError
+
+        assert issubclass(typer.BadParameter, UsageError)
 
     def test_commands_flat_lists_many_commands(self) -> None:
         result = runner.invoke(app, ["commands", "--flat"])
@@ -805,14 +839,51 @@ class TestCommandTreeRegression:
         Rendering of the rich tree is TTY-gated, so assert against the walk
         itself rather than stdout.
         """
-        import click
+        import typer
         import typer.main
+        from typer.core import TyperGroup
 
         from netskope_cli.commands.tree_cmd import _walk_flat
 
         root = typer.main.get_command(app)
-        assert isinstance(root, click.Group), "real app root is not a click.Group"
+        assert isinstance(root, TyperGroup), "real app root is not a command group"
 
-        leaves = _walk_flat(root, click.Context(root, info_name="netskope"), prefix="ntsk ")
+        leaves = _walk_flat(root, typer.Context(root, info_name="netskope"), prefix="ntsk ")
         assert len(leaves) > 100, f"expected the full command list, got {len(leaves)} leaves"
         assert any("aicc" in path for path, *_ in leaves)
+
+
+class TestCliEntryPoint:
+    """cli() wraps typer with standalone_mode=False; these run the real entry point."""
+
+    @pytest.fixture(autouse=True)
+    def _env(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("NETSKOPE_TENANT", "test.goskope.com")
+        monkeypatch.setenv("NETSKOPE_API_TOKEN", "testtoken123")
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+
+    def test_exits_with_the_code_a_command_raises(self, monkeypatch, capsys):
+        """typer returns Exit's code under standalone_mode=False; it must become the process status."""
+        import sys
+
+        from netskope_cli.main import cli
+
+        monkeypatch.setattr(sys, "argv", ["ntsk", "alerts", "get"])  # no id, no filter -> typer.Exit(1)
+        with pytest.raises(SystemExit) as exc:
+            cli()
+        assert exc.value.code == 1
+        assert "alert ID" in capsys.readouterr().err
+
+    def test_unknown_option_gets_one_suggestion(self, monkeypatch, capsys):
+        import sys
+
+        from netskope_cli.main import cli
+
+        monkeypatch.setattr(sys, "argv", ["ntsk", "alerts", "list", "--lim", "5"])
+        with pytest.raises(SystemExit) as exc:
+            cli()
+        assert exc.value.code == 2
+        err = capsys.readouterr().err
+        assert "Possible options" not in err
+        assert err.count("Did you mean") == 1 and "--limit" in err

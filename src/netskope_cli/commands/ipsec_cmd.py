@@ -288,7 +288,7 @@ def get_tunnel(
     ctx: typer.Context,
     tunnel_id: int = typer.Argument(
         ...,
-        help=("Numeric ID of the IPsec tunnel to retrieve. Find IDs via " "'netskope ipsec tunnels list'."),
+        help=("Numeric ID of the IPsec tunnel to retrieve. Find IDs via 'netskope ipsec tunnels list'."),
     ),
 ) -> None:
     """Get detailed information about a specific IPsec tunnel.
@@ -425,14 +425,12 @@ def create_tunnel(
     """
     # Validate bandwidth
     if bandwidth not in BANDWIDTH_CHOICES:
-        echo_error(
-            f"Invalid bandwidth '{bandwidth}'. " f"Valid choices: {', '.join(str(b) for b in BANDWIDTH_CHOICES)}."
-        )
+        echo_error(f"Invalid bandwidth '{bandwidth}'. Valid choices: {', '.join(str(b) for b in BANDWIDTH_CHOICES)}.")
         raise typer.Exit(code=1)
 
     # Validate encryption
     if encryption not in ENCRYPTION_CHOICES:
-        echo_error(f"Invalid encryption '{encryption}'. " f"Valid choices: {', '.join(ENCRYPTION_CHOICES)}.")
+        echo_error(f"Invalid encryption '{encryption}'. Valid choices: {', '.join(ENCRYPTION_CHOICES)}.")
         raise typer.Exit(code=1)
 
     # Securely collect the pre-shared key
@@ -573,14 +571,12 @@ def update_tunnel(
     """
     # Validate optional bandwidth
     if bandwidth is not None and bandwidth not in BANDWIDTH_CHOICES:
-        echo_error(
-            f"Invalid bandwidth '{bandwidth}'. " f"Valid choices: {', '.join(str(b) for b in BANDWIDTH_CHOICES)}."
-        )
+        echo_error(f"Invalid bandwidth '{bandwidth}'. Valid choices: {', '.join(str(b) for b in BANDWIDTH_CHOICES)}.")
         raise typer.Exit(code=1)
 
     # Validate optional encryption
     if encryption is not None and encryption not in ENCRYPTION_CHOICES:
-        echo_error(f"Invalid encryption '{encryption}'. " f"Valid choices: {', '.join(ENCRYPTION_CHOICES)}.")
+        echo_error(f"Invalid encryption '{encryption}'. Valid choices: {', '.join(ENCRYPTION_CHOICES)}.")
         raise typer.Exit(code=1)
 
     payload: dict[str, object] = {}

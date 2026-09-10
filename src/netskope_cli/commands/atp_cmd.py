@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 atp_app = typer.Typer(
     name="atp",
-    help=("Advanced Threat Protection — submit files and URLs for malware " "scanning and retrieve analysis reports."),
+    help=("Advanced Threat Protection — submit files and URLs for malware scanning and retrieve analysis reports."),
     no_args_is_help=True,
 )
 

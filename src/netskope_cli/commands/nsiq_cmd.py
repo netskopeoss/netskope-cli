@@ -76,7 +76,7 @@ def url_lookup(
     url_arg: Optional[str] = typer.Argument(
         None,
         metavar="URL",
-        help=("The URL to look up (positional). " "Example: netskope intel url-lookup google.com"),
+        help=("The URL to look up (positional). Example: netskope intel url-lookup google.com"),
     ),
     url_opt: Optional[str] = typer.Option(
         None,

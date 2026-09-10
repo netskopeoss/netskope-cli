@@ -124,7 +124,7 @@ class TestLoadSaveConfig:
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
         cfg_path = tmp_path / "netskope" / "config.toml"
         cfg_path.parent.mkdir(parents=True)
-        cfg_path.write_text('active_profile = "prod"\n\n' "[profiles.prod]\n" 'tenant = "prod.goskope.com"\n')
+        cfg_path.write_text('active_profile = "prod"\n\n[profiles.prod]\ntenant = "prod.goskope.com"\n')
         loaded = load_config()
         assert "prod" in loaded.profiles
         assert loaded.profiles["prod"].tenant == "prod.goskope.com"

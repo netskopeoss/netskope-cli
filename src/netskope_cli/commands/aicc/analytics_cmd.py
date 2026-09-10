@@ -8,7 +8,7 @@ charts), and the alert triage matrix.
 from __future__ import annotations
 
 from enum import Enum
-from typing import Optional
+from typing import Optional, TypedDict
 
 import typer
 
@@ -63,7 +63,13 @@ class _AlertAsset(str, Enum):
 
 
 # Per-entity valid dimensions and metrics, straight from the API spec.
-_BREAKDOWN_CONFIG: dict[str, dict[str, object]] = {
+class _Breakdown(TypedDict):
+    path: str
+    dimensions: tuple[str, ...]
+    metrics: tuple[str, ...]
+
+
+_BREAKDOWN_CONFIG: dict[str, _Breakdown] = {
     "apps": {
         "path": f"{AICC_BASE}/analytics/ai-applications",
         "dimensions": ("category", "status", "ccl"),
@@ -220,14 +226,10 @@ def breakdown(
     config = _BREAKDOWN_CONFIG[entity.value]
     dimensions = config["dimensions"]
     metrics = config["metrics"]
-    if dimension not in dimensions:  # type: ignore[operator]
-        raise typer.BadParameter(
-            f"Invalid dimension {dimension!r} for {entity.value}. Valid: {', '.join(dimensions)}"  # type: ignore[arg-type]
-        )
-    if metric not in metrics:  # type: ignore[operator]
-        raise typer.BadParameter(
-            f"Invalid metric {metric!r} for {entity.value}. Valid: {', '.join(metrics)}"  # type: ignore[arg-type]
-        )
+    if dimension not in dimensions:
+        raise typer.BadParameter(f"Invalid dimension {dimension!r} for {entity.value}. Valid: {', '.join(dimensions)}")
+    if metric not in metrics:
+        raise typer.BadParameter(f"Invalid metric {metric!r} for {entity.value}. Valid: {', '.join(metrics)}")
 
     start_iso, end_iso = resolve_time_range(ctx, start, end)
     params: dict = {"dimension": dimension, "metric": metric, "start_time": start_iso, "end_time": end_iso}

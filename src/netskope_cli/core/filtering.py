@@ -96,9 +96,9 @@ def tokenize(text: str) -> list[Token]:
         if ch.isspace():
             i += 1
             continue
-        simple = {"(": "lparen", ")": "rparen", ",": "comma", "[": "lbracket", "]": "rbracket"}
+        simple: dict[str, TokenKind] = {"(": "lparen", ")": "rparen", ",": "comma", "[": "lbracket", "]": "rbracket"}
         if ch in simple:
-            tokens.append(Token(simple[ch], ch, i))  # type: ignore[arg-type]
+            tokens.append(Token(simple[ch], ch, i))
             i += 1
             continue
         if ch in "\"'":
