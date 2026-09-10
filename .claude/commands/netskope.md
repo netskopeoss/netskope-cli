@@ -52,7 +52,7 @@ These flags can appear **before or after** the subcommand:
 - TTY: prints metadata lines + bare integer (e.g. `1616 results\nTime range: ...\n1616`)
 - With `-o json`: prints just the bare integer (`1616`) — best for scripting
 - For reliable scripting: `ntsk alerts list --start 24h --count -o json` gives a clean number
-- **Note:** `--count` on `events`/`alerts`/`incidents` fetches one API page (10,000 rows, the datasearch cap) and prints `N+` with a stderr notice when that page filled up (`-o json`/`jsonl`/`csv`/`yaml` and any piped output print the bare integer, a lower bound); add `--exact` with `--start` to page for the true total (up to `NETSKOPE_COUNT_CEILING`, default 200,000; not on `events audit`/`infrastructure`/`transaction`). Endpoints that return a `total` report it. Elsewhere the count is of the rows `--limit` fetched. `ntsk status` marks capped counts with `≥` and `*_capped: true` in JSON.
+- **Note:** `--count` on the `events`/`alerts`/`incidents` datasearch commands (and `events infrastructure`) fetches one API page (10,000 rows, the datasearch cap) and prints `N+` with a stderr notice when that page filled up (`-o json`/`jsonl`/`csv`/`yaml` and any piped output print the bare integer, a lower bound); add `--exact` with `--start` to page for the true total (up to `NETSKOPE_COUNT_CEILING`, default 200,000; not on `events audit`/`infrastructure`/`transaction`). Endpoints that return a `total` report it. Elsewhere (`events audit`, `events transaction`) the count is of the rows `--limit` fetched. `ntsk status` marks capped counts with `≥` and `*_capped: true` in JSON.
 
 **`-q` behavior:** Suppresses spinners and progress indicators only. Errors still print to stderr. Exit codes are unchanged. Safe to use in scripts.
 

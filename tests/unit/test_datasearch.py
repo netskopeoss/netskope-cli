@@ -24,6 +24,7 @@ from netskope_cli.core.datasearch import (
     ExactCount,
     count_ceiling,
     count_exact,
+    counts_full_page,
     is_page_capped,
     print_exact_count,
     resolve_api_fields,
@@ -348,7 +349,7 @@ class TestFormatterWarningsAndCapped:
         out, err = _out(capsys)
         assert out.strip() == "10+"
         assert "results (capped)" not in err  # --count prints its own notice; no second banner
-        assert "Count capped at the API maximum of 10 rows" in err and "narrow the time range" in err
+        assert "Count capped at the 10 rows fetched" in err and "narrow the time range" in err
         OutputFormatter(no_color=True).format_output({"result": ALERTS * 5}, fmt="table", capped_at=10)
         _out_, err = _out(capsys)
         assert "10+ results (capped)" in err  # the banner belongs to the listing, not the count
@@ -620,7 +621,7 @@ class TestCountCap:
         assert result.exit_code == 0, result.output
         assert result.stdout.strip() == "10000+"
         assert "results (capped)" not in result.output
-        assert "Count capped at the API maximum of 10,000 rows" in result.output and "--exact" in result.output
+        assert "Count capped at the 10,000 rows fetched" in result.output and "--exact" in result.output
         assert _request_query(route)["limit"] == ["10000"]
 
     @respx.mock
@@ -1044,7 +1045,7 @@ class TestThirdReview:
             result = _invoke(runner, "alerts", "list", "--count", "-o", fmt)
             assert result.exit_code == 0, result.output
             assert json.loads(result.stdout) == 10000
-            assert "Count capped at the API maximum" in result.output
+            assert "Count capped at the" in result.output
         result = _invoke(runner, "alerts", "list", "--count", "-o", "table")
         assert result.stdout.strip() == "10000+"
         monkeypatch.setenv("NETSKOPE_COUNT_CEILING", "20000")
@@ -1092,7 +1093,7 @@ class TestFourthReview:
         _alert_route(FULL_PAGE)
         result = _invoke(runner, "alerts", "list", "--count")  # default table format, stdout piped
         assert result.stdout.strip() == "10000"  # $(ntsk ... --count) keeps parsing
-        assert "Count capped at the API maximum" in result.output  # the lower bound is still recorded
+        assert "Count capped at the" in result.output  # the lower bound is still recorded
         print_exact_count(ExactCount(5, 100, 10, True), where=False, ceiling=100, quiet=True, no_color=True)
         out, err = _out(capsys)
         assert out == "5\n" and "ceiling of 100 rows" in err
@@ -1193,3 +1194,86 @@ class TestFifthReview:
         )
         short = _invoke(runner, "events", "audit", "--count", "--where", "severity_level eq 1")
         assert short.stdout.strip() == "4" and "+" not in short.stdout
+
+
+class TestSixthReview:
+    """Findings from the sixth review of #19."""
+
+    @respx.mock
+    def test_p1_a_full_listing_page_says_so_in_its_banner(
+        self, runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The capped banner was unreachable: the cap was only computed under --count.
+
+        `capped_at` implied `count_only`, and the banner is guarded by
+        `not count_only`, so no invocation could reach it even though the docs
+        promised it. Filling a page is a property of the page, not of --count.
+        """
+        monkeypatch.setattr("netskope_cli.main._stdout_is_tty", lambda: True)  # not auto-quiet
+        rows = [{"_id": str(i), "alert_name": "a", "timestamp": 1} for i in range(3)]
+        _alert_route(rows)
+        capped = _invoke(runner, "alerts", "list", "--limit", "3")
+        assert capped.exit_code == 0, capped.output
+        assert "3+ results (capped)" in _flat(capped.output)
+
+        # A stated total is exact, so the precise banner still wins.
+        respx.get(ALERT_URL).mock(return_value=httpx.Response(200, json={"result": rows, "total": 9999}))
+        stated = _invoke(runner, "alerts", "list", "--limit", "3")
+        assert "Showing 3 of 9999 results" in _flat(stated.output)
+        assert "capped" not in stated.output
+
+    @respx.mock
+    def test_p3_a_count_asks_for_id_alone(self, runner: CliRunner) -> None:
+        """Counting moved whole event documents: 10,000 per page, 20 pages under --exact.
+
+        The rows are tallied and thrown away, so only ``_id`` (which the offset
+        check already reads) needs to cross the wire. Anything that actually
+        reads a row -- --where, --group-by, an explicit --api-fields -- opts out.
+        """
+        plain = _alert_route()
+        assert _invoke(runner, "alerts", "list", "--count").exit_code == 0
+        assert _request_query(plain)["fields"] == ["_id"]
+
+        where = respx.get(f"{BASE}/api/v2/events/datasearch/network").mock(
+            return_value=httpx.Response(200, json={"result": [{"srcip": "1"}]})
+        )
+        assert _invoke(runner, "events", "network", "--count", "--where", "srcip eq '1'").exit_code == 0
+        assert "fields" not in _request_query(where)
+
+        grouped = respx.get(f"{BASE}/api/v2/events/datasearch/page").mock(
+            return_value=httpx.Response(200, json={"result": [{"_id": {"app": "Box"}, "count": 3}]})
+        )
+        assert _invoke(runner, "events", "list", "--type", "page", "--group-by", "app", "--count").exit_code == 0
+        assert "fields" not in _request_query(grouped)
+
+        explicit = respx.get(f"{BASE}/api/v2/events/datasearch/clientstatus").mock(
+            return_value=httpx.Response(200, json={"result": [{"hostname": "h"}]})
+        )
+        assert _invoke(runner, "events", "client-status", "--count", "--api-fields", "hostname").exit_code == 0
+        assert _request_query(explicit)["fields"] == ["hostname"]
+
+    @respx.mock
+    def test_p3_exact_counts_id_alone_but_keeps_a_requested_projection(self, runner: CliRunner) -> None:
+        route = _alert_route([{"_id": "a1", "alert_name": "x"}])
+        assert _invoke(runner, "alerts", "list", "--since", "1h", "--count", "--exact").exit_code == 0
+        assert _request_query(route)["fields"] == ["_id"]
+
+        widened = respx.get(f"{BASE}/api/v2/events/datasearch/epdlp").mock(
+            return_value=httpx.Response(200, json={"result": [{"user": "u", "_id": "1"}]})
+        )
+        result = _invoke(runner, "events", "epdlp", "--start", "1h", "--count", "--exact", "--api-fields", "user")
+        assert result.exit_code == 0, result.output
+        assert _request_query(widened)["fields"] == ["user,_id"]
+
+    @respx.mock
+    def test_p4_the_aggregate_metrics_endpoint_is_not_paged(self, runner: CliRunner) -> None:
+        """``events transaction`` answers with an aggregate dict, so a 10,000-row limit means nothing."""
+        route = respx.get(f"{BASE}/api/v2/events/metrics/transactionevents").mock(
+            return_value=httpx.Response(200, json={"result": {"total_bytes": 5, "count": 3}})
+        )
+        result = _invoke(runner, "events", "transaction", "--count")
+        assert result.exit_code == 0, result.output
+        assert _request_query(route)["limit"] == ["25"]
+        assert not counts_full_page("/api/v2/events/metrics/transactionevents")
+        assert counts_full_page("/api/v2/events/data/infrastructure")
+        assert not counts_full_page("/api/v2/events/data/audit")

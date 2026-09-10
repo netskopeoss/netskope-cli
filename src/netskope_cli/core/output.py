@@ -521,10 +521,9 @@ class OutputFormatter:
             n = page_count(metadata, rows, capped=capped, where_active=self._where is not None)
             hint = None
             if capped_at is not None:
-                hint = (
-                    f"Count capped at the API maximum of {capped_at:,} rows; "
-                    f"{capped_hint or 'narrow the time range'}."
-                )
+                # Not always the API's 10,000-row cap: on an endpoint counted with
+                # --limit it is the limit, so the number speaks for itself.
+                hint = f"Count capped at the {capped_at:,} rows fetched; {capped_hint or 'narrow the time range'}."
             print_count(CountResult(n, capped, hint), fmt=fmt, err_console=self.err_console)
             return
 

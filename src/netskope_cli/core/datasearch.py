@@ -185,19 +185,24 @@ def is_datasearch_endpoint(endpoint: str) -> bool:
     return "/datasearch/" in endpoint
 
 
-#: Events endpoints that state a ``total``, so ``--count`` needs only ``--limit`` rows there.
-STATES_TOTAL_ENDPOINTS = ("/api/v2/events/data/audit",)
+#: The one non-datasearch events endpoint that returns a row page with no total.
+#: ``events/data/audit`` states a total, so its rows would be fetched only to be
+#: discarded, and ``events/metrics/transactionevents`` answers with an aggregate
+#: dict where a row limit means nothing.
+FULL_PAGE_ENDPOINTS = ("/api/v2/events/data/infrastructure",)
 
 
 def counts_full_page(endpoint: str) -> bool:
-    """``--count`` fetches a full :data:`DATASEARCH_PAGE_CAP` page on events endpoints that return no total.
+    """``--count`` fetches a full :data:`DATASEARCH_PAGE_CAP` page where the answer is a row page with no total.
 
-    Only the datasearch ones are known to page by ``offset``; ``events/data/*``
-    (infrastructure, transaction) count a single page and cannot be paged with
-    ``--exact``.  Audit states a total, so its rows would be fetched only to be
-    discarded.
+    Only the datasearch endpoints are known to page by ``offset``;
+    ``/api/v2/events/data/infrastructure`` counts a single page and cannot be
+    paged with ``--exact``.  Every other events endpoint counts with ``--limit``:
+    ``/api/v2/events/data/audit`` states a total, and
+    ``/api/v2/events/metrics/transactionevents`` returns aggregate metrics rather
+    than rows, so asking it for 10,000 of them buys nothing.
     """
-    return endpoint.startswith("/api/v2/events/") and endpoint not in STATES_TOTAL_ENDPOINTS
+    return is_datasearch_endpoint(endpoint) or endpoint in FULL_PAGE_ENDPOINTS
 
 
 def is_page_capped(data: Any, limit: int, *, where_active: bool = False) -> bool:
@@ -243,6 +248,19 @@ CAPPED_HINT_EXACT = "narrow the time range or use --exact"
 CAPPED_HINT_NO_EXACT = "narrow the time range (--exact cannot page this endpoint)"
 #: The cap is the user's own --limit, not the API page cap, so raising it is the first thing to try.
 CAPPED_HINT_LIMIT = "raise --limit or narrow the time range"
+
+#: The narrowest projection that still counts a page and feeds the ``--exact`` offset check.
+COUNT_PROJECTION = "_id"
+
+
+def _countable_by_id(selection: ApiFieldSelection, where: Expr | None, params: dict[str, Any]) -> bool:
+    """True when a count can be taken from ``_id`` alone, so the rest of each row is dead weight.
+
+    A ``--where`` reads the fields it filters on, ``--group-by`` returns
+    aggregate rows rather than events, and an explicit ``--api-fields`` is the
+    user's own projection to leave alone.
+    """
+    return selection.request is None and where is None and "groupbys" not in params
 
 
 @dataclass(frozen=True)
@@ -341,12 +359,17 @@ def fetch_page(
     paged = count and counts_full_page(endpoint)
     page_limit = DATASEARCH_PAGE_CAP if paged else limit
     params["limit"] = page_limit
+    if count and api_fields_supported and _countable_by_id(selection, where, params):
+        # The rows are tallied, never rendered, so a projection of _id alone counts the
+        # same page while moving kilobytes instead of megabytes of event documents.
+        params["fields"] = COUNT_PROJECTION
     with spinner(spinner_text, no_color=no_color, quiet=quiet):
         data = request_with_projection(client, endpoint, params, selection)
     raise_on_error_envelope(data)
     # A full page is a lower bound whatever filled it: the API page cap, or (on an endpoint counted
     # with --limit, such as audit) the limit itself, which a client-side --where always makes one.
-    capped = count and is_page_capped(data, page_limit, where_active=where is not None)
+    # This is a property of the page, so a listing that filled up says so in its banner too.
+    capped = is_page_capped(data, page_limit, where_active=where is not None)
     if not paged:
         hint = CAPPED_HINT_LIMIT
     else:
@@ -382,7 +405,11 @@ def count_exact(
     previous page's means the endpoint ignored ``offset``; that raises rather
     than counting the first page twice or, worse, reporting it as exact.  A
     ``--api-fields`` projection is widened with ``_id`` so the check always
-    has something to compare (the rows are counted, never rendered).  A total
+    has something to compare, and with no projection and nothing reading the
+    rows the request asks for ``_id`` alone (the rows are counted, never
+    rendered).  Rows are counted in the order the endpoint returns them; if it
+    has no deterministic order, a row indexed between two pages can be counted
+    twice or missed, which no offset-paged count can detect.  A total
     that is an exact multiple of *page_size* costs one extra, empty request
     and cannot be told from an endpoint that answers an empty page past its
     window.  *selection* lets an HTTP 400 for a widened ``--api-fields`` name
@@ -391,8 +418,14 @@ def count_exact(
     ceiling = count_ceiling() if ceiling is None else ceiling
     base = {k: v for k, v in params.items() if k not in ("limit", "offset")}
     projection = split_names(base.get("fields")) if isinstance(base.get("fields"), str) else []
-    if projection and "_id" not in projection:
-        base["fields"] = ",".join([*projection, "_id"])
+    if projection:
+        if "_id" not in projection:
+            base["fields"] = ",".join([*projection, "_id"])
+    elif where is None and "groupbys" not in base:
+        # Nothing reads the rows, so ask for the one field the offset check needs.
+        # Up to 20 pages of 10,000 rows go over the wire here; full event documents
+        # would be tens of megabytes of payload thrown away a page at a time.
+        base["fields"] = COUNT_PROJECTION
     count = fetched = requests = 0
     offset = 0
     reached_ceiling = False

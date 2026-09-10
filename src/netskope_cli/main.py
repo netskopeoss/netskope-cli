@@ -247,8 +247,9 @@ def main(
             "Print only the record count instead of full results. Endpoints that return a total "
             "report that total. Events, alerts and incidents commands fetch up to 10,000 rows (the API "
             "page cap) and print N+ when that cap is hit (json/jsonl/csv/yaml and piped output print the bare "
-            "integer, a lower bound); add --exact to page for the true total. Elsewhere the count is of the rows "
-            "--limit fetched."
+            "integer, a lower bound); add --exact to page for the true total. Elsewhere, including events audit "
+            "(which states a total) and events transaction (aggregate metrics, not rows), the count is of the "
+            "rows --limit fetched."
         ),
     ),
     exact: bool = typer.Option(
@@ -260,7 +261,9 @@ def main(
             "page is counted against one fixed window). Prints N+ if the "
             "NETSKOPE_COUNT_CEILING (default 200,000 rows) is reached first. Can issue many requests. "
             "Datasearch endpoints only (events audit, infrastructure and transaction count one page); no effect "
-            "on other commands."
+            "on other commands. Pages are read in the order the endpoint returns them: a row indexed between "
+            "two requests can be counted twice or missed, so treat the total as exact to within the tenant's "
+            "ingest lag."
         ),
     ),
     wide: bool = typer.Option(
