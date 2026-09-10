@@ -136,6 +136,7 @@ def _run_event_query(
     api_fields_supported: bool = True,
     extra_params: dict[str, Any] | None = None,
     spinner_text: str = "Querying events...",
+    single_record: bool = False,
 ) -> None:
     """Execute a GET request against a Netskope events endpoint.
 
@@ -176,6 +177,7 @@ def _run_event_query(
         count=count_only,
         spinner_text=spinner_text,
         api_fields_supported=api_fields_supported,
+        single_record=single_record,
     )
     if page is not None:
         _render_event_response(ctx, page, title=title, default_fields=default_fields)
@@ -462,6 +464,9 @@ def events_get(
         title="Event" if id is not None else title,
         default_fields=default_fields,
         api_fields_supported=False,
+        # An _id lookup returns the one matching event, so its full page of 1 is
+        # not a lower bound and must not be reported as "1+ results (capped)".
+        single_record=id is not None,
     )
 
 

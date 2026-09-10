@@ -235,11 +235,14 @@ def request_with_projection(client: Any, endpoint: str, params: dict[str, Any], 
         if (status == 400 or "HTTP 400" in exc.message) and selection.widened:
             culprits = [n for n in selection.widened if re.search(rf"\b{re.escape(n)}\b", exc.message)]
             if culprits:
-                exc.suggestion = (
+                widened_hint = (
                     f"{', '.join(culprits)} was added to --api-fields because --fields, --where or --sort reference "
                     "it, and the API does not accept it as a projection. Drop --api-fields, or remove the reference "
                     "and filter client-side."
                 )
+                # A 400 can already carry a more specific suggestion (a JQL syntax error names the
+                # offending clause, which is often a widened name too). Keep it and add ours after.
+                exc.suggestion = f"{exc.suggestion} {widened_hint}" if exc.suggestion else widened_hint
         raise
 
 
@@ -253,14 +256,23 @@ CAPPED_HINT_LIMIT = "raise --limit or narrow the time range"
 COUNT_PROJECTION = "_id"
 
 
-def _countable_by_id(selection: ApiFieldSelection, where: Expr | None, params: dict[str, Any]) -> bool:
+def _countable_by_id(endpoint: str, selection: ApiFieldSelection, where: Expr | None, params: dict[str, Any]) -> bool:
     """True when a count can be taken from ``_id`` alone, so the rest of each row is dead weight.
+
+    Only the datasearch endpoints are known to return an ``_id`` on every row
+    and to accept it as a projection -- that is the same premise
+    :func:`count_exact` rests on, so the two paths agree on where it holds.
+    Elsewhere the narrowed projection buys nothing and risks an HTTP 400 on a
+    name the endpoint does not publish: ``/api/v2/events/data/audit`` states an
+    envelope total, so its rows are discarded whatever they contain, and
+    ``/api/v2/events/metrics/transactionevents`` answers with an aggregate dict
+    rather than rows.
 
     A ``--where`` reads the fields it filters on, ``--group-by`` returns
     aggregate rows rather than events, and an explicit ``--api-fields`` is the
     user's own projection to leave alone.
     """
-    return selection.request is None and where is None and "groupbys" not in params
+    return is_datasearch_endpoint(endpoint) and selection.request is None and where is None and "groupbys" not in params
 
 
 @dataclass(frozen=True)
@@ -299,6 +311,7 @@ def fetch_page(
     count: bool,
     spinner_text: str,
     api_fields_supported: bool = True,
+    single_record: bool = False,
 ) -> Page | None:
     """Run the request for a list/count command, or the whole ``--exact`` count.
 
@@ -315,6 +328,11 @@ def fetch_page(
     API's rolling default window would count a moving target.  An HTTP 200
     ``ok: 0`` body raises, and an HTTP 400 for a name widening added to the
     projection says which option did it.
+
+    *single_record* marks a lookup whose page size the command chose because the
+    answer is unique by construction (``events get <ID>`` queries ``_id eq``
+    with ``limit=1``).  Such a page is never a lower bound, so the cap is not
+    reported for it.
     """
     state = getattr(ctx, "obj", None)
     exact = bool(getattr(state, "exact", False))
@@ -359,7 +377,7 @@ def fetch_page(
     paged = count and counts_full_page(endpoint)
     page_limit = DATASEARCH_PAGE_CAP if paged else limit
     params["limit"] = page_limit
-    if count and api_fields_supported and _countable_by_id(selection, where, params):
+    if count and api_fields_supported and _countable_by_id(endpoint, selection, where, params):
         # The rows are tallied, never rendered, so a projection of _id alone counts the
         # same page while moving kilobytes instead of megabytes of event documents.
         params["fields"] = COUNT_PROJECTION
@@ -369,7 +387,7 @@ def fetch_page(
     # A full page is a lower bound whatever filled it: the API page cap, or (on an endpoint counted
     # with --limit, such as audit) the limit itself, which a client-side --where always makes one.
     # This is a property of the page, so a listing that filled up says so in its banner too.
-    capped = is_page_capped(data, page_limit, where_active=where is not None)
+    capped = not single_record and is_page_capped(data, page_limit, where_active=where is not None)
     if not paged:
         hint = CAPPED_HINT_LIMIT
     else:

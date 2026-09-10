@@ -9,6 +9,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- `--count` sent the `fields=_id` projection to every events endpoint, not just the datasearch ones. `ntsk events audit --count`, `events transaction --count` and `events infrastructure --count` carried a projection those endpoints are not known to publish, where 1.4.8 sent none: `audit` counts from its envelope total so its rows are discarded whatever they hold, and `transaction` answers with an aggregate dict rather than rows, so the projection saved nothing on either and a 400 on an unrecognised name would have taken a working command with it. The narrowing now stops where `--exact` already stops, at the datasearch endpoints, which is the same premise its `_id` offset check rests on.
+- `ntsk events get <ID>` reported a successful lookup as `1+ results (capped)`. The lookup queries `_id eq "<ID>"` with `limit=1` because the answer is unique, so its full page of one is not a lower bound; the banner reads `1 results returned` again. A page whose size the user chose is still reported as capped when it fills.
+- An HTTP 400 whose message named a widened `--api-fields` name replaced the suggestion the client had already attached rather than adding to it, so a JQL syntax error naming that same field lost its `netskope docs jql` hint and pointed at `--api-fields` instead. Both hints are now shown.
 - Release runbook: the Homebrew step claimed `brew install` refuses PyPI files younger than 24 hours. Homebrew stages each pinned resource itself and runs pip against a local path, so its `--uploaded-prior-to=P1D` never reaches an index query; a same-day formula bump verifies fine, as 1.5.0 did. The step also says to test the formula through the tapped file before pushing, and that push access to the tap repo is separate from this one.
 
 ## [1.5.0] - 2026-09-10
