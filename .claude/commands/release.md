@@ -69,7 +69,9 @@ gh run watch --repo netskopeoss/netskope-cli --exit-status "$run"
 - Once it is green, create the GitHub Release. The notes are the version's CHANGELOG section, verbatim; `mktemp` keeps a re-run from tripping over an existing file.
 ```bash
 notes="$(mktemp)"
-awk -v v="X.Y.Z" 'index($0, "## [" v "]") == 1 {f=1; next} /^## \[/{f=0} f' CHANGELOG.md >| "$notes"
+# sed, not awk: this file is a slash command, and the argument substitution rewrites
+# `$0` inside it, so an awk program that reads the current line cannot survive here.
+sed -n '/^## \[X\.Y\.Z\]/,/^## \[/p' CHANGELOG.md | sed '1d;$d' >| "$notes"
 [ -s "$notes" ] || { echo "no CHANGELOG section for X.Y.Z" >&2; exit 1; }
 gh release create vX.Y.Z --repo netskopeoss/netskope-cli --title "vX.Y.Z" --notes-file "$notes"
 ```

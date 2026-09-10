@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-09-10
+
 ### Added
 
 - `--api-fields` on `alerts list`, every `events` subcommand, `incidents list`/`search`, `npa publishers list` and `npa policy rules list`/`rules get`/`groups list`: the server-side field projection, now distinct from the global `--fields`. It is widened with every top-level name that `--fields`, `--where` or `--sort` reference, shows its columns in the requested order unless `--fields` picks others, keeps the `<field>_iso` companions of the fields it names, and warns rather than fails when the API omits a projected field. An HTTP 400 for a name the widening added says which option referenced it, on `--exact` and the NPA commands too.
@@ -533,7 +535,8 @@ Discoverability & Help Improvements. Based on feedback from an AI agent discover
 
 - Initial public release on PyPI
 
-[Unreleased]: https://github.com/netskopeoss/netskope-cli/compare/v1.4.8...HEAD
+[Unreleased]: https://github.com/netskopeoss/netskope-cli/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/netskopeoss/netskope-cli/compare/v1.4.8...v1.5.0
 [1.4.8]: https://github.com/netskopeoss/netskope-cli/compare/v1.4.7...v1.4.8
 [1.4.7]: https://github.com/netskopeoss/netskope-cli/compare/v1.4.6...v1.4.7
 [1.4.6]: https://github.com/netskopeoss/netskope-cli/compare/v1.4.5...v1.4.6
