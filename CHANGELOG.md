@@ -7,6 +7,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Release runbook: the Homebrew step claimed `brew install` refuses PyPI files younger than 24 hours. Homebrew stages each pinned resource itself and runs pip against a local path, so its `--uploaded-prior-to=P1D` never reaches an index query; a same-day formula bump verifies fine, as 1.5.0 did. The step also says to test the formula through the tapped file before pushing, and that push access to the tap repo is separate from this one.
+
 ## [1.5.0] - 2026-09-10
 
 ### Added
