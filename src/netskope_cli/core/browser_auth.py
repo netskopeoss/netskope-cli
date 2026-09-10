@@ -93,7 +93,7 @@ def browser_login(
         If no tenant is configured.
     """
     try:
-        from playwright.sync_api import sync_playwright
+        from playwright.sync_api import sync_playwright  # ty: ignore[unresolved-import]
     except ImportError as exc:
         raise AuthError(
             "Browser-based SSO login requires the optional 'playwright' package.",
@@ -213,7 +213,7 @@ def browser_login_with_credentials(
         The captured ``ci_session`` cookie value.
     """
     try:
-        from playwright.sync_api import sync_playwright
+        from playwright.sync_api import sync_playwright  # ty: ignore[unresolved-import]
     except ImportError as exc:
         raise AuthError(
             "Browser-based SSO login requires the optional 'playwright' package.",

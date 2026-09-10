@@ -93,10 +93,3 @@ asyncio_mode = "auto"
 [tool.ty.src]
 include = ["src"]
 
-# playwright is an optional extra ([browser]); browser_auth.py imports it lazily
-# behind try/except ImportError, so it is absent from a base install.
-[[tool.ty.overrides]]
-include = ["src/netskope_cli/core/browser_auth.py"]
-
-[tool.ty.overrides.rules]
-unresolved-import = "ignore"

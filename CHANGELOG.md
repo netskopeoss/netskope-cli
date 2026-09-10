@@ -46,6 +46,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `ntsk commands --flat` omitted `ntsk status`, a group with no subcommands that runs on its own.
 - An unknown option showed two competing suggestions after the typer bump; typer's `(Possible options: ...)` is folded into the CLI's hint.
 - Two type errors mypy had been told to ignore: the `aicc analytics breakdown` config is a `TypedDict` and the filter tokenizer's token table is typed.
+- playwright's absence from a base install is suppressed on the two lazy imports that need it (`# ty: ignore[unresolved-import]`) rather than for the whole of `browser_auth.py`. A broken import of anything else in that file still fails the check, which is what mypy's module-scoped `ignore_missing_imports` did.
 
 ## [1.4.8] - 2026-09-04
 
