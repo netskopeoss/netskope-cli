@@ -87,6 +87,27 @@ class TestWalkJson:
         # Schema is stable across typer versions: upper-case names, click's type names.
         assert arg_cmd["args"] == [{"name": "RESOURCE_TYPE", "required": True, "type": "text"}]
 
+    def test_help_renders_arguments_the_way_typer_does(self) -> None:
+        """typer 0.27 renders a required argument as ``{name}``; 0.25 rendered ``NAME``.
+
+        The CLI does not fight that: restoring the old spelling means overriding
+        ``TyperArgument.make_metavar`` through a private factory, which is the
+        coupling to typer internals that produced the v1.4.6 outage. The two
+        surfaces mean different things -- ``commands`` prints a signature
+        notation, ``--help`` echoes the parser -- and this pins both so the next
+        typer bump shows the diff instead of changing help text unnoticed.
+        """
+        from typer.testing import CliRunner
+
+        app = typer.Typer()
+
+        @app.command()
+        def show(resource_type: str) -> None:  # pragma: no cover - help output only
+            """Show a resource."""
+
+        usage = CliRunner().invoke(app, ["--help"]).output
+        assert "{resource_type}" in " ".join(usage.split())
+
     def test_options_included(self) -> None:
         grp = _make_group()
         ctx = typer.Context(grp, info_name="root")

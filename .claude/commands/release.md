@@ -53,8 +53,17 @@ The GitHub Release comes after the publish succeeds (step 6), not here: a releas
 ### 6. Publish to PyPI (CI, triggered by the tag), then announce
 Pushing the `vX.Y.Z` tag in step 5 starts `.github/workflows/release.yml`: it checks that the tag matches the project version, runs the same checks as CI, builds, smoke-tests the wheel and sdist with `scripts/smoke-dist.sh`, and publishes with `uv publish --trusted-publishing always --check-url https://pypi.org/simple/`. Authentication is PyPI's Trusted Publisher for this repository (workflow `release.yml`, environment `pypi`), so no token is involved.
 ```bash
-gh run watch --repo netskopeoss/netskope-cli --exit-status \
-  "$(gh run list --repo netskopeoss/netskope-cli --workflow release.yml --limit 1 --json databaseId -q '.[0].databaseId')"
+# A tag-triggered run has the tag as its headBranch, so select by tag rather than by
+# recency: the run takes a few seconds to appear, and --limit 1 alone would return the
+# PREVIOUS release's run, which is already green.
+for _ in $(seq 30); do
+  run="$(gh run list --repo netskopeoss/netskope-cli --workflow release.yml --branch vX.Y.Z \
+    --limit 1 --json databaseId -q '.[0].databaseId')"
+  [ -n "$run" ] && break
+  sleep 5
+done
+[ -n "$run" ] || { echo "no release.yml run for tag vX.Y.Z" >&2; exit 1; }
+gh run watch --repo netskopeoss/netskope-cli --exit-status "$run"
 ```
 - Wait for the run to succeed before continuing. If the publish step fails, fix the cause and `gh run rerun` it; `--check-url` makes a retry skip the files PyPI already accepted instead of failing on the first duplicate.
 - Once it is green, create the GitHub Release. The notes are the version's CHANGELOG section, verbatim; `mktemp` keeps a re-run from tripping over an existing file.
@@ -83,8 +92,9 @@ UV_PUBLISH_TOKEN="$token" uv publish --check-url https://pypi.org/simple/
 - Edit `Formula/netskope.rb` in the local tap repo at `../homebrew-tap/` (relative to the CLI repo)
   - Update the top-level `url` line with the new sdist URL
   - Update the top-level `sha256` line with the new hash
-- **Check every resource block, not just the top-level url**: from the CLI repo, run `uv export --no-dev --no-hashes --no-emit-project --format requirements-txt` for the runtime dependency set (outside the repo `uv pip list` silently describes some other interpreter, and the dev venv holds packages such as `click`, pulled in by black, that are not runtime resources). Compare it with the formula's `resource` blocks in both directions: add a block for every new package, delete the block for every package that is gone, and refresh URL + SHA256 from `https://pypi.org/pypi/<name>/<version>/json` for every version change.
+- **Check every resource block, not just the top-level url**: from the CLI repo, run `uv export --no-dev --no-hashes --no-emit-project --format requirements-txt` for the runtime dependency set (outside the repo `uv pip list` silently describes some other interpreter, and the dev venv holds test and lint packages that are not runtime resources). Compare it with the formula's `resource` blocks in both directions: add a block for every new package, delete the block for every package that is gone, and refresh URL + SHA256 from `https://pypi.org/pypi/<name>/<version>/json` for every version change.
 - Homebrew installs the sdist with pip's `--no-binary=:all:`, which also builds the build backend from source. hatchling is pure Python so that is quick; do not move to a compiled backend (uv_build, maturin) without re-testing the formula. After the sdist is on PyPI and the formula is pushed, run `brew install --build-from-source netskopeoss/tap/netskope` before announcing. Homebrew passes `--uploaded-prior-to=P1D` to pip and refuses PyPI files younger than 24 hours, so this check, and any user's `brew install` of the new version, only works the day after `uv publish`; time the announcement accordingly.
+  - Note: this release drops the direct `click` dependency (typer 0.27 vendors its own copy), so the formula's `click` resource block must be deleted rather than refreshed.
   - Note: pip freeze shows jaraco packages with dots (`jaraco.context`) while the formula uses dashes (`jaraco-context`) — normalize names before comparing or you'll get false mismatches.
   - Note: Linux-only deps (e.g. `cryptography` via secretstorage) won't appear in a local macOS pip freeze and are not formula resources — skip them.
 - Commit and push the tap:

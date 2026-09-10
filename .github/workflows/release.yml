@@ -3,9 +3,22 @@
 # leaves a public release pointing at a version PyPI does not have.
 #
 # Authentication is PyPI's Trusted Publisher for this repository, so no token
-# is stored anywhere. One-time setup on pypi.org for the `netskope` project:
-# Publishing -> Add a new publisher -> GitHub, owner `netskopeoss`, repository
-# `netskope-cli`, workflow `release.yml`, environment `pypi`.
+# is stored anywhere. Both halves of the one-time setup are required before the
+# first tag push, and each one alone leaves the package publishable by anyone
+# with push access:
+#
+#   1. On pypi.org for the `netskope` project: Publishing -> Add a new publisher
+#      -> GitHub, owner `netskopeoss`, repository `netskope-cli`, workflow
+#      `release.yml`, environment `pypi`. This stops OTHER workflows minting a
+#      token; it does not restrict which ref runs this one.
+#   2. In this repository's Settings -> Environments -> `pypi`: add required
+#      reviewers so a publish needs human approval, and a deployment
+#      branch-and-tag rule limited to the tag pattern `v*`. GitHub creates a
+#      referenced environment on first use with NO protection rules, so until
+#      this exists the `environment: pypi` line below gates nothing.
+#
+# The build job additionally refuses a tag that is not on master, so a side
+# branch cannot publish even if the environment rules are ever relaxed.
 name: Release
 
 on:
@@ -24,11 +37,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The ancestry check below needs master, which a tag checkout does not fetch.
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           version: ${{ env.UV_VERSION }}
           python-version: "3.11"
           enable-cache: true
+      - name: tag must be on master
+        run: |
+          git fetch --quiet origin master
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
+            echo "::error::$GITHUB_REF_NAME points at $GITHUB_SHA, which is not on master." \
+              "Releases are cut from master; tag a merged commit instead."
+            exit 1
+          fi
       - name: tag must match the project version
         run: |
           version="$(uv version --short)"
