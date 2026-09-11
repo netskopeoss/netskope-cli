@@ -1,6 +1,6 @@
 [project]
 name = "netskope"
-version = "1.5.0"
+version = "1.5.1"
 description = "The official Netskope CLI — manage your Netskope tenant from the command line"
 readme = "README.md"
 license = "MIT"

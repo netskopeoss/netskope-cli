@@ -7,6 +7,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-09-11
+
+### Added
+
+- The client retries an HTTP 429 up to three times before giving up (#14). A numeric `Retry-After` header sets the wait, capped at 60 seconds so a bad gateway value cannot stall a command; without a usable one it backs off 1s, 2s, 4s, capped at 8. A token's rate limit is shared across every endpoint, so a command that sends many requests (`--exact`, `ntsk status`) could hit it and fail outright where it now waits. `NetskopeClient(max_retries=0)` restores the previous behaviour.
+
 ### Fixed
 
 - `--count` sent the `fields=_id` projection to every events endpoint, not just the datasearch ones. `ntsk events audit --count`, `events transaction --count` and `events infrastructure --count` carried a projection those endpoints are not known to publish, where 1.4.8 sent none: `audit` counts from its envelope total so its rows are discarded whatever they hold, and `transaction` answers with an aggregate dict rather than rows, so the projection saved nothing on either and a 400 on an unrecognised name would have taken a working command with it. The narrowing now stops where `--exact` already stops, at the datasearch endpoints, which is the same premise its `_id` offset check rests on.
@@ -542,7 +548,8 @@ Discoverability & Help Improvements. Based on feedback from an AI agent discover
 
 - Initial public release on PyPI
 
-[Unreleased]: https://github.com/netskopeoss/netskope-cli/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/netskopeoss/netskope-cli/compare/v1.5.1...HEAD
+[1.5.1]: https://github.com/netskopeoss/netskope-cli/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/netskopeoss/netskope-cli/compare/v1.4.8...v1.5.0
 [1.4.8]: https://github.com/netskopeoss/netskope-cli/compare/v1.4.7...v1.4.8
 [1.4.7]: https://github.com/netskopeoss/netskope-cli/compare/v1.4.6...v1.4.7
