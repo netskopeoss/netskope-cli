@@ -89,7 +89,7 @@ UV_PUBLISH_TOKEN="$token" uv publish --check-url https://pypi.org/simple/
 - Create the GitHub Release with the same `gh release create` above once this succeeds.
 
 ### 7. Update the Homebrew tap
-- Sync the local tap first: `cd ../homebrew-tap && git pull --ff-only origin main`. Push access to `netskopeoss/homebrew-tap` is separate from `netskope-cli`; without it, fork and open a PR instead of pushing to `main`.
+- Sync the local tap first: `cd ../homebrew-tap && git pull --ff-only origin main`. Push access to `netskopeoss/homebrew-tap` is a separate grant from `netskope-cli`, so check it rather than assume it: `gh api repos/netskopeoss/homebrew-tap --jq .permissions`. `main` is unprotected, so push directly when you have write; fork and open a PR when you do not (1.5.0 went in as a fork PR, 1.5.1 as a direct push).
 - Fetch the new sdist URL and SHA256 from `https://pypi.org/pypi/netskope/X.Y.Z/json` (the `urls` entry with `packagetype == "sdist"`)
 - Edit `Formula/netskope.rb` in the local tap repo at `../homebrew-tap/` (relative to the CLI repo)
   - Update the top-level `url` line with the new sdist URL
@@ -102,7 +102,6 @@ UV_PUBLISH_TOKEN="$token" uv publish --check-url https://pypi.org/simple/
     died with `syntax errors found` on the `url` line and the error pointed at the formula rather than the cause.
     To recover: `git -C "$(brew --repository netskopeoss/tap)" reset --hard origin/main`, drop the stash it left
     behind (`git -C ... stash list` then `stash drop`), re-copy the formula, and rerun with the variable set.
-  - Note: this release drops the direct `click` dependency (typer 0.27 vendors its own copy), so the formula's `click` resource block must be deleted rather than refreshed.
   - Note: pip freeze shows jaraco packages with dots (`jaraco.context`) while the formula uses dashes (`jaraco-context`) — normalize names before comparing or you'll get false mismatches.
   - Note: Linux-only deps (e.g. `cryptography` via secretstorage) won't appear in a local macOS pip freeze and are not formula resources — skip them.
 - Commit and push the tap:
