@@ -142,7 +142,20 @@ class NetskopeClient:
         SSL verification setting.  ``True`` (default) uses the default CA
         bundle; a string path points to a custom CA bundle file; ``False``
         disables verification (not recommended).
+    max_retries:
+        The maximum number of automatic retries after an HTTP 429 response.
+        The Netskope API applies one shared rate limit to all endpoints for
+        a token.  Thus a command that sends many requests can get an HTTP
+        429 response.  Set the value to ``0`` to fail immediately.
     """
+
+    # The maximum wait time, in seconds, that the client accepts from a
+    # Retry-After header.  This limit prevents a long stop caused by a bad
+    # gateway value.
+    _MAX_RETRY_AFTER_SECONDS = 60
+    # The maximum wait time, in seconds, for the exponential backoff
+    # schedule (1 s, 2 s, 4 s, 8 s, ...).
+    _MAX_BACKOFF_SECONDS = 8
 
     def __init__(
         self,
@@ -152,11 +165,13 @@ class NetskopeClient:
         ci_session: str | None = None,
         timeout: int = 180,
         verify: bool | str = True,
+        max_retries: int = 3,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self._api_token = api_token
         self._ci_session = ci_session
         self._timeout = timeout
+        self._max_retries = max(0, max_retries)
         # Convert string CA bundle path to an SSLContext to avoid httpx
         # deprecation warning for verify=<str>.
         self._verify: bool | ssl.SSLContext
@@ -330,6 +345,25 @@ class NetskopeClient:
             details=details,
         )
 
+    def _retry_delay(self, response: httpx.Response, attempt: int) -> float:
+        """Return the wait time, in seconds, before the next retry of a 429 response.
+
+        If the ``Retry-After`` header contains a number of seconds, use that
+        value.  The maximum value is ``_MAX_RETRY_AFTER_SECONDS``.  If the
+        header is missing, has a date format, or is not valid, use the
+        exponential backoff schedule (1 s, 2 s, 4 s, maximum
+        ``_MAX_BACKOFF_SECONDS``).
+        """
+        raw = response.headers.get("Retry-After")
+        if raw is not None:
+            try:
+                seconds = int(raw.strip())
+                if seconds >= 0:
+                    return float(min(seconds, self._MAX_RETRY_AFTER_SECONDS))
+            except ValueError:
+                pass
+        return float(min(2**attempt, self._MAX_BACKOFF_SECONDS))
+
     @staticmethod
     def _parse_json(response: httpx.Response) -> Any:
         """Return parsed JSON, falling back to ``None`` for empty bodies."""
@@ -365,32 +399,52 @@ class NetskopeClient:
             list((json_data or {}).keys()) if isinstance(json_data, dict) else type(json_data).__name__,
         )
 
-        try:
-            response = await client.request(
-                method,
-                url,
-                params=params,
-                json=json_data,
-            )
-        except httpx.TimeoutException as exc:
-            raise APIError(
-                f"Request timed out after {self._timeout}s: {method.upper()} {url}",
-                suggestion="Increase the timeout with --timeout or check network connectivity.",
-                details={"method": method, "path": url},
-            ) from exc
-        except httpx.ConnectError as exc:
-            # Check if this is an SSL certificate verification error.
-            if _is_ssl_error(exc):
-                raise SSLError(
-                    f"SSL certificate verification failed connecting to {self.base_url}",
-                    suggestion=_ssl_suggestion(),
-                    details={"method": method, "path": url, "original_error": str(exc)},
+        for attempt in range(self._max_retries + 1):
+            try:
+                response = await client.request(
+                    method,
+                    url,
+                    params=params,
+                    json=json_data,
+                )
+            except httpx.TimeoutException as exc:
+                raise APIError(
+                    f"Request timed out after {self._timeout}s: {method.upper()} {url}",
+                    suggestion="Increase the timeout with --timeout or check network connectivity.",
+                    details={"method": method, "path": url},
                 ) from exc
-            raise APIError(
-                f"Connection failed: {exc}",
-                suggestion=f"Verify that {self.base_url} is reachable.",
-                details={"method": method, "path": url},
-            ) from exc
+            except httpx.ConnectError as exc:
+                # Check if this is an SSL certificate verification error.
+                if _is_ssl_error(exc):
+                    raise SSLError(
+                        f"SSL certificate verification failed connecting to {self.base_url}",
+                        suggestion=_ssl_suggestion(),
+                        details={"method": method, "path": url, "original_error": str(exc)},
+                    ) from exc
+                raise APIError(
+                    f"Connection failed: {exc}",
+                    suggestion=f"Verify that {self.base_url} is reachable.",
+                    details={"method": method, "path": url},
+                ) from exc
+
+            # The API applies one shared rate limit to all endpoints for a
+            # token.  Thus a command that sends many requests can get a
+            # temporary HTTP 429 response.  Retry the request after a delay.
+            # If the HTTP 429 response continues, _raise_for_status raises
+            # RateLimitError below.
+            if response.status_code == 429 and attempt < self._max_retries:
+                delay = self._retry_delay(response, attempt)
+                logger.warning(
+                    "Rate limited (HTTP 429) on %s %s; retrying in %.0fs (attempt %d/%d)",
+                    method.upper(),
+                    url,
+                    delay,
+                    attempt + 1,
+                    self._max_retries,
+                )
+                await asyncio.sleep(delay)
+                continue
+            break
 
         logger.info("HTTP %s %s -> %s", method.upper(), url, response.status_code)
         logger.debug(
