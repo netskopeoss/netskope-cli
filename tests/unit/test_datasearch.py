@@ -1317,8 +1317,11 @@ class TestSeventhReview:
         assert _request_query(plain)["fields"] == ["_id"]
 
     @respx.mock
-    def test_an_id_lookup_is_never_a_capped_page(self, runner: CliRunner) -> None:
+    def test_an_id_lookup_is_never_a_capped_page(self, runner: CliRunner, monkeypatch: pytest.MonkeyPatch) -> None:
         """``events get <ID>`` asks for one row because the answer is unique, not because it truncated."""
+        # The banner goes to stderr and auto-quiet drops it off a TTY, so without this the
+        # assertions below hold whether or not the page was reported as capped.
+        monkeypatch.setattr("netskope_cli.main._stdout_is_tty", lambda: True)
         respx.get(f"{BASE}/api/v2/events/datasearch/alert").mock(
             return_value=httpx.Response(200, json={"result": [{"_id": "abc123", "alert_name": "n"}]})
         )
