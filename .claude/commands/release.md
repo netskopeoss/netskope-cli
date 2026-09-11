@@ -102,8 +102,16 @@ UV_PUBLISH_TOKEN="$token" uv publish --check-url https://pypi.org/simple/
     died with `syntax errors found` on the `url` line and the error pointed at the formula rather than the cause.
     To recover: `git -C "$(brew --repository netskopeoss/tap)" reset --hard origin/main`, drop the stash it left
     behind (`git -C ... stash list` then `stash drop`), re-copy the formula, and rerun with the variable set.
-  - Note: pip freeze shows jaraco packages with dots (`jaraco.context`) while the formula uses dashes (`jaraco-context`) — normalize names before comparing or you'll get false mismatches.
-  - Note: Linux-only deps (e.g. `cryptography` via secretstorage) won't appear in a local macOS pip freeze and are not formula resources — skip them.
+  - Note: `uv export` prints PEP 503 names, so jaraco packages come out dashed (`jaraco-context`) exactly as the
+    formula spells them and no normalization is needed. `pip freeze` prints `jaraco.context` and would need it;
+    that is one reason the comparison above uses `uv export`.
+  - Note: `uv export` does not resolve environment markers, so it lists every platform's dependencies and the
+    runtime set is legitimately larger than the resource list. On 1.5.1 ten names had no resource block and all ten
+    were correct: `cryptography`, `secretstorage`, `jeepney`, `cffi`, `pycparser`, `colorama` and `pywin32-ctypes`
+    are Linux/Windows-only, and `backports-tarfile`, `importlib-metadata` and `zipp` are gated on
+    `python_full_version < '3.12'`, which the formula's `python@3.13` excludes. Read the marker on the `uv export`
+    line before adding a resource for anything in this direction. The other direction has no such excuse: a
+    resource block with no matching runtime line is always a real removal.
 - Commit and push the tap:
 ```bash
 cd ../homebrew-tap
