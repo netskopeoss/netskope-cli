@@ -25,6 +25,7 @@ from netskope_cli.core.datasearch import (
     count_ceiling,
     count_exact,
     counts_full_page,
+    fetch_page,
     is_page_capped,
     print_exact_count,
     resolve_api_fields,
@@ -1277,3 +1278,104 @@ class TestSixthReview:
         assert not counts_full_page("/api/v2/events/metrics/transactionevents")
         assert counts_full_page("/api/v2/events/data/infrastructure")
         assert not counts_full_page("/api/v2/events/data/audit")
+
+
+class TestSeventhReview:
+    """Findings from the seventh review of the branch, taken after 1.5.0 shipped."""
+
+    @respx.mock
+    def test_the_id_count_projection_stops_at_the_datasearch_endpoints(self, runner: CliRunner) -> None:
+        """``fields=_id`` is only known to be a valid projection where ``count_exact`` already assumes it.
+
+        ``events/data/audit`` counts from its envelope total, so its rows are
+        discarded whatever they hold, and ``events/metrics/transactionevents``
+        answers with an aggregate dict rather than rows. Sending a projection
+        neither publishes buys nothing and risks an HTTP 400 on a command that
+        worked before.
+        """
+        audit = respx.get(f"{BASE}/api/v2/events/data/audit").mock(
+            return_value=httpx.Response(200, json={"result": ALERTS, "total": 5000})
+        )
+        assert _invoke(runner, "events", "audit", "--count").exit_code == 0
+        assert "fields" not in _request_query(audit)
+
+        metrics = respx.get(f"{BASE}/api/v2/events/metrics/transactionevents").mock(
+            return_value=httpx.Response(200, json={"result": {"total_bytes": 5, "count": 3}})
+        )
+        assert _invoke(runner, "events", "transaction", "--count").exit_code == 0
+        assert "fields" not in _request_query(metrics)
+
+        infra = respx.get(f"{BASE}/api/v2/events/data/infrastructure").mock(
+            return_value=httpx.Response(200, json={"result": [{"hostname": "h"}]})
+        )
+        assert _invoke(runner, "events", "infrastructure", "--count").exit_code == 0
+        assert "fields" not in _request_query(infra)
+
+        # The datasearch endpoints still get it: that is where the bandwidth win lives.
+        plain = _alert_route()
+        assert _invoke(runner, "alerts", "list", "--count").exit_code == 0
+        assert _request_query(plain)["fields"] == ["_id"]
+
+    @respx.mock
+    def test_an_id_lookup_is_never_a_capped_page(self, runner: CliRunner, monkeypatch: pytest.MonkeyPatch) -> None:
+        """``events get <ID>`` asks for one row because the answer is unique, not because it truncated."""
+        # The banner goes to stderr and auto-quiet drops it off a TTY, so without this the
+        # assertions below hold whether or not the page was reported as capped.
+        monkeypatch.setattr("netskope_cli.main._stdout_is_tty", lambda: True)
+        respx.get(f"{BASE}/api/v2/events/datasearch/alert").mock(
+            return_value=httpx.Response(200, json={"result": [{"_id": "abc123", "alert_name": "n"}]})
+        )
+        result = _invoke(runner, "events", "get", "abc123", "--type", "alert")
+        assert result.exit_code == 0, result.output
+        assert "capped" not in result.output
+        assert "1+" not in result.output
+
+    def test_only_the_marked_lookup_opts_out_of_the_cap(self) -> None:
+        """``single_record`` is the narrow escape hatch: an ordinary full page is still a lower bound."""
+
+        class _OnePage:
+            def request(self, _method: str, _endpoint: str, *, params: dict[str, Any] | None = None) -> Any:
+                return {"result": [{"_id": "abc123"}]}
+
+        def _page(**kw: Any) -> Any:
+            return fetch_page(
+                _Ctx(),
+                _OnePage(),
+                ALERT_URL,
+                {},
+                api_fields=None,
+                limit=1,
+                count=False,
+                spinner_text="",
+                api_fields_supported=False,
+                **kw,
+            )
+
+        assert _page().capped_at == 1
+        assert _page(single_record=True).capped_at is None
+
+    def test_a_widened_name_hint_is_added_to_the_jql_hint_not_over_it(self) -> None:
+        """A JQL syntax error names the offending clause, which is often a widened name too."""
+        from netskope_cli.core.datasearch import request_with_projection
+        from netskope_cli.core.exceptions import APIError
+
+        class _Boom:
+            def __init__(self, suggestion: str | None) -> None:
+                self.suggestion = suggestion
+
+            def request(self, *_a: Any, **_kw: Any) -> Any:
+                exc = APIError("HTTP 400: syntax error near 'action'", status_code=400)
+                exc.suggestion = self.suggestion
+                raise exc
+
+        selection = ApiFieldSelection("user,action", None, ("action",))
+
+        with pytest.raises(APIError) as caught:
+            request_with_projection(_Boom("Run 'netskope docs jql' for query syntax help."), "/e", {}, selection)
+        assert "docs jql" in (caught.value.suggestion or "")
+        assert "--api-fields" in (caught.value.suggestion or "")
+
+        # With nothing to preserve, the projection explanation stands alone.
+        with pytest.raises(APIError) as caught:
+            request_with_projection(_Boom(None), "/e", {}, selection)
+        assert (caught.value.suggestion or "").startswith("action was added to --api-fields")
